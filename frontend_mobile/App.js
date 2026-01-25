@@ -25,19 +25,19 @@ const Stack = createNativeStackNavigator();
 
 export default function App() {
   const [initializing, setInitializing] = useState(true);
-  const [initialRoute, setInitialRoute] = useState('Welcome');
 
+  // 1. LISTEN FOR FIREBASE SESSION ON APP LOAD
+  // We still need this so Firebase has time to restore the session 
+  // before the user reaches the Home screen.
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      // If user is logged in, skip Welcome and go straight to Home
-      if (user) setInitialRoute('Home'); 
-      else setInitialRoute('Welcome'); // Guests start at Welcome
-      
+    const unsubscribe = onAuthStateChanged(auth, () => {
+      // Once Firebase finishes checking, we stop the loading spinner.
       if (initializing) setInitializing(false);
     });
     return unsubscribe;
   }, []);
 
+  // 2. SHOW QUICK LOADING SPINNER ON STARTUP
   if (initializing) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F4F7F9' }}>
@@ -46,10 +46,11 @@ export default function App() {
     );
   }
 
+  // 3. RENDER NAVIGATION (ALWAYS STARTS AT WELCOME)
   return (
     <NavigationContainer>
       <Stack.Navigator 
-        initialRouteName={initialRoute} 
+        initialRouteName="Welcome" // <--- Hardcoded so everyone sees this first
         screenOptions={{ headerShown: false, animation: 'none' }}
       >
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
