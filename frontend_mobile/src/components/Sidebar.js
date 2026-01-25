@@ -39,7 +39,7 @@ export default function Sidebar({ visible, onClose }) {
     return unsubscribe; 
   }, []);
 
-  // --- UPDATED LOGOUT LOGIC WITH NOTIFICATION ---
+  // --- LOGOUT LOGIC WITH NOTIFICATION ---
   const handleLogout = () => {
     Alert.alert(
       "Sign Out",
@@ -138,15 +138,21 @@ export default function Sidebar({ visible, onClose }) {
                 <Text style={styles.menuLabel}>Edit Profile</Text>
               </TouchableOpacity>
 
-              {/* 3. Security Settings (NEW) */}
+              {/* 3. Security Settings */}
               <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); navigation.navigate('SecuritySettings'); }}>
                 <View style={styles.iconCircle}><Ionicons name="shield-checkmark-outline" size={20} color="#3D5A80" /></View>
                 <Text style={styles.menuLabel}>Security Settings</Text>
               </TouchableOpacity>
 
+              {/* 4. Email Preferences */}
+              <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); navigation.navigate('EmailPreferences'); }}>
+                <View style={styles.iconCircle}><Ionicons name="mail-outline" size={20} color="#3D5A80" /></View>
+                <Text style={styles.menuLabel}>Email Preferences</Text>
+              </TouchableOpacity>
+
               <View style={styles.divider} />
               
-              {/* 4. Sign Out */}
+              {/* 5. Sign Out */}
               <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
                 <View style={[styles.iconCircle, { backgroundColor: '#FDECEA' }]}><Ionicons name="log-out-outline" size={20} color="#E76F51" /></View>
                 <Text style={[styles.menuLabel, { color: '#E76F51' }]}>Sign Out</Text>
