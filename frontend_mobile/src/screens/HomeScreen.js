@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Dimensions, Platform, StatusBar } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Dimensions, Platform, StatusBar, ActivityIndicator, Alert } from 'react-native';
 import { FontAwesome5, Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+
+// Firebase Imports
+import { doc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth'; // Added listener
+import { auth, db } from '../config/firebase';
 
 // Custom Components
 import Header from '../components/Header';
@@ -11,6 +16,54 @@ import Sidebar from '../components/Sidebar';
 export default function HomeScreen({ navigation }) {
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('Gender');
+  
+  // --- USER DATA STATE ---
+  const [currentUser, setCurrentUser] = useState(null); // Tracks real auth state
+  const [userName, setUserName] = useState('Guest');
+  const [profilePic, setProfilePic] = useState(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
+
+  // --- 1. REAL-TIME AUTH LISTENER ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user); // Save the actual user object
+      
+      if (user) {
+        // FETCH REAL DATA FOR LOGGED IN USERS
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setUserName(data.firstName || 'Researcher');
+          setProfilePic(data.profilePic || null);
+        }
+      } else {
+        // RESET FOR GUESTS
+        setUserName('Guest');
+        setProfilePic(null);
+      }
+      setIsLoadingUser(false);
+    });
+
+    return unsubscribe; // Cleanup listener on unmount
+  }, []);
+
+  // --- 2. FEATURE LOCK (THE "BOUNCER") ---
+  const handleCameraPress = () => {
+    if (currentUser) {
+      // User is logged in, open the AI Camera
+      navigation.navigate('Camera');
+    } else {
+      // User is a guest, prompt them to login
+      Alert.alert(
+        "Account Required",
+        "You need to create an account to use the AI Scanner and save results to the database.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Log In", onPress: () => navigation.navigate('Login') }
+        ]
+      );
+    }
+  };
 
   const categories = ['Gender', 'Size', 'Age', 'Turbidity', 'Market', 'Profit', 'Algae'];
 
@@ -42,15 +95,24 @@ export default function HomeScreen({ navigation }) {
         onClose={() => setSidebarVisible(false)} 
       />
 
-      <Header onProfilePress={() => setSidebarVisible(true)} />
+      <Header onProfilePress={() => setSidebarVisible(true)} profileImage={profilePic} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        
+        {/* --- 3. DYNAMIC WELCOME SECTION --- */}
         <View style={styles.welcomeSection}>
-           <Text style={styles.greetingText}>Hello, Researcher</Text>
-           <Text style={styles.subGreeting}>Manage your crayfish classification today.</Text>
+           {isLoadingUser ? (
+             <ActivityIndicator size="small" color="#3D5A80" style={{ alignSelf: 'flex-start' }} />
+           ) : (
+             <Text style={styles.greetingText}>Hello, {userName}</Text>
+           )}
+           <Text style={styles.subGreeting}>
+             {currentUser ? "Manage your crayfish classification today." : "Explore the CrayAI research dashboard."}
+           </Text>
         </View>
 
-        <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('Camera')}>
+        {/* --- 4. PROTECTED CAMERA BUTTON --- */}
+        <TouchableOpacity activeOpacity={0.9} onPress={handleCameraPress}>
           <LinearGradient 
             colors={['#293241', '#3D5A80']} 
             start={{x: 0, y: 0}} 
@@ -61,7 +123,8 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.bannerTitle}>Quick Scan</Text>
               <Text style={styles.bannerSubtext}>AI-Powered classification</Text>
               <View style={styles.bannerBadge}>
-                <Text style={styles.badgeText}>START NOW</Text>
+                {/* Text changes based on user status */}
+                <Text style={styles.badgeText}>{currentUser ? "START NOW" : "LOGIN TO SCAN"}</Text>
               </View>
             </View>
             <FontAwesome5 name="camera" size={60} color="rgba(255,255,255,0.15)" style={styles.bannerIcon} />
@@ -156,7 +219,6 @@ const styles = StyleSheet.create({
       android: { elevation: 3 },
     }),
   },
-  // Home styles...
   welcomeSection: { marginBottom: 20 },
   greetingText: { fontSize: 16, color: '#3D5A80', fontWeight: '600' },
   subGreeting: { fontSize: 13, color: '#7F8C8D', marginTop: 2 },
@@ -197,5 +259,5 @@ const styles = StyleSheet.create({
   barWrapper: { alignItems: 'center' }, 
   barValue: { fontSize: 10, fontWeight: '700', color: '#3D5A80', marginBottom: 4 },
   bar: { width: 35, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
-  barLabel: { marginTop: 8, fontSize: 11, fontWeight: '700', color: '#7F8C8D', textAlign: 'center' },
+  barLabel: { marginTop: 8, fontSize: 11, fontWeight: '700', color: '#7F8C8D', textAlign: 'center' }
 });

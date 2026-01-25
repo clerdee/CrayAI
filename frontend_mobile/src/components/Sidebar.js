@@ -1,17 +1,71 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, Image, 
-  ScrollView, Dimensions, Platform 
+  ScrollView, Dimensions, Platform, Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native'; // 1. IMPORT THIS HOOK
+import { useNavigation } from '@react-navigation/native';
+
+// Firebase Imports
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../config/firebase'; 
 
 const { width } = Dimensions.get('window');
 
 export default function Sidebar({ visible, onClose }) {
-  const navigation = useNavigation(); // 2. INITIALIZE THE HOOK
-  const [isLoggedIn, setIsLoggedIn] = useState(false); 
+  const navigation = useNavigation();
+  
+  // Real Firebase State
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userData, setUserData] = useState(null);
+
+  useEffect(() => {
+    // 1. Listen for Auth State
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        // 2. If logged in, fetch extra data
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          setUserData(userDoc.data());
+        }
+      } else {
+        setUserData(null);
+      }
+    });
+
+    return unsubscribe; 
+  }, []);
+
+  // --- UPDATED LOGOUT LOGIC WITH NOTIFICATION ---
+  const handleLogout = () => {
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to log out of the community?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Log Out", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await signOut(auth);
+              onClose(); // Close sidebar
+              
+              // SUCCESS NOTIFICATION
+              Alert.alert("Logged Out", "You have successfully signed out of CrayAI.");
+              
+            } catch (error) {
+              console.error("Logout Error:", error);
+              Alert.alert("Error", "Could not log out. Please check your connection.");
+            }
+          }
+        }
+      ]
+    );
+  };
 
   if (!visible) return null;
 
@@ -19,34 +73,36 @@ export default function Sidebar({ visible, onClose }) {
     <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={onClose}>
       <View style={styles.drawerCard}>
         
+        {/* PROFILE HEADER - Colors change based on status */}
         <LinearGradient 
-          colors={isLoggedIn ? ['#3D5A80', '#293241'] : ['#98C1D9', '#3D5A80']} 
+          colors={currentUser ? ['#3D5A80', '#293241'] : ['#98C1D9', '#3D5A80']} 
           style={styles.profileHeader}
         >
           <View style={styles.avatarWrapper}>
             <Image 
-              source={require('../../assets/profile-icon.png')} 
-              style={[styles.profilePic, !isLoggedIn && { tintColor: '#3D5A80', opacity: 0.5 }]} 
+              source={userData?.profilePic ? { uri: userData.profilePic } : require('../../assets/profile-icon.png')} 
+              style={[styles.profilePic, !currentUser && { tintColor: '#3D5A80', opacity: 0.5 }]} 
             />
           </View>
-          <Text style={styles.userName}>{isLoggedIn ? "Hanna Clerdee" : "Guest Researcher"}</Text>
-          <Text style={styles.userRole}>{isLoggedIn ? "Lead Researcher" : "System Locked"}</Text>
+          <Text style={styles.userName}>
+            {currentUser ? (userData?.fullName || "Researcher") : "Guest Researcher"}
+          </Text>
+          <Text style={styles.userRole}>
+            {currentUser ? (userData?.role || "Authorized User") : "System Locked"}
+          </Text>
         </LinearGradient>
 
         <ScrollView style={styles.menuScroll} showsVerticalScrollIndicator={false}>
-          {!isLoggedIn ? (
+          {!currentUser ? (
+            /* GUEST VIEW */
             <View style={styles.authContainer}>
               <Text style={styles.authDesc}>
                 Access the full CrayAI Research Suite by signing into your account.
               </Text>
 
-              {/* 3. NAVIGATION CALLS WILL NOW WORK PERFECTLY */}
               <TouchableOpacity 
                 style={[styles.authBtn, { backgroundColor: '#3D5A80' }]}
-                onPress={() => { 
-                  onClose(); 
-                  navigation.navigate('Login'); 
-                }}
+                onPress={() => { onClose(); navigation.navigate('Login'); }}
               >
                 <Ionicons name="log-in-outline" size={20} color="#FFF" />
                 <Text style={styles.authBtnText}>LOGIN</Text>
@@ -54,10 +110,7 @@ export default function Sidebar({ visible, onClose }) {
 
               <TouchableOpacity 
                 style={[styles.authBtn, { backgroundColor: '#FFF', borderWidth: 2, borderColor: '#3D5A80' }]}
-                onPress={() => { 
-                  onClose(); 
-                  navigation.navigate('Register'); 
-                }}
+                onPress={() => { onClose(); navigation.navigate('Register'); }}
               >
                 <Ionicons name="person-add-outline" size={20} color="#3D5A80" />
                 <Text style={[styles.authBtnText, { color: '#3D5A80' }]}>CREATE ACCOUNT</Text>
@@ -69,13 +122,29 @@ export default function Sidebar({ visible, onClose }) {
               </TouchableOpacity>
             </View>
           ) : (
+            /* AUTHENTICATED VIEW */
             <View>
               <Text style={styles.sectionTitle}>General</Text>
-              <TouchableOpacity style={styles.menuItem}>
+              
+              {/* 1. View Profile */}
+              <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); navigation.navigate('Profile'); }}>
                 <View style={styles.iconCircle}><Ionicons name="person-outline" size={20} color="#3D5A80" /></View>
-                <Text style={styles.menuLabel}>Researcher Profile</Text>
+                <Text style={styles.menuLabel}>Your Profile</Text>
               </TouchableOpacity>
-              {/* Add more researcher links here... */}
+
+              {/* 2. Edit Profile (NEW) */}
+              <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); navigation.navigate('EditProfile'); }}>
+                <View style={styles.iconCircle}><Ionicons name="create-outline" size={20} color="#3D5A80" /></View>
+                <Text style={styles.menuLabel}>Edit Profile</Text>
+              </TouchableOpacity>
+
+              <View style={styles.divider} />
+              
+              {/* 3. Sign Out */}
+              <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
+                <View style={[styles.iconCircle, { backgroundColor: '#FDECEA' }]}><Ionicons name="log-out-outline" size={20} color="#E76F51" /></View>
+                <Text style={[styles.menuLabel, { color: '#E76F51' }]}>Sign Out</Text>
+              </TouchableOpacity>
             </View>
           )}
         </ScrollView>
@@ -89,26 +158,19 @@ const styles = StyleSheet.create({
   drawerCard: { width: width * 0.78, height: '100%', backgroundColor: '#FFF', borderTopRightRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden' },
   profileHeader: { paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 30, paddingHorizontal: 25, alignItems: 'center' },
   avatarWrapper: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#FFF', padding: 3, marginBottom: 15, justifyContent: 'center', alignItems: 'center' },
-  profilePic: { width: '80%', height: '80%', borderRadius: 45 },
+  profilePic: { width: '100%', height: '100%', borderRadius: 45 },
   userName: { color: '#FFF', fontSize: 18, fontWeight: '800', marginBottom: 4 },
   userRole: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' },
-
   menuScroll: { flex: 1, padding: 25 },
-  
-  // Auth Section Styles
   authContainer: { marginTop: 10 },
   authDesc: { fontSize: 14, color: '#7F8C8D', lineHeight: 22, marginBottom: 30, textAlign: 'center' },
   authBtn: { flexDirection: 'row', height: 55, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginBottom: 15, gap: 10 },
   authBtnText: { color: '#FFF', fontSize: 14, fontWeight: '800', letterSpacing: 1 },
   guestLink: { marginTop: 10, alignItems: 'center' },
   guestLinkText: { fontSize: 12, color: '#BDC3C7', fontWeight: '600' },
-
   sectionTitle: { fontSize: 12, fontWeight: '800', color: '#BDC3C7', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 20 },
   menuItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 25 },
   iconCircle: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#F4F7F9', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   menuLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: '#293241' },
   divider: { height: 1, backgroundColor: '#F4F7F9', marginVertical: 20 },
-  
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', padding: 25, borderTopWidth: 1, borderTopColor: '#F4F7F9' },
-  logoutText: { fontSize: 14, fontWeight: '700', color: '#E76F51', marginLeft: 10 }
 });

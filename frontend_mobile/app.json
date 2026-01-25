@@ -2,6 +2,7 @@
   "expo": {
     "name": "frontend_mobile",
     "slug": "frontend_mobile",
+    "scheme": "crayai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,9 +14,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "bundleIdentifier": "com.klerd.crayai",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.klerd.crayai",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -24,6 +27,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "6ec821ce-bb89-4f79-853f-c705531fc692"
+      }
     }
   }
 }
