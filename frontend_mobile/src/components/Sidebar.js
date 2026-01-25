@@ -132,15 +132,21 @@ export default function Sidebar({ visible, onClose }) {
                 <Text style={styles.menuLabel}>Your Profile</Text>
               </TouchableOpacity>
 
-              {/* 2. Edit Profile (NEW) */}
+              {/* 2. Edit Profile */}
               <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); navigation.navigate('EditProfile'); }}>
                 <View style={styles.iconCircle}><Ionicons name="create-outline" size={20} color="#3D5A80" /></View>
                 <Text style={styles.menuLabel}>Edit Profile</Text>
               </TouchableOpacity>
 
+              {/* 3. Security Settings (NEW) */}
+              <TouchableOpacity style={styles.menuItem} onPress={() => { onClose(); navigation.navigate('SecuritySettings'); }}>
+                <View style={styles.iconCircle}><Ionicons name="shield-checkmark-outline" size={20} color="#3D5A80" /></View>
+                <Text style={styles.menuLabel}>Security Settings</Text>
+              </TouchableOpacity>
+
               <View style={styles.divider} />
               
-              {/* 3. Sign Out */}
+              {/* 4. Sign Out */}
               <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
                 <View style={[styles.iconCircle, { backgroundColor: '#FDECEA' }]}><Ionicons name="log-out-outline" size={20} color="#E76F51" /></View>
                 <Text style={[styles.menuLabel, { color: '#E76F51' }]}>Sign Out</Text>

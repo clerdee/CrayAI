@@ -23,6 +23,11 @@ export default function ProfileScreen({ navigation }) {
 
   // 2. FETCH DATA FROM FIRESTORE
   useEffect(() => {
+    // Whenever the screen comes into focus, fetch data to ensure bio updates instantly
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchUserProfile();
+    });
+
     const fetchUserProfile = async () => {
       try {
         const user = auth.currentUser;
@@ -42,7 +47,8 @@ export default function ProfileScreen({ navigation }) {
     };
 
     fetchUserProfile();
-  }, []);
+    return unsubscribe;
+  }, [navigation]);
 
   // Temporary Mock Scans
   const mockScans = [
@@ -62,7 +68,6 @@ export default function ProfileScreen({ navigation }) {
     </TouchableOpacity>
   );
 
-  // Show a loading spinner while fetching data
   if (loading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -82,24 +87,20 @@ export default function ProfileScreen({ navigation }) {
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>PROFILE</Text>
-          {/* Invisible spacer so the title stays perfectly centered */}
           <View style={{ width: 24 }} />
         </View>
 
         <View style={styles.profileInfo}>
           <View style={styles.avatarContainer}>
-            {/* DYNAMIC PROFILE PICTURE */}
             <Image 
               source={userData?.profilePic ? { uri: userData.profilePic } : require('../../assets/profile-icon.png')} 
               style={styles.avatar} 
             />
-            {/* VERIFICATION BADGE (Replaced the pencil edit button) */}
             <View style={styles.verifiedBadge}>
               <Ionicons name="checkmark-sharp" size={14} color="#FFF" />
             </View>
           </View>
           
-          {/* DYNAMIC USER DATA */}
           <Text style={styles.userName}>{userData?.fullName || 'Researcher'}</Text>
           
           <View style={styles.locationRow}>
@@ -126,11 +127,12 @@ export default function ProfileScreen({ navigation }) {
         </View>
       </View>
 
+      {/* REAL BIO DISPLAYED HERE */}
       <Text style={styles.bioText}>
-        {userData?.bio || "Running a backyard red claw setup. Always open to share tips on water quality management!"}
+        {userData?.bio || "Add a bio to your profile to let others know more about you in CrayCommunity."}
       </Text>
 
-      {/* --- 3. SCANS GRID (Social Media Style) --- */}
+      {/* --- 3. SCANS GRID --- */}
       <View style={styles.gridHeader}>
         <Text style={styles.gridTitle}>My Crayfish Scans</Text>
       </View>
@@ -144,7 +146,6 @@ export default function ProfileScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* --- 4. BOTTOM NAV BAR --- */}
       <BottomNavBar navigation={navigation} activeTab="Profile" />
     </View>
   );
@@ -152,39 +153,27 @@ export default function ProfileScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7F9' },
-
-  // Header Styles
   header: { paddingTop: 60, paddingBottom: 40, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
   navRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20 },
   headerTitle: { color: '#FFF', fontSize: 16, fontWeight: '800', letterSpacing: 1 },
-  
   profileInfo: { alignItems: 'center' },
   avatarContainer: { position: 'relative', marginBottom: 15 },
   avatar: { width: 90, height: 90, borderRadius: 45, borderWidth: 3, borderColor: '#FFF' },
-  
-  // NEW: Verified Badge Styles
   verifiedBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#1DA1F2', padding: 4, borderRadius: 12, borderWidth: 2, borderColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
-  
   userName: { color: '#FFF', fontSize: 22, fontWeight: '800', marginBottom: 5 },
   locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   userLocation: { color: '#98C1D9', fontSize: 13, fontWeight: '600', marginLeft: 5 },
   levelBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 15, paddingVertical: 6, borderRadius: 20 },
   levelText: { color: '#FFF', fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
-
-  // Stats Card
   statsCard: { flexDirection: 'row', backgroundColor: '#FFF', marginHorizontal: 20, marginTop: -25, borderRadius: 20, padding: 20, elevation: 5, shadowColor: '#3D5A80', shadowOpacity: 0.15, shadowRadius: 10 },
   statItem: { flex: 1, alignItems: 'center' },
   statValue: { fontSize: 20, fontWeight: '800', color: '#3D5A80' },
   statLabel: { fontSize: 11, color: '#7F8C8D', fontWeight: '600', textTransform: 'uppercase', marginTop: 5 },
   divider: { width: 1, backgroundColor: '#ECF0F1', height: '100%' },
-
-  // Bio
   bioText: { marginHorizontal: 25, marginTop: 25, marginBottom: 15, fontSize: 14, color: '#293241', lineHeight: 22, textAlign: 'center' },
-
-  // Grid Styles
   gridHeader: { paddingHorizontal: 20, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#ECF0F1', marginBottom: 1 },
   gridTitle: { fontSize: 14, fontWeight: '800', color: '#3D5A80', textTransform: 'uppercase' },
-  gridContainer: { paddingBottom: 100 }, // Space for Bottom Nav
+  gridContainer: { paddingBottom: 100 }, 
   gridItem: { width: GRID_SIZE, height: GRID_SIZE, padding: 1 },
   gridImage: { width: '100%', height: '100%' },
   dateBadge: { position: 'absolute', bottom: 5, left: 5, backgroundColor: 'rgba(41,50,65,0.7)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5 },
