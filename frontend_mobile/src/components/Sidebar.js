@@ -9,7 +9,7 @@ import { useNavigation } from '@react-navigation/native';
 
 // Firebase Imports
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore'; // <--- CHANGED: Imported onSnapshot
 import { auth, db } from '../config/firebase'; 
 
 const { width } = Dimensions.get('window');
@@ -22,21 +22,38 @@ export default function Sidebar({ visible, onClose }) {
   const [userData, setUserData] = useState(null);
 
   useEffect(() => {
+    let unsubscribeSnapshot = () => {}; // Helper to clean up the data listener
+
     // 1. Listen for Auth State
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      
+      // Clean up previous data listener if auth state changes
+      unsubscribeSnapshot(); 
+
       if (user) {
-        // 2. If logged in, fetch extra data
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          setUserData(userDoc.data());
-        }
+        // 2. REAL-TIME LISTENER (Instead of getDoc)
+        // This will fire every time the database document updates
+        const userRef = doc(db, "users", user.uid);
+        
+        unsubscribeSnapshot = onSnapshot(userRef, (doc) => {
+          if (doc.exists()) {
+            setUserData(doc.data());
+          }
+        }, (error) => {
+            console.error("Error fetching user data:", error);
+        });
+        
       } else {
         setUserData(null);
       }
     });
 
-    return unsubscribe; 
+    // Cleanup when the Sidebar unmounts
+    return () => {
+      unsubscribeAuth();
+      unsubscribeSnapshot();
+    };
   }, []);
 
   // --- LOGOUT LOGIC WITH NOTIFICATION ---

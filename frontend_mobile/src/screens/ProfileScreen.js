@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  View, Text, StyleSheet, Image, ScrollView, 
-  TouchableOpacity, Dimensions, FlatList, StatusBar, ActivityIndicator 
+  View, Text, StyleSheet, Image, FlatList, 
+  TouchableOpacity, Dimensions, StatusBar, ActivityIndicator, Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 // Firebase Imports
-import { doc, getDoc } from 'firebase/firestore';
+import { 
+  doc, getDoc, collection, query, where, getCountFromServer, 
+  updateDoc, arrayUnion, arrayRemove 
+} from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 
 // Use your existing BottomNavBar
@@ -16,41 +19,93 @@ import BottomNavBar from '../components/BottomNavBar';
 const { width } = Dimensions.get('window');
 const GRID_SIZE = width / 3;
 
-export default function ProfileScreen({ navigation }) {
-  // 1. STATE FOR REAL DATA
+export default function ProfileScreen({ navigation, route }) {
+  // 1. DETERMINE WHICH USER TO SHOW
+  const currentAuthUser = auth.currentUser;
+  const paramUserId = route?.params?.userId;
+  
+  // Logic: If no param, or param matches auth uid, we are viewing ourselves.
+  const isViewingSelf = !paramUserId || (currentAuthUser && paramUserId === currentAuthUser.uid);
+  const targetUserId = isViewingSelf ? currentAuthUser?.uid : paramUserId;
+
+  // 2. STATE
   const [userData, setUserData] = useState(null);
+  const [stats, setStats] = useState({ followers: 0, following: 0 });
+  const [isFollowing, setIsFollowing] = useState(false); 
   const [loading, setLoading] = useState(true);
+  const [followLoading, setFollowLoading] = useState(false); 
 
-  // 2. FETCH DATA FROM FIRESTORE
+  // 3. FETCH DATA
   useEffect(() => {
-    // Whenever the screen comes into focus, fetch data to ensure bio updates instantly
-    const unsubscribe = navigation.addListener('focus', () => {
-      fetchUserProfile();
-    });
+    if (!targetUserId) {
+      setLoading(false);
+      return;
+    }
 
-    const fetchUserProfile = async () => {
+    const fetchProfileAndRelationship = async () => {
+      setLoading(true);
       try {
-        const user = auth.currentUser;
-        if (user) {
-          const docRef = doc(db, "users", user.uid);
-          const docSnap = await getDoc(docRef);
-          
-          if (docSnap.exists()) {
-            setUserData(docSnap.data());
+        // A. Fetch Profile
+        const docRef = doc(db, "users", targetUserId);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setUserData(data);
+
+          // B. Stats
+          const followingCount = data.following ? data.following.length : 0;
+          const usersRef = collection(db, "users");
+          const q = query(usersRef, where("following", "array-contains", targetUserId));
+          const snapshot = await getCountFromServer(q);
+          const followersCount = snapshot.data().count;
+
+          setStats({ following: followingCount, followers: followersCount });
+
+          // C. Relationship Check (Only if viewing someone else)
+          if (!isViewingSelf && currentAuthUser) {
+            const myDocRef = doc(db, "users", currentAuthUser.uid);
+            const myDocSnap = await getDoc(myDocRef);
+            if (myDocSnap.exists()) {
+              const myData = myDocSnap.data();
+              setIsFollowing(myData.following?.includes(targetUserId) || false);
+            }
           }
         }
       } catch (error) {
-        console.error("Error fetching profile data:", error);
+        console.error("Error fetching profile:", error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUserProfile();
-    return unsubscribe;
-  }, [navigation]);
+    fetchProfileAndRelationship();
+  }, [targetUserId, isViewingSelf]);
 
-  // Temporary Mock Scans
+  // 4. FOLLOW TOGGLE
+  const handleFollowToggle = async () => {
+    if (!currentAuthUser || isViewingSelf) return;
+    setFollowLoading(true);
+    const myUserRef = doc(db, "users", currentAuthUser.uid);
+
+    try {
+      if (isFollowing) {
+        await updateDoc(myUserRef, { following: arrayRemove(targetUserId) });
+        setIsFollowing(false);
+        setStats(prev => ({ ...prev, followers: prev.followers - 1 })); 
+      } else {
+        await updateDoc(myUserRef, { following: arrayUnion(targetUserId) });
+        setIsFollowing(true);
+        setStats(prev => ({ ...prev, followers: prev.followers + 1 })); 
+      }
+    } catch (error) {
+      Alert.alert("Error", "Action failed.");
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  // Mock Scans
   const mockScans = [
     { id: '1', image: 'https://images.unsplash.com/photo-1623996538604-a1a721612e6e?auto=format&fit=crop&q=80&w=400', date: 'Jan 15' },
     { id: '2', image: 'https://images.unsplash.com/photo-1544552866-d3ed42536cfd?auto=format&fit=crop&q=80&w=400', date: 'Jan 10' },
@@ -80,13 +135,23 @@ export default function ProfileScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* --- 1. HEADER SECTION --- */}
+      {/* --- HEADER --- */}
       <LinearGradient colors={['#3D5A80', '#293241']} style={styles.header}>
         <View style={styles.navRow}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#FFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>PROFILE</Text>
+          
+          {/* UPDATED LOGIC: Show Back if we have history (canGoBack), regardless of identity */}
+          {navigation.canGoBack() ? (
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={24} color="#FFF" />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 24 }} /> 
+          )}
+          
+          <Text style={styles.headerTitle}>
+            {isViewingSelf ? "MY PROFILE" : "PROFILE"}
+          </Text>
+          
           <View style={{ width: 24 }} />
         </View>
 
@@ -96,9 +161,11 @@ export default function ProfileScreen({ navigation }) {
               source={userData?.profilePic ? { uri: userData.profilePic } : require('../../assets/profile-icon.png')} 
               style={styles.avatar} 
             />
-            <View style={styles.verifiedBadge}>
-              <Ionicons name="checkmark-sharp" size={14} color="#FFF" />
-            </View>
+            {userData?.role === 'Verified' && (
+              <View style={styles.verifiedBadge}>
+                <Ionicons name="checkmark-sharp" size={14} color="#FFF" />
+              </View>
+            )}
           </View>
           
           <Text style={styles.userName}>{userData?.fullName || 'Researcher'}</Text>
@@ -108,33 +175,51 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.userLocation}>{userData?.city || 'Location Unknown'}, PH</Text>
           </View>
           
-          <View style={styles.levelBadge}>
-            <Text style={styles.levelText}>{userData?.role || 'Member'}</Text>
-          </View>
+          {/* FOLLOW BUTTON OR ROLE BADGE */}
+          {!isViewingSelf ? (
+            <TouchableOpacity 
+              style={[styles.followBtn, isFollowing ? styles.followingBtn : styles.notFollowingBtn]}
+              onPress={handleFollowToggle}
+              disabled={followLoading}
+            >
+              {followLoading ? (
+                <ActivityIndicator size="small" color={isFollowing ? "#FFF" : "#3D5A80"} />
+              ) : (
+                <Text style={[styles.followText, isFollowing && { color: '#FFF' }]}>
+                  {isFollowing ? "Following" : "Follow"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.levelBadge}>
+              <Text style={styles.levelText}>{userData?.role || 'Member'}</Text>
+            </View>
+          )}
         </View>
       </LinearGradient>
 
-      {/* --- 2. STATS & BIO SECTION --- */}
+      {/* --- STATS --- */}
       <View style={styles.statsCard}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>42</Text>
-          <Text style={styles.statLabel}>Total Scans</Text>
-        </View>
+        <TouchableOpacity style={styles.statItem}>
+          <Text style={styles.statValue}>{stats.followers}</Text>
+          <Text style={styles.statLabel}>Followers</Text>
+        </TouchableOpacity>
         <View style={styles.divider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>128</Text>
-          <Text style={styles.statLabel}>Connections</Text>
-        </View>
+        <TouchableOpacity style={styles.statItem}>
+          <Text style={styles.statValue}>{stats.following}</Text>
+          <Text style={styles.statLabel}>Following</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* REAL BIO DISPLAYED HERE */}
       <Text style={styles.bioText}>
-        {userData?.bio || "Add a bio to your profile to let others know more about you in CrayCommunity."}
+        {userData?.bio || "No bio added yet."}
       </Text>
 
-      {/* --- 3. SCANS GRID --- */}
+      {/* --- GRID --- */}
       <View style={styles.gridHeader}>
-        <Text style={styles.gridTitle}>My Crayfish Scans</Text>
+        <Text style={styles.gridTitle}>
+          {isViewingSelf ? "My Crayfish Scans" : `${userData?.fullName || 'User'}'s Scans`}
+        </Text>
       </View>
 
       <FlatList
@@ -146,7 +231,10 @@ export default function ProfileScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       />
 
-      <BottomNavBar navigation={navigation} activeTab="Profile" />
+      {/* Hide Bottom Nav if we are "drilled down" in a stack (Back button visible) */}
+      {!navigation.canGoBack() && (
+        <BottomNavBar navigation={navigation} activeTab="Profile" />
+      )}
     </View>
   );
 }
@@ -161,10 +249,14 @@ const styles = StyleSheet.create({
   avatar: { width: 90, height: 90, borderRadius: 45, borderWidth: 3, borderColor: '#FFF' },
   verifiedBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#1DA1F2', padding: 4, borderRadius: 12, borderWidth: 2, borderColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
   userName: { color: '#FFF', fontSize: 22, fontWeight: '800', marginBottom: 5 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   userLocation: { color: '#98C1D9', fontSize: 13, fontWeight: '600', marginLeft: 5 },
   levelBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 15, paddingVertical: 6, borderRadius: 20 },
   levelText: { color: '#FFF', fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+  followBtn: { paddingHorizontal: 30, paddingVertical: 8, borderRadius: 20, borderWidth: 1, minWidth: 120, alignItems: 'center', borderColor: '#FFF' },
+  notFollowingBtn: { backgroundColor: '#FFF' }, 
+  followingBtn: { backgroundColor: 'transparent' }, 
+  followText: { fontSize: 14, fontWeight: '700', color: '#3D5A80' },
   statsCard: { flexDirection: 'row', backgroundColor: '#FFF', marginHorizontal: 20, marginTop: -25, borderRadius: 20, padding: 20, elevation: 5, shadowColor: '#3D5A80', shadowOpacity: 0.15, shadowRadius: 10 },
   statItem: { flex: 1, alignItems: 'center' },
   statValue: { fontSize: 20, fontWeight: '800', color: '#3D5A80' },

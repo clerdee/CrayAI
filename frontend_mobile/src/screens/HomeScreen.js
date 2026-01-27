@@ -4,8 +4,8 @@ import { FontAwesome5, Ionicons, Feather, MaterialCommunityIcons } from '@expo/v
 import { LinearGradient } from 'expo-linear-gradient';
 
 // Firebase Imports
-import { doc, getDoc } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth'; // Added listener
+import { doc, onSnapshot } from 'firebase/firestore'; // <--- CHANGED: Imported onSnapshot
+import { onAuthStateChanged } from 'firebase/auth'; 
 import { auth, db } from '../config/firebase';
 
 // Custom Components
@@ -18,33 +18,52 @@ export default function HomeScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('Gender');
   
   // --- USER DATA STATE ---
-  const [currentUser, setCurrentUser] = useState(null); // Tracks real auth state
+  const [currentUser, setCurrentUser] = useState(null); 
   const [userName, setUserName] = useState('Guest');
   const [profilePic, setProfilePic] = useState(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
 
-  // --- 1. REAL-TIME AUTH LISTENER ---
+  // --- 1. REAL-TIME AUTH & DATA LISTENER ---
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user); // Save the actual user object
+    let unsubscribeSnapshot = () => {}; // Helper to clean up the data listener
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user); 
       
+      // Clean up previous data listener if auth state changes (e.g. switching accounts)
+      unsubscribeSnapshot(); 
+
       if (user) {
-        // FETCH REAL DATA FOR LOGGED IN USERS
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          setUserName(data.firstName || 'Researcher');
-          setProfilePic(data.profilePic || null);
-        }
+        // REAL-TIME LISTENER (Instead of getDoc)
+        // This will fire every time the database document updates
+        const userRef = doc(db, "users", user.uid);
+
+        unsubscribeSnapshot = onSnapshot(userRef, (doc) => {
+          if (doc.exists()) {
+            const data = doc.data();
+            // Assuming you want 'fullName' or 'firstName'
+            setUserName(data.firstName || data.fullName || 'Researcher');
+            setProfilePic(data.profilePic || null);
+          }
+          setIsLoadingUser(false);
+        }, (error) => {
+          console.error("Snapshot error:", error);
+          setIsLoadingUser(false);
+        });
+
       } else {
         // RESET FOR GUESTS
         setUserName('Guest');
         setProfilePic(null);
+        setIsLoadingUser(false);
       }
-      setIsLoadingUser(false);
     });
 
-    return unsubscribe; // Cleanup listener on unmount
+    // Cleanup listeners on unmount
+    return () => {
+      unsubscribeAuth();
+      unsubscribeSnapshot();
+    };
   }, []);
 
   // --- 2. FEATURE LOCK (THE "BOUNCER") ---
