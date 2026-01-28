@@ -3,8 +3,31 @@ import { View, Text, StyleSheet, TouchableOpacity, Platform, Modal, ScrollView }
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function Header({ onProfilePress, title = "CRAYAI" }) {
+export default function Header({ onProfilePress, title = "CRAYAI", context = "Home" }) {
   const [modalVisible, setModalVisible] = useState(false);
+
+  // Added 'icon' property to each tip object
+  const tips = {
+    Home: [
+      { t: 'Welcome', d: 'Explore analytics and start an AI scan from the banner.', icon: 'rocket-outline' },
+      { t: 'Shortcuts', d: 'Use the bottom bar to jump between tabs quickly.', icon: 'layers-outline' }
+    ],
+    Community: [
+      { t: 'Be Respectful', d: 'Share constructively. Avoid bad words and harassment.', icon: 'heart-circle-outline' },
+      { t: 'Quality Posts', d: 'Add clear photos or concise notes for better feedback.', icon: 'image-outline' },
+      { t: 'Follow & Engage', d: 'Follow researchers and comment with helpful insights.', icon: 'people-outline' }
+    ],
+    Chat: [
+      { t: 'Mutual Follows', d: 'Only mutual followers can chat. Others go to Requests.', icon: 'git-network-outline' },
+      { t: 'Stay Kind', d: 'No spam or offensive messages. Keep it professional.', icon: 'shield-checkmark-outline' }
+    ],
+    Alerts: [
+      { t: 'All Interactions', d: 'Likes, comments, follows, and chat updates show here.', icon: 'list-outline' },
+      { t: 'Badges', d: 'Watch the alert badge count on the bottom bar.', icon: 'notifications-circle-outline' }
+    ]
+  };
+  
+  const sections = tips[context] || tips.Home;
 
   return (
     <View style={styles.fixedHeader}>
@@ -20,42 +43,26 @@ export default function Header({ onProfilePress, title = "CRAYAI" }) {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>System Guide</Text>
+                <Text style={styles.modalTitle}>Guides & Tips</Text>
                 <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeIconBtn}>
                   <Ionicons name="close-circle" size={28} color="#BDC3C7" />
                 </TouchableOpacity>
               </View>
 
               <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
-                <View style={styles.instructionStep}>
-                  <View style={[styles.stepNumber, {backgroundColor: '#3D5A80'}]}>
-                    <Text style={styles.stepText}>1</Text>
+                {sections.map((s, idx) => (
+                  <View key={`${context}-tip-${idx}`} style={styles.instructionStep}>
+                    {/* Render Icon instead of Index Number */}
+                    <View style={[styles.iconContainer, {backgroundColor: idx % 2 === 0 ? '#3D5A80' : '#E76F51'}]}>
+                      <Ionicons name={s.icon} size={18} color="#FFF" />
+                    </View>
+                    
+                    <View style={styles.stepBody}>
+                      <Text style={styles.stepTitle}>{s.t}</Text>
+                      <Text style={styles.stepDesc}>{s.d}</Text>
+                    </View>
                   </View>
-                  <View style={styles.stepBody}>
-                    <Text style={styles.stepTitle}>Positioning</Text>
-                    <Text style={styles.stepDesc}>Hold the crayfish securely. Ensure the ventral side (belly) is facing the lens.</Text>
-                  </View>
-                </View>
-
-                <View style={styles.instructionStep}>
-                  <View style={[styles.stepNumber, {backgroundColor: '#58D68D'}]}>
-                    <Text style={styles.stepText}>2</Text>
-                  </View>
-                  <View style={styles.stepBody}>
-                    <Text style={styles.stepTitle}>Alignment</Text>
-                    <Text style={styles.stepDesc}>Align within the white silhouette guide for best AI accuracy.</Text>
-                  </View>
-                </View>
-
-                <View style={styles.instructionStep}>
-                  <View style={[styles.stepNumber, {backgroundColor: '#F4A261'}]}>
-                    <Text style={styles.stepText}>3</Text>
-                  </View>
-                  <View style={styles.stepBody}>
-                    <Text style={styles.stepTitle}>Result</Text>
-                    <Text style={styles.stepDesc}>The system will classify Gender, Size, and Maturity automatically.</Text>
-                  </View>
-                </View>
+                ))}
               </ScrollView>
 
               <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setModalVisible(false)}>
@@ -119,16 +126,33 @@ const styles = StyleSheet.create({
   logoTextMain: { fontSize: 24, fontWeight: '900', color: '#FFF', letterSpacing: 1 },
   logoTextSub: { color: '#98C1D9' },
 
-  // Modal Styles remain the same
+  // --- Modal Styles ---
   modalOverlay: { flex: 1, backgroundColor: 'rgba(41, 50, 65, 0.7)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '88%', maxHeight: '75%', backgroundColor: '#FFF', borderRadius: 30, paddingHorizontal: 25, paddingTop: 25, paddingBottom: 20, elevation: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 22, fontWeight: '900', color: '#293241' },
   closeIconBtn: { padding: 5 },
   modalScroll: { marginBottom: 15 },
+  
   instructionStep: { flexDirection: 'row', marginBottom: 24, alignItems: 'flex-start' },
-  stepNumber: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 18, marginTop: 2 },
-  stepText: { fontSize: 16, fontWeight: '800', color: '#FFF' },
+  
+  // Renamed from stepNumber to iconContainer for clarity
+  iconContainer: { 
+    width: 38, 
+    height: 38, 
+    borderRadius: 14, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginRight: 18, 
+    marginTop: 2,
+    // Added shadow for depth
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3.84,
+    elevation: 3,
+  },
+  
   stepBody: { flex: 1 },
   stepTitle: { fontSize: 17, fontWeight: '700', color: '#3D5A80', marginBottom: 6 },
   stepDesc: { fontSize: 14, color: '#546E7A', lineHeight: 20 },

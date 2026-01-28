@@ -9,11 +9,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Dropdown } from 'react-native-element-dropdown'; 
 import * as ImagePicker from 'expo-image-picker';
 
-// Firebase Imports
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { auth, db } from '../config/firebase'; 
-
-// Data & Config Imports
+// API & Data Imports
+import client from '../api/client';
 import { phCities } from '../data/ph_cities';
 import { CLOUDINARY_CONFIG } from '../config/cloudinary';
 
@@ -48,22 +45,20 @@ export default function EditProfileScreen({ navigation }) {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const user = auth.currentUser;
-        if (!user) return;
-
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          const data = userDoc.data();
+        const res = await client.get('/auth/profile');
+        if (res.data && res.data.success && res.data.user) {
+          const data = res.data.user;
           setFirstName(data.firstName || '');
           setLastName(data.lastName || '');
           setPhone(data.phone || '');
           setStreet(data.street || '');
           setCity(data.city || null);
-          setCountry(data.country || 'Philippines'); // <--- LOAD COUNTRY
-          setBio(data.bio || ''); 
+          setCountry(data.country || 'Philippines');
           setCurrentProfilePic(data.profilePic || null);
+          setBio(data.bio || '');
         }
       } catch (error) {
+        console.log('Error loading profile:', error);
         showNotification("Failed to load profile data.", "error");
       } finally {
         setLoading(false);
@@ -139,34 +134,35 @@ export default function EditProfileScreen({ navigation }) {
 
     setSaving(true);
     try {
-      const user = auth.currentUser;
       let updatedPicUrl = currentProfilePic;
 
       if (newImage) updatedPicUrl = await uploadImageAsync(newImage);
 
-      // Update Firestore Document
-      await updateDoc(doc(db, "users", user.uid), {
+      // Update via Backend API
+      const res = await client.put('/auth/profile/update', {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        fullName: `${firstName.trim()} ${lastName.trim()}`,
-        phone: phone.replace(/\s/g, ''), 
+        phone: phone.replace(/\s/g, ''),
         street: street.trim(),
         city: city,
-        country: country.trim(), // <--- SAVE COUNTRY
-        bio: bio.trim(), 
+        country: country.trim(),
         profilePic: updatedPicUrl,
+        bio: bio.trim(),
       });
 
-      showNotification("Profile updated successfully!", "success");
-      
-      setTimeout(() => {
-        setSaving(false);
-        navigation.goBack(); 
-      }, 1500);
+      if (res.data && res.data.success) {
+        showNotification("Profile updated successfully!", "success");
+        
+        setTimeout(() => {
+          setSaving(false);
+          navigation.goBack(); 
+        }, 1500);
+      }
 
     } catch (error) {
       setSaving(false);
-      showNotification("Failed to save updates. Try again.", "error");
+      console.log('Error saving profile:', error);
+      showNotification(error.response?.data?.message || "Failed to save updates. Try again.", "error");
     }
   };
 

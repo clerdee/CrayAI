@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ActivityIndicator, View } from 'react-native';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from './src/config/firebase';
+import { StatusBar } from 'react-native';
 
 // Screen Imports
 import WelcomeScreen from './src/screens/WelcomeScreen';
@@ -19,42 +17,39 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import EditProfileScreen from './src/screens/EditProfileScreen';
 import SecuritySettingScreen from './src/screens/SecuritySettingsScreen';
 import EmailPreferencesScreen from './src/screens/EmailPreferencesScreen';
+import VerifyOtpScreen from './src/screens/VerifyOtpScreen'; 
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
-  const [initializing, setInitializing] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, () => {
-      if (initializing) setInitializing(false);
-    });
-    return unsubscribe;
-  }, []);
-
-  if (initializing) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F4F7F9' }}>
-        <ActivityIndicator size="large" color="#3D5A80" />
-      </View>
-    );
-  }
-
   return (
     <NavigationContainer>
+      <StatusBar barStyle="dark-content" backgroundColor="#F4F7F9" />
+      
       <Stack.Navigator 
         initialRouteName="Welcome" 
-        screenOptions={{ headerShown: false, animation: 'none' }}
+        screenOptions={{ 
+          headerShown: false, 
+          animation: 'fade',
+          gestureEnabled: false
+        }}
       >
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
+        
+        {/* Auth Screens */}
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />
+        <Stack.Screen name="VerifyOtpScreen" component={VerifyOtpScreen} /> 
+
+        {/* App Features */}
         <Stack.Screen name="Community" component={CommunityScreen} />
         <Stack.Screen name="Camera" component={CameraScreen} />
         <Stack.Screen name="Results" component={ResultsScreen} />
         <Stack.Screen name="Chat" component={ChatScreen} />
         <Stack.Screen name="Notification" component={NotificationScreen} />
+        
+        {/* Settings & Profile */}
         <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
         <Stack.Screen name="SecuritySettings" component={SecuritySettingScreen} />

@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 // ADDED: activeTab prop to know which icon to highlight
-export default function BottomNavBar({ navigation, activeTab }) {
+export default function BottomNavBar({ navigation, activeTab, alertsCount = 0 }) {
   
   // Helper function to set colors based on the active tab
   const getIconColor = (tabName) => activeTab === tabName ? '#2C5364' : '#999';
@@ -46,14 +46,20 @@ export default function BottomNavBar({ navigation, activeTab }) {
 
       {/* 5. Notification */}
       <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Notification')}>
-        <Feather name="bell" size={24} color={getIconColor('Notification')} />
+        <View style={{ alignItems: 'center' }}>
+          <Feather name="bell" size={24} color={getIconColor('Notification')} />
+          {alertsCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{alertsCount > 99 ? '99+' : alertsCount}</Text>
+            </View>
+          )}
+        </View>
         <Text style={[styles.navText, { color: getTextColor('Notification') }]}>Alerts</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-// ... styles remain exactly the same as before ...
 const styles = StyleSheet.create({
   bottomNav: { position: 'absolute', bottom: 30, left: 20, right: 20, backgroundColor: '#FFF', flexDirection: 'row', borderRadius: 25, height: 70, justifyContent: 'space-around', alignItems: 'center', paddingHorizontal: 10 },
   navItem: { alignItems: 'center', justifyContent: 'center', flex: 1 },
@@ -61,5 +67,7 @@ const styles = StyleSheet.create({
   fabContainer: { position: 'relative', top: -30, flex: 1, alignItems: 'center' },
   fab: { width: 65, height: 65, borderRadius: 33, backgroundColor: '#FFF', padding: 5 },
   fabGradient: { flex: 1, borderRadius: 30, justifyContent: 'center', alignItems: 'center' },
-  shadow: { ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.1, shadowRadius: 10 }, android: { elevation: 5 } }) }
+  shadow: { ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.1, shadowRadius: 10 }, android: { elevation: 5 } }) },
+  badge: { position: 'absolute', top: -8, right: -12, backgroundColor: '#E74C3C', borderRadius: 10, minWidth: 18, height: 18, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center' },
+  badgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' }
 });

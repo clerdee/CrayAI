@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, ScrollView, 
   SafeAreaView, Platform, Alert, TextInput, ActivityIndicator, KeyboardAvoidingView
@@ -6,20 +6,33 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
-// Firebase Imports
-// 1. CHANGED: Imported verifyBeforeUpdateEmail instead of updateEmail
-import { EmailAuthProvider, reauthenticateWithCredential, verifyBeforeUpdateEmail } from 'firebase/auth';
-import { auth } from '../config/firebase'; 
+// API Import
+import client from '../api/client';
 
 export default function EmailPreferencesScreen() {
   const navigation = useNavigation();
-  const user = auth.currentUser;
+  const [currentEmail, setCurrentEmail] = useState('');
 
   // --- STATE ---
   const [newEmail, setNewEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Fetch current email on load
+  useEffect(() => {
+    const fetchEmail = async () => {
+      try {
+        const res = await client.get('/auth/profile');
+        if (res.data && res.data.user) {
+          setCurrentEmail(res.data.user.email);
+        }
+      } catch (error) {
+        console.log('Error fetching email:', error);
+      }
+    };
+    fetchEmail();
+  }, []);
 
   // --- REGEX VALIDATION HELPER ---
   const isValidEmail = (email) => {
@@ -40,7 +53,7 @@ export default function EmailPreferencesScreen() {
       return;
     }
 
-    if (newEmail === user.email) {
+    if (newEmail === currentEmail) {
       Alert.alert("No Change", "The new email is the same as your current email.");
       return;
     }
@@ -48,35 +61,29 @@ export default function EmailPreferencesScreen() {
     setIsUpdatingEmail(true);
 
     try {
-      // 2. Re-authenticate (Security)
-      const credential = EmailAuthProvider.credential(user.email, password);
-      await reauthenticateWithCredential(user, credential);
+      // 2. Call Backend API to update email
+      const res = await client.post('/auth/update-email', {
+        newEmail: newEmail,
+        password: password
+      });
 
-      // 3. SEND VERIFICATION (Instead of immediate update)
-      // This bypasses the 'operation-not-allowed' error
-      await verifyBeforeUpdateEmail(user, newEmail);
-
-      // 4. Success Alert
-      Alert.alert(
-        "Verification Sent",
-        `We have sent a confirmation email to ${newEmail}.\n\nPlease click the link in that email to finalize the change. Your login email will update automatically once verified.`,
-        [{ text: "OK", onPress: () => navigation.goBack() }]
-      );
-      
-      // NOTE: We do NOT update Firestore here. 
-      // We should only update Firestore once the Auth email actually changes to avoid data mismatch.
+      if (res.data && res.data.success) {
+        // 3. Success Alert
+        Alert.alert(
+          "Verification Sent",
+          `We have sent a confirmation email to ${newEmail}.\n\nPlease click the link in that email to finalize the change.`,
+          [{ text: "OK", onPress: () => navigation.goBack() }]
+        );
+      }
       
     } catch (error) {
-      console.error(error);
-      if (error.code === 'auth/wrong-password') {
+      console.error('Update email error:', error);
+      if (error.response?.status === 401) {
         Alert.alert("Incorrect Password", "The password you entered is incorrect.");
-      } else if (error.code === 'auth/email-already-in-use') {
+      } else if (error.response?.data?.message?.includes('already')) {
         Alert.alert("Email Taken", "This email is already associated with another account.");
-      } else if (error.code === 'auth/operation-not-allowed') {
-        // Fallback catch just in case
-        Alert.alert("Restricted", "Please check your inbox to verify this email first.");
       } else {
-        Alert.alert("Error", error.message);
+        Alert.alert("Error", error.response?.data?.message || "Failed to update email. Try again.");
       }
     } finally {
       setIsUpdatingEmail(false);
@@ -106,7 +113,7 @@ export default function EmailPreferencesScreen() {
             <Text style={styles.inputLabel}>Current Email</Text>
             <View style={styles.readOnlyContainer}>
               <Ionicons name="mail-outline" size={20} color="#7F8C8D" style={{marginRight: 10}}/>
-              <Text style={styles.readOnlyText}>{user?.email || "No email found"}</Text>
+              <Text style={styles.readOnlyText}>{currentEmail || "Loading..."}</Text>
             </View>
             
             <View style={styles.divider} />

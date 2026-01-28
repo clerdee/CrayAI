@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, TextInput, TouchableOpacity, 
   Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar,
@@ -9,29 +9,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Dropdown } from 'react-native-element-dropdown'; 
 import * as ImagePicker from 'expo-image-picker';
 
-// --- NEW SOCIAL AUTH IMPORTS ---
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
-import * as Facebook from 'expo-auth-session/providers/facebook';
-import * as AuthSession from 'expo-auth-session';
+// --- NEW BACKEND IMPORT ---
+import client from '../api/client'; 
 
-// Firebase Imports
-import { 
-  createUserWithEmailAndPassword, 
-  GoogleAuthProvider, 
-  FacebookAuthProvider, 
-  signInWithCredential 
-} from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../config/firebase'; 
-import { GOOGLE_OAUTH_KEYS, FACEBOOK_APP_ID } from '../config/keys';
-
-// Cloudinary Imports
+// Cloudinary Imports (Keep this for now to generate the image URL)
 import { CLOUDINARY_CONFIG } from '../config/cloudinary';
 import { phCities } from '../data/ph_cities';
-
-// Required for Expo Auth Session
-WebBrowser.maybeCompleteAuthSession();
 
 export default function RegisterScreen({ navigation }) {
   // Form State
@@ -55,90 +38,10 @@ export default function RegisterScreen({ navigation }) {
 
   const showNotification = (text, type) => {
     setMessage({ text, type });
-    // Auto-hide notification after 4 seconds
     setTimeout(() => setMessage({ text: '', type: '' }), 4000);
   };
 
-  // ==========================================
-  // 1. GOOGLE AUTH SETUP
-  // ==========================================
-  const [requestGoogle, responseGoogle, promptAsyncGoogle] = Google.useAuthRequest({
-    webClientId: GOOGLE_OAUTH_KEYS.webClientId,
-    iosClientId: GOOGLE_OAUTH_KEYS.iosClientId,
-    androidClientId: GOOGLE_OAUTH_KEYS.androidClientId,
-    redirectUri: AuthSession.makeRedirectUri({ useProxy: true }), 
-  });
-
-  useEffect(() => {
-    if (responseGoogle?.type === 'success') {
-      const { id_token } = responseGoogle.params;
-      const credential = GoogleAuthProvider.credential(id_token);
-      handleSocialLogin(credential, 'Google');
-    }
-  }, [responseGoogle]);
-
-  // ==========================================
-  // 2. FACEBOOK AUTH SETUP
-  // ==========================================
-  const [requestFb, responseFb, promptAsyncFb] = Facebook.useAuthRequest({
-    clientId: FACEBOOK_APP_ID,
-    redirectUri: AuthSession.makeRedirectUri({ useProxy: true }),
-  });
-
-  useEffect(() => {
-    if (responseFb?.type === 'success') {
-      const { access_token } = responseFb.params;
-      const credential = FacebookAuthProvider.credential(access_token);
-      handleSocialLogin(credential, 'Facebook');
-    }
-  }, [responseFb]);
-
-  // ==========================================
-  // 3. SOCIAL REGISTRATION (FIRESTORE) LOGIC
-  // ==========================================
-  const handleSocialLogin = async (credential, providerName) => {
-    setLoading(true);
-    try {
-      const userCredential = await signInWithCredential(auth, credential);
-      const user = userCredential.user;
-
-      const userDocRef = doc(db, "users", user.uid);
-      const userDocSnap = await getDoc(userDocRef);
-
-      if (!userDocSnap.exists()) {
-        const names = user.displayName ? user.displayName.split(' ') : ['User', ''];
-        
-        await setDoc(userDocRef, {
-          uid: user.uid,
-          firstName: names[0],
-          lastName: names.length > 1 ? names[names.length - 1] : '',
-          fullName: user.displayName || 'Social User', 
-          email: user.email,
-          profilePic: user.photoURL || '',
-          city: 'Taguig', 
-          role: "user", 
-          accountStatus: "Active",
-          provider: providerName,
-          lastOnline: serverTimestamp(),
-          createdAt: serverTimestamp(), 
-        });
-      }
-
-      showNotification(`Connected via ${providerName}!`, "success");
-      setTimeout(() => {
-        setLoading(false);
-        navigation.replace('Home'); // Redirect to Home
-      }, 1500);
-
-    } catch (error) {
-      setLoading(false);
-      showNotification(`${providerName} login failed.`, "error");
-      console.error(error);
-    }
-  };
-
   // --- IMAGE PICKING LOGIC ---
-  // NOTE: Kept native Alert.alert here because it is a prompt with 3 button choices, not a notification.
   const showImageOptions = () => {
     Alert.alert("Profile Picture", "Choose a source", [
       { text: "📷 Camera", onPress: () => pickImage(true) },
@@ -169,43 +72,29 @@ export default function RegisterScreen({ navigation }) {
     return result.secure_url || "";
   };
 
-  // --- STANDARD EMAIL REGISTRATION LOGIC ---
+  // ==========================================
+  // NEW MERN REGISTRATION LOGIC
+  // ==========================================
   const handleEmailRegister = async () => {
-    // 1. Check for empty fields
+    // 1. Validation
     if (!image || !firstName || !lastName || !email || !phone || !street || !city || !password || !confirmPassword) { 
       showNotification("Please upload a photo and fill in all fields.", "error"); 
       return; 
     }
 
-    // 2. Name Validation: Letters, spaces, hyphens, and apostrophes only
     const nameRegex = /^[a-zA-Z\s\-']+$/;
     if (!nameRegex.test(firstName) || !nameRegex.test(lastName)) {
       showNotification("Names can only contain letters.", "error");
       return;
     }
 
-    // 3. Email Validation
+    // Basic Email Regex
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       showNotification("Please enter a valid email address.", "error");
       return;
     }
 
-    // 4. Philippine Mobile Number Validation
-    const cleanPhone = phone.replace(/[\s-]/g, ''); 
-    const phPhoneRegex = /^(09|\+639)\d{9}$/; 
-    if (!phPhoneRegex.test(cleanPhone)) {
-      showNotification("Please enter a valid PH mobile number.", "error");
-      return;
-    }
-
-    // 5. Street Address Validation: At least 5 characters
-    if (street.trim().length < 5) {
-      showNotification("Please enter a more complete street address.", "error");
-      return;
-    }
-
-    // 6. Password Validation
     if (password.length < 6) {
       showNotification("Your password must be at least 6 characters long.", "error");
       return;
@@ -216,39 +105,58 @@ export default function RegisterScreen({ navigation }) {
     }
 
     setLoading(true); 
+
     try {
-      const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      // 2. Upload Image First (Frontend Upload)
+      // Note: In a full production app, you might send the file to backend, 
+      // but keeping frontend upload is faster for this transition.
       const profilePicUrl = await uploadImageAsync(image);
 
-      await setDoc(doc(db, "users", userCred.user.uid), {
-        uid: userCred.user.uid, 
-        firstName: firstName.trim(), 
-        lastName: lastName.trim(), 
-        fullName: `${firstName.trim()} ${lastName.trim()}`, 
-        email: email.toLowerCase().trim(), 
-        phone: cleanPhone, 
-        street: street.trim(), 
-        city, 
-        profilePic: profilePicUrl, 
-        role: "user", 
-        accountStatus: "Active", 
-        provider: "Email", 
-        lastOnline: serverTimestamp(), 
-        createdAt: serverTimestamp(), 
+      if (!profilePicUrl) {
+        throw new Error("Failed to upload image. Please try again.");
+      }
+
+      // 3. Call The Node.js Backend
+      // We send email/pass to trigger OTP generation
+      const response = await client.post('/auth/signup', {
+        email: email,
+        password: password
       });
 
-      showNotification("Welcome to CrayAI!", "success");
-      
-      // Delay navigation so the user sees the success message
-      setTimeout(() => {
-        setLoading(false);
-        navigation.replace('Home'); // Adjust 'Home' to your main app screen
-      }, 1500);
+      // 4. Success Handling
+      if (response.status === 201) {
+        showNotification("Verification code sent!", "success");
+        
+        // 5. Navigate to OTP Screen
+        // IMPORTANT: We pass the extra profile data to the next screen
+        // so we can save it to the database AFTER verification.
+        setTimeout(() => {
+          setLoading(false);
+          navigation.navigate('VerifyOtpScreen', { 
+            email: email,
+            profileData: {
+              firstName,
+              lastName,
+              phone,
+              street,
+              city,
+              country,
+              profilePic: profilePicUrl
+            }
+          });
+        }, 1000);
+      }
 
     } catch (error) {
       setLoading(false);
-      if (error.code === 'auth/email-already-in-use') {
-        showNotification("That email address is already in use.", "error");
+      console.log('Registration Error:', error);
+      
+      if (error.response) {
+        // Backend returned an error message (like "User already exists")
+        showNotification(error.response.data.message, "error");
+      } else if (error.request) {
+        // Network error (Server might be down or IP is wrong)
+        showNotification("Could not connect to server. Check your internet or IP config.", "error");
       } else {
         showNotification(error.message, "error");
       }
@@ -293,31 +201,6 @@ export default function RegisterScreen({ navigation }) {
                 </View>
               )}
             </TouchableOpacity>
-          </View>
-
-          {/* --- SOCIAL BUTTONS --- */}
-          <View style={styles.socialContainer}>
-            <TouchableOpacity 
-              style={[styles.socialBtn, { backgroundColor: '#1877F2' }]} 
-              disabled={!requestFb}
-              onPress={() => promptAsyncFb()}
-            >
-              <Ionicons name="logo-facebook" size={20} color="#FFF" />
-              <Text style={styles.socialText}>Facebook</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.socialBtn, { backgroundColor: '#DB4437' }]} 
-              disabled={!requestGoogle}
-              onPress={() => promptAsyncGoogle()}
-            >
-              <Ionicons name="logo-google" size={20} color="#FFF" />
-              <Text style={styles.socialText}>Google</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.dividerContainer}>
-            <View style={styles.dividerLine} /><Text style={styles.dividerText}>OR REGISTER WITH EMAIL</Text><View style={styles.dividerLine} />
           </View>
 
           {/* ... Inputs ... */}
@@ -450,12 +333,6 @@ const styles = StyleSheet.create({
   avatarImage: { width: '100%', height: '100%' },
   avatarPlaceholder: { alignItems: 'center' },
   avatarText: { fontSize: 10, fontWeight: '800', color: '#3D5A80', marginTop: 5 },
-  socialContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  socialBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 50, borderRadius: 12, marginHorizontal: 5, gap: 10, elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 3 },
-  socialText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
-  dividerContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 25 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: '#ECF0F1' },
-  dividerText: { marginHorizontal: 15, fontSize: 11, color: '#BDC3C7', fontWeight: '800', letterSpacing: 1 },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   inputGroup: { marginBottom: 15 },
   label: { fontSize: 11, fontWeight: '800', color: '#3D5A80', textTransform: 'uppercase', marginBottom: 6, letterSpacing: 0.5 },

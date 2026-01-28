@@ -6,11 +6,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Firebase Imports
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'; 
-import { auth, db } from '../config/firebase'; 
+// REPLACE FIREBASE WITH YOUR API CLIENT
+import client from '../api/client';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -19,11 +18,10 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   
   // Notification State
-  const [message, setMessage] = useState({ text: '', type: '' }); // type: 'success' or 'error'
+  const [message, setMessage] = useState({ text: '', type: '' });
 
   const showNotification = (text, type) => {
     setMessage({ text, type });
-    // Auto-hide notification after 4 seconds
     setTimeout(() => setMessage({ text: '', type: '' }), 4000);
   };
 
@@ -36,40 +34,56 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
 
     try {
-      // 1. Authenticate the user
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      // 2. UPDATE "lastOnline" IN FIRESTORE
-      await updateDoc(doc(db, "users", user.uid), {
-        lastOnline: serverTimestamp()
+      // 1. Call your Node.js Backend
+      const response = await client.post('/auth/login', {
+        email: email,
+        password: password
       });
-      
-      showNotification("Logged in successfully!", "success");
-      
-      // --- THE FIX IS HERE ---
-      // We explicitly navigate to Home after a 1-second delay so the user sees the success message.
-      setTimeout(() => {
-        setLoading(false);
-        navigation.replace('Home');
-      }, 1000); 
+
+      console.log('[LoginScreen] Login response:', {
+        status: response.status,
+        hasToken: !!response.data.token,
+        hasUser: !!response.data.user,
+        success: response.data.success
+      });
+
+      // 2. Success!
+      if (response.status === 200 && response.data.success && response.data.token) {
+        // Save token and user data to AsyncStorage
+        console.log('[LoginScreen] Saving token to AsyncStorage...');
+        await AsyncStorage.setItem('userToken', response.data.token);
+        await AsyncStorage.setItem('userInfo', JSON.stringify(response.data.user));
+        
+        // Verify it was saved
+        const savedToken = await AsyncStorage.getItem('userToken');
+        console.log('[LoginScreen] Token saved verification:', savedToken ? 'SUCCESS' : 'FAILED');
+        
+        showNotification(`Welcome back, ${response.data.user.firstName}!`, "success");
+        
+        // Wait a moment so they see the success message
+        setTimeout(() => {
+          setLoading(false);
+          navigation.replace('Home');
+        }, 1000);
+      }
       
     } catch (error) {
       setLoading(false);
-      let errorText = "Invalid login credentials.";
+      console.log('[LoginScreen] Login error:', error);
       
-      // Detailed Firebase Error Handling
-      if (error.code === 'auth/user-not-found') {
-        errorText = "No account found with this email.";
-      } else if (error.code === 'auth/wrong-password') {
-        errorText = "Incorrect password. Please try again.";
-      } else if (error.code === 'auth/invalid-email') {
-        errorText = "The email address is badly formatted.";
-      } else if (error.code === 'auth/network-request-failed') {
-        errorText = "Network error. Check your internet connection.";
+      // Handle Errors from Backend
+      if (error.response) {
+        // The server responded with a status code other than 2xx (e.g., 400, 404)
+        console.log('[LoginScreen] Response error:', error.response.data);
+        showNotification(error.response.data.message, "error");
+      } else if (error.request) {
+        // The request was made but no response was received (Network Error)
+        console.log('[LoginScreen] Request error - no response');
+        showNotification("Could not connect to server. Check your internet.", "error");
+      } else {
+        console.log('[LoginScreen] Error:', error.message);
+        showNotification("An unexpected error occurred.", "error");
       }
-      
-      showNotification(errorText, "error");
     }
   };
 

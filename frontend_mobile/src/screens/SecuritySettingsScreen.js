@@ -7,9 +7,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// Firebase Imports
-import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
-import { auth } from '../config/firebase';
+// API Import
+import client from '../api/client';
 
 export default function SecuritySettingsScreen({ navigation }) {
   // Form State
@@ -41,7 +40,6 @@ const handleChangePassword = async () => {
       return;
     }
 
-    // Standard Firebase minimum length
     if (newPassword.length < 6) {
       showNotification("New password must be at least 6 characters.", "error");
       return;
@@ -50,31 +48,30 @@ const handleChangePassword = async () => {
     setLoading(true);
 
     try {
-      const user = auth.currentUser;
+      // 2. Call Backend API
+      const res = await client.post('/auth/change-password', {
+        currentPassword: currentPassword,
+        newPassword: newPassword
+      });
 
-      // 2. Re-authenticate user (Required by Firebase for sensitive changes)
-      const credential = EmailAuthProvider.credential(user.email, currentPassword);
-      await reauthenticateWithCredential(user, credential);
+      if (res.data && res.data.success) {
+        // 3. Success handling
+        showNotification("Password updated successfully!", "success");
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
 
-      // 3. Update Password
-      await updatePassword(user, newPassword);
-
-      // 4. Success handling
-      showNotification("Password updated successfully!", "success");
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-
-      setTimeout(() => {
-        navigation.goBack();
-      }, 2000);
+        setTimeout(() => {
+          navigation.goBack();
+        }, 2000);
+      }
 
     } catch (error) {
-      console.error(error);
-      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-login-credentials') {
+      console.error('Change password error:', error);
+      if (error.response?.status === 401) {
         showNotification("Incorrect current password.", "error");
       } else {
-        showNotification("Failed to update password. Please try again.", "error");
+        showNotification(error.response?.data?.message || "Failed to update password. Please try again.", "error");
       }
     } finally {
       setLoading(false);

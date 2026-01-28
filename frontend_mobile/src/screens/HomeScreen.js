@@ -1,78 +1,92 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Dimensions, Platform, StatusBar, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Platform, StatusBar, ActivityIndicator, Alert } from 'react-native';
 import { FontAwesome5, Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Firebase Imports
-import { doc, onSnapshot } from 'firebase/firestore'; // <--- CHANGED: Imported onSnapshot
-import { onAuthStateChanged } from 'firebase/auth'; 
-import { auth, db } from '../config/firebase';
+// API Import
+import client from '../api/client'; 
 
 // Custom Components
 import Header from '../components/Header';
 import BottomNavBar from '../components/BottomNavBar';
 import Sidebar from '../components/Sidebar';
+import FloatingChatbot from '../components/FloatingChatbot';
 
 export default function HomeScreen({ navigation }) {
+  // --- STATE DEFINITIONS ---
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('Gender');
-  
-  // --- USER DATA STATE ---
-  const [currentUser, setCurrentUser] = useState(null); 
-  const [userName, setUserName] = useState('Guest');
-  const [profilePic, setProfilePic] = useState(null);
+  const [alertsCount, setAlertsCount] = useState(0);
+
+  // --- USER STATE ---
+  const [currentUser, setCurrentUser] = useState(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
 
-  // --- 1. REAL-TIME AUTH & DATA LISTENER ---
+  // --- 1. LOAD NOTIFICATION BADGE (FIXED) ---
   useEffect(() => {
-    let unsubscribeSnapshot = () => {}; // Helper to clean up the data listener
-
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user); 
+    const loadAlertBadge = async () => {
+      // A. Check if user is logged in first
+      const token = await AsyncStorage.getItem('userToken');
       
-      // Clean up previous data listener if auth state changes (e.g. switching accounts)
-      unsubscribeSnapshot(); 
-
-      if (user) {
-        // REAL-TIME LISTENER (Instead of getDoc)
-        // This will fire every time the database document updates
-        const userRef = doc(db, "users", user.uid);
-
-        unsubscribeSnapshot = onSnapshot(userRef, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            // Assuming you want 'fullName' or 'firstName'
-            setUserName(data.firstName || data.fullName || 'Researcher');
-            setProfilePic(data.profilePic || null);
-          }
-          setIsLoadingUser(false);
-        }, (error) => {
-          console.error("Snapshot error:", error);
-          setIsLoadingUser(false);
-        });
-
+      if (!token) {
+        // B. If Guest, force badge to 0 (ignore stored data)
+        setAlertsCount(0);
       } else {
-        // RESET FOR GUESTS
-        setUserName('Guest');
-        setProfilePic(null);
-        setIsLoadingUser(false);
+        // C. If Logged In, read the stored count
+        const value = await AsyncStorage.getItem('alertsCount');
+        setAlertsCount(Number(value || 0));
       }
-    });
-
-    // Cleanup listeners on unmount
-    return () => {
-      unsubscribeAuth();
-      unsubscribeSnapshot();
     };
-  }, []);
 
-  // --- 2. FEATURE LOCK (THE "BOUNCER") ---
+    // D. Add listener to refresh badge whenever screen comes into focus
+    const unsubscribe = navigation.addListener('focus', loadAlertBadge);
+    return unsubscribe;
+  }, [navigation]);
+
+  // --- 2. CHECK LOGIN STATUS ON FOCUS ---
+  useFocusEffect(
+    useCallback(() => {
+      checkLoginStatus();
+    }, [])
+  );
+
+  const checkLoginStatus = async () => {
+    setIsLoadingUser(true);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      console.log('Token from storage:', token ? 'Found' : 'Not found');
+      
+      if (token) {
+        try {
+          const res = await client.get('/auth/profile');
+          if (res.data && res.data.success && res.data.user) {
+             console.log('User logged in:', res.data.user.firstName);
+             setCurrentUser(res.data.user);
+          } else {
+             setCurrentUser(null);
+          }
+        } catch (apiError) {
+          console.log('API Error:', apiError.message);
+          setCurrentUser(null);
+        }
+      } else {
+        setCurrentUser(null);
+      }
+    } catch (error) {
+      console.log('Error checking login status:', error);
+      setCurrentUser(null);
+    } finally {
+      setIsLoadingUser(false);
+    }
+  };
+
+  // --- 3. FEATURE LOCK ---
   const handleCameraPress = () => {
     if (currentUser) {
-      // User is logged in, open the AI Camera
       navigation.navigate('Camera');
     } else {
-      // User is a guest, prompt them to login
       Alert.alert(
         "Account Required",
         "You need to create an account to use the AI Scanner and save results to the database.",
@@ -84,23 +98,34 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  const categories = ['Gender', 'Size', 'Age', 'Turbidity', 'Market', 'Profit', 'Algae'];
+  // --- 4. LOGOUT HANDLER ---
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('userInfo');
+      await AsyncStorage.removeItem('alertsCount'); // Clear alerts on logout
+      setCurrentUser(null); 
+      setAlertsCount(0); // Reset badge locally
+      setSidebarVisible(false);
+      navigation.navigate('Login');
+    } catch (error) {
+      console.log(error);
+    }
+  };
 
+  // --- STATIC DATA & HELPERS ---
+  const categories = ['Gender', 'Size', 'Age', 'Turbidity', 'Market', 'Profit', 'Algae'];
+  
   const recentScans = [
     { id: 1, date: 'Today, 10:45 AM', result: 'Male', image: 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?q=80&w=300' },
-    { id: 2, date: 'Yesterday', result: 'Berried Female', image: 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?q=80&w=300' }
+    { id: 2, date: 'Yesterday', result: 'Berried Female', image: 'https://images.unsplash.com/photo-1559563362-c667ba5f5480?q=80&w=300' }
   ];
 
   const getGraphData = () => {
     switch(activeTab) {
       case 'Gender': return [{ h: 120, v: 120, c: '#E76F51', l: 'Male' }, { h: 90, v: 90, c: '#2A9D8F', l: 'Female' }, { h: 40, v: 40, c: '#F4A261', l: 'Berried' }];
       case 'Size': return [{ h: 60, v: 60, c: '#3498db', l: 'Small' }, { h: 110, v: 110, c: '#3498db', l: 'Medium' }, { h: 80, v: 80, c: '#3498db', l: 'Large' }];
-      case 'Age': return [{ h: 50, v: 50, c: '#9b59b6', l: '3m' }, { h: 90, v: 90, c: '#9b59b6', l: '6m' }, { h: 130, v: 130, c: '#9b59b6', l: '9m' }];
-      case 'Turbidity': return [{ h: 110, v: 110, c: '#3498db', l: 'AM' }, { h: 75, v: 75, c: '#2980b9', l: 'PM' }];
-      case 'Market': return [{ h: 80, v: 80, c: '#f1c40f', l: 'Oct' }, { h: 100, v: 100, c: '#f1c40f', l: 'Nov' }, { h: 130, v: 130, c: '#f1c40f', l: 'Dec' }];
-      case 'Profit': return [{ h: 50, v: '50k', c: '#2ecc71', l: 'Q1' }, { h: 80, v: '80k', c: '#2ecc71', l: 'Q2' }, { h: 140, v: '140k', c: '#27ae60', l: 'Q3' }];
-      case 'Algae': return [{ h: 40, v: 'Low', c: '#16a085', l: 'Low' }, { h: 90, v: 'Med', c: '#16a085', l: 'Med' }, { h: 150, v: 'High', c: '#117a65', l: 'High' }];
-      default: return [];
+      default: return [{ h: 120, v: 'Hi', c: '#E76F51', l: 'A' }, { h: 90, v: 'Med', c: '#2A9D8F', l: 'B' }];
     }
   };
 
@@ -108,29 +133,37 @@ export default function HomeScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#3D5A80" />
 
+      {/* Sidebar with User Data */}
       <Sidebar 
         navigation={navigation} 
         visible={sidebarVisible} 
-        onClose={() => setSidebarVisible(false)} 
+        onClose={() => setSidebarVisible(false)}
+        user={currentUser} 
+        onLogout={handleLogout} 
       />
 
-      <Header onProfilePress={() => setSidebarVisible(true)} profileImage={profilePic} />
+      <Header 
+        onProfilePress={() => setSidebarVisible(true)} 
+        profileImage={currentUser?.profilePic} 
+      />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
-        {/* --- 3. DYNAMIC WELCOME SECTION --- */}
+        {/* WELCOME SECTION */}
         <View style={styles.welcomeSection}>
            {isLoadingUser ? (
              <ActivityIndicator size="small" color="#3D5A80" style={{ alignSelf: 'flex-start' }} />
            ) : (
-             <Text style={styles.greetingText}>Hello, {userName}</Text>
+             <Text style={styles.greetingText}>
+               Hello, {currentUser ? (currentUser.firstName || currentUser.fullName) : 'Guest'}
+             </Text>
            )}
            <Text style={styles.subGreeting}>
              {currentUser ? "Manage your crayfish classification today." : "Explore the CrayAI research dashboard."}
            </Text>
         </View>
 
-        {/* --- 4. PROTECTED CAMERA BUTTON --- */}
+        {/* CAMERA BUTTON */}
         <TouchableOpacity activeOpacity={0.9} onPress={handleCameraPress}>
           <LinearGradient 
             colors={['#293241', '#3D5A80']} 
@@ -142,7 +175,6 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.bannerTitle}>Quick Scan</Text>
               <Text style={styles.bannerSubtext}>AI-Powered classification</Text>
               <View style={styles.bannerBadge}>
-                {/* Text changes based on user status */}
                 <Text style={styles.badgeText}>{currentUser ? "START NOW" : "LOGIN TO SCAN"}</Text>
               </View>
             </View>
@@ -150,7 +182,7 @@ export default function HomeScreen({ navigation }) {
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Overview */}
+        {/* DASHBOARD OVERVIEW */}
         <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Dashboard Overview</Text></View>
         <View style={styles.metricsGrid}>
           <View style={[styles.metricCard, styles.shadow]}>
@@ -165,7 +197,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* History */}
+        {/* RECENT SCANS */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Records</Text>
           <TouchableOpacity><Text style={styles.viewLink}>View All</Text></TouchableOpacity>
@@ -181,7 +213,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         ))}
 
-        {/* Analytics Section */}
+        {/* ANALYTICS GRAPH */}
         <View style={[styles.sectionHeader, { marginTop: 20 }]}><Text style={styles.sectionTitle}>Research Analytics</Text></View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillContainer}>
           {categories.map((cat) => (
@@ -224,7 +256,9 @@ export default function HomeScreen({ navigation }) {
         <View style={{height: 120}} /> 
       </ScrollView>
 
-      <BottomNavBar navigation={navigation} activeTab="Home" />
+      {/* --- PASS THE ALERTS COUNT HERE --- */}
+      <BottomNavBar navigation={navigation} activeTab="Home" alertsCount={alertsCount} />
+      <FloatingChatbot />
     </View>
   );
 }

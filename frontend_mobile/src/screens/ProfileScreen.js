@@ -5,13 +5,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Firebase Imports
-import { 
-  doc, getDoc, collection, query, where, getCountFromServer, 
-  updateDoc, arrayUnion, arrayRemove 
-} from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+// API Import
+import client from '../api/client';
 
 // Use your existing BottomNavBar
 import BottomNavBar from '../components/BottomNavBar';
@@ -20,98 +17,115 @@ const { width } = Dimensions.get('window');
 const GRID_SIZE = width / 3;
 
 export default function ProfileScreen({ navigation, route }) {
-  // 1. DETERMINE WHICH USER TO SHOW
-  const currentAuthUser = auth.currentUser;
-  const paramUserId = route?.params?.userId;
+  // 1. DETERMINE IDENTITY
+  // If route.params.userId exists, we are viewing someone else.
+  // Otherwise, we are viewing ourselves.
+  const targetUserId = route?.params?.userId;
+  const isViewingSelf = !targetUserId;
   
-  // Logic: If no param, or param matches auth uid, we are viewing ourselves.
-  const isViewingSelf = !paramUserId || (currentAuthUser && paramUserId === currentAuthUser.uid);
-  const targetUserId = isViewingSelf ? currentAuthUser?.uid : paramUserId;
-
   // 2. STATE
   const [userData, setUserData] = useState(null);
   const [stats, setStats] = useState({ followers: 0, following: 0 });
   const [isFollowing, setIsFollowing] = useState(false); 
   const [loading, setLoading] = useState(true);
   const [followLoading, setFollowLoading] = useState(false); 
+  const [currentUserData, setCurrentUserData] = useState(null);
 
-  // 3. FETCH DATA
+  // 3. FETCH DATA (Combined Logic)
   useEffect(() => {
-    if (!targetUserId) {
-      setLoading(false);
-      return;
-    }
-
-    const fetchProfileAndRelationship = async () => {
+    const loadProfile = async () => {
       setLoading(true);
       try {
-        // A. Fetch Profile
-        const docRef = doc(db, "users", targetUserId);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setUserData(data);
+        // A. Always get current user ID for context (to check if I follow them)
+        const meRes = await client.get('/auth/profile');
+        const myId = meRes.data?.user?._id || meRes.data?.user?.id;
+        setCurrentUserData(meRes.data?.user);
 
-          // B. Stats
-          const followingCount = data.following ? data.following.length : 0;
-          const usersRef = collection(db, "users");
-          const q = query(usersRef, where("following", "array-contains", targetUserId));
-          const snapshot = await getCountFromServer(q);
-          const followersCount = snapshot.data().count;
-
-          setStats({ following: followingCount, followers: followersCount });
-
-          // C. Relationship Check (Only if viewing someone else)
-          if (!isViewingSelf && currentAuthUser) {
-            const myDocRef = doc(db, "users", currentAuthUser.uid);
-            const myDocSnap = await getDoc(myDocRef);
-            if (myDocSnap.exists()) {
-              const myData = myDocSnap.data();
-              setIsFollowing(myData.following?.includes(targetUserId) || false);
-            }
+        // B. Decide which profile to load
+        if (isViewingSelf) {
+          // --- VIEWING SELF ---
+          setUserData(meRes.data.user);
+          setStats({ 
+            followers: meRes.data.user.followers?.length || 0, 
+            following: meRes.data.user.following?.length || 0 
+          });
+        } else {
+          // --- VIEWING OTHERS ---
+          // Need a public endpoint. 
+          // Assuming /posts/user/:id returns { user: {...}, isFollowing: bool }
+          // If you don't have this specific endpoint, you might need to use /auth/users/:id
+          // or derive isFollowing manually.
+          
+          // Strategy: Fetch user details
+          // Since we don't have a specific "get public user" route in your previous code,
+          // we will assume you might need to add one or use a workaround.
+          // WORKAROUND for now: We reuse the "getChatUsers" logic or assume an endpoint exists.
+          // Ideally: client.get(`/users/${targetUserId}`)
+          
+          // For now, let's try to fetch their info. 
+          // IF YOU DONT HAVE THIS ENDPOINT, YOU NEED TO ADD IT TO BACKEND:
+          // router.get('/:id', auth, userController.getUserProfile);
+          
+          const userRes = await client.get(`/auth/users/${targetUserId}`); 
+          // ^ Ensure this route exists on backend!
+          
+          if (userRes.data?.user) {
+            const u = userRes.data.user;
+            setUserData(u);
+            setStats({ 
+              followers: u.followers?.length || 0, 
+              following: u.following?.length || 0 
+            });
+            
+            // Check if *I* follow *Them*
+            // We check my "following" list from step A
+            const amIFollowing = meRes.data.user.following.includes(targetUserId);
+            setIsFollowing(amIFollowing);
           }
         }
       } catch (error) {
-        console.error("Error fetching profile:", error);
+        console.log('Error loading profile:', error);
+        // Fallback or Alert
       } finally {
         setLoading(false);
       }
     };
 
-    fetchProfileAndRelationship();
+    loadProfile();
   }, [targetUserId, isViewingSelf]);
 
   // 4. FOLLOW TOGGLE
   const handleFollowToggle = async () => {
-    if (!currentAuthUser || isViewingSelf) return;
+    if (isViewingSelf) return;
     setFollowLoading(true);
-    const myUserRef = doc(db, "users", currentAuthUser.uid);
 
     try {
-      if (isFollowing) {
-        await updateDoc(myUserRef, { following: arrayRemove(targetUserId) });
-        setIsFollowing(false);
-        setStats(prev => ({ ...prev, followers: prev.followers - 1 })); 
-      } else {
-        await updateDoc(myUserRef, { following: arrayUnion(targetUserId) });
-        setIsFollowing(true);
-        setStats(prev => ({ ...prev, followers: prev.followers + 1 })); 
+      // Call the endpoint we used in CommunityScreen
+      const res = await client.post(`/auth/follow/${targetUserId}`);
+      
+      if (res.data) {
+        const newStatus = res.data.isFollowing; // Backend should return true/false
+        setIsFollowing(newStatus);
+        
+        // Update stats locally for immediate feedback
+        setStats(prev => ({
+          ...prev,
+          followers: newStatus ? prev.followers + 1 : prev.followers - 1
+        }));
       }
     } catch (error) {
-      Alert.alert("Error", "Action failed.");
+      console.error("Follow error:", error);
+      Alert.alert("Error", "Could not update follow status.");
     } finally {
       setFollowLoading(false);
     }
   };
 
-  // Mock Scans
+  // Mock Scans (Placeholder for now)
   const mockScans = [
     { id: '1', image: 'https://images.unsplash.com/photo-1623996538604-a1a721612e6e?auto=format&fit=crop&q=80&w=400', date: 'Jan 15' },
     { id: '2', image: 'https://images.unsplash.com/photo-1544552866-d3ed42536cfd?auto=format&fit=crop&q=80&w=400', date: 'Jan 10' },
     { id: '3', image: 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?auto=format&fit=crop&q=80&w=400', date: 'Jan 05' },
-    { id: '4', image: 'https://images.unsplash.com/photo-1615592389070-bcc97e050856?auto=format&fit=crop&q=80&w=400', date: 'Jan 02' },
-    { id: '5', image: 'https://images.unsplash.com/photo-1583337130417-3346a1be7dee?auto=format&fit=crop&q=80&w=400', date: 'Dec 28' },
   ];
 
   const renderGridItem = ({ item }) => (
@@ -138,9 +152,8 @@ export default function ProfileScreen({ navigation, route }) {
       {/* --- HEADER --- */}
       <LinearGradient colors={['#3D5A80', '#293241']} style={styles.header}>
         <View style={styles.navRow}>
-          
-          {/* UPDATED LOGIC: Show Back if we have history (canGoBack), regardless of identity */}
-          {navigation.canGoBack() ? (
+          {/* Back Button Logic */}
+          {!isViewingSelf || navigation.canGoBack() ? (
             <TouchableOpacity onPress={() => navigation.goBack()}>
               <Ionicons name="arrow-back" size={24} color="#FFF" />
             </TouchableOpacity>
@@ -149,7 +162,7 @@ export default function ProfileScreen({ navigation, route }) {
           )}
           
           <Text style={styles.headerTitle}>
-            {isViewingSelf ? "MY PROFILE" : "PROFILE"}
+            {isViewingSelf ? "MY PROFILE" : "RESEARCHER"}
           </Text>
           
           <View style={{ width: 24 }} />
@@ -161,6 +174,7 @@ export default function ProfileScreen({ navigation, route }) {
               source={userData?.profilePic ? { uri: userData.profilePic } : require('../../assets/profile-icon.png')} 
               style={styles.avatar} 
             />
+            {/* Show badge if verified (example role) */}
             {userData?.role === 'Verified' && (
               <View style={styles.verifiedBadge}>
                 <Ionicons name="checkmark-sharp" size={14} color="#FFF" />
@@ -168,14 +182,16 @@ export default function ProfileScreen({ navigation, route }) {
             )}
           </View>
           
-          <Text style={styles.userName}>{userData?.fullName || 'Researcher'}</Text>
+          <Text style={styles.userName}>
+            {userData?.fullName || userData?.firstName || 'Researcher'}
+          </Text>
           
           <View style={styles.locationRow}>
             <Ionicons name="location" size={14} color="#98C1D9" />
-            <Text style={styles.userLocation}>{userData?.city || 'Location Unknown'}, PH</Text>
+            <Text style={styles.userLocation}>{userData?.city || 'Location Unknown'}</Text>
           </View>
           
-          {/* FOLLOW BUTTON OR ROLE BADGE */}
+          {/* ACTION BUTTON SWITCH */}
           {!isViewingSelf ? (
             <TouchableOpacity 
               style={[styles.followBtn, isFollowing ? styles.followingBtn : styles.notFollowingBtn]}
@@ -191,9 +207,12 @@ export default function ProfileScreen({ navigation, route }) {
               )}
             </TouchableOpacity>
           ) : (
-            <View style={styles.levelBadge}>
-              <Text style={styles.levelText}>{userData?.role || 'Member'}</Text>
-            </View>
+            <TouchableOpacity 
+              style={styles.editProfileBtn}
+              onPress={() => navigation.navigate('EditProfile')}
+            >
+              <Text style={styles.editProfileText}>Edit Profile</Text>
+            </TouchableOpacity>
           )}
         </View>
       </LinearGradient>
@@ -212,18 +231,18 @@ export default function ProfileScreen({ navigation, route }) {
       </View>
 
       <Text style={styles.bioText}>
-        {userData?.bio || "No bio added yet."}
+        {userData?.bio || "This researcher hasn't added a bio yet."}
       </Text>
 
       {/* --- GRID --- */}
       <View style={styles.gridHeader}>
         <Text style={styles.gridTitle}>
-          {isViewingSelf ? "My Crayfish Scans" : `${userData?.fullName || 'User'}'s Scans`}
+          {isViewingSelf ? "My Scans" : "Research Scans"}
         </Text>
       </View>
 
       <FlatList
-        data={mockScans}
+        data={mockScans} // Replace with real scans eventually
         renderItem={renderGridItem}
         keyExtractor={item => item.id}
         numColumns={3}
@@ -231,8 +250,8 @@ export default function ProfileScreen({ navigation, route }) {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* Hide Bottom Nav if we are "drilled down" in a stack (Back button visible) */}
-      {!navigation.canGoBack() && (
+      {/* Hide Bottom Nav if we are viewing someone else (so we have more screen space) */}
+      {isViewingSelf && (
         <BottomNavBar navigation={navigation} activeTab="Profile" />
       )}
     </View>
@@ -242,7 +261,7 @@ export default function ProfileScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7F9' },
   header: { paddingTop: 60, paddingBottom: 40, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
-  navRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20 },
+  navRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 },
   headerTitle: { color: '#FFF', fontSize: 16, fontWeight: '800', letterSpacing: 1 },
   profileInfo: { alignItems: 'center' },
   avatarContainer: { position: 'relative', marginBottom: 15 },
@@ -251,12 +270,17 @@ const styles = StyleSheet.create({
   userName: { color: '#FFF', fontSize: 22, fontWeight: '800', marginBottom: 5 },
   locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   userLocation: { color: '#98C1D9', fontSize: 13, fontWeight: '600', marginLeft: 5 },
-  levelBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 15, paddingVertical: 6, borderRadius: 20 },
-  levelText: { color: '#FFF', fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+  
+  // Follow Button Styles
   followBtn: { paddingHorizontal: 30, paddingVertical: 8, borderRadius: 20, borderWidth: 1, minWidth: 120, alignItems: 'center', borderColor: '#FFF' },
   notFollowingBtn: { backgroundColor: '#FFF' }, 
   followingBtn: { backgroundColor: 'transparent' }, 
   followText: { fontSize: 14, fontWeight: '700', color: '#3D5A80' },
+
+  // Edit Button Styles
+  editProfileBtn: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
+  editProfileText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+
   statsCard: { flexDirection: 'row', backgroundColor: '#FFF', marginHorizontal: 20, marginTop: -25, borderRadius: 20, padding: 20, elevation: 5, shadowColor: '#3D5A80', shadowOpacity: 0.15, shadowRadius: 10 },
   statItem: { flex: 1, alignItems: 'center' },
   statValue: { fontSize: 20, fontWeight: '800', color: '#3D5A80' },
