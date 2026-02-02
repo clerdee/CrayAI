@@ -1,76 +1,154 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, StatusBar, Modal, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  Dimensions, 
+  StatusBar, 
+  Modal, 
+  ScrollView, 
+  ActivityIndicator,
+  Animated,
+  Vibration,
+  Easing,
+  Platform,
+  ImageBackground
+} from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
-const SCAN_WIDTH = width * 0.7;
-const SCAN_HEIGHT = height * 0.5;
+const SCAN_WIDTH = width * 0.75;
+const SCAN_HEIGHT = height * 0.55;
+
+const MODES = ['SCAN', 'PHOTO', 'VIDEO'];
 
 export default function CameraScreen({ navigation }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [flashMode, setFlashMode] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   
-  const [isScanning, setIsScanning] = useState(true);
-  const [liveResult, setLiveResult] = useState(null);
+  // Mode State
+  const [selectedMode, setSelectedMode] = useState('SCAN'); 
 
+  // Video State
   const [isRecording, setIsRecording] = useState(false);
-  const [mode, setMode] = useState('photo'); // 'photo' or 'video'
+  const [recordingDuration, setRecordingDuration] = useState(0);
+
+  // Scan State
+  const [scanStatus, setScanStatus] = useState('searching'); // 'searching' | 'detecting' | 'locked'
+  const pulseAnim = useRef(new Animated.Value(1)).current; 
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
   
   const cameraRef = useRef(null); 
+  const timerRef = useRef(null);
 
   useEffect(() => {
     if (!permission) requestPermission();
-    
-    const timer = setTimeout(() => {
-      setLiveResult({ gender: "MALE", confidence: "94%" });
-      setIsScanning(false);
-    }, 2000);
-
-    return () => clearTimeout(timer);
   }, [permission]);
 
-  // FIXED: Gallery now allows both Images and Videos
+  // --- ANIMATIONS ---
+  useEffect(() => {
+    if (selectedMode === 'SCAN') {
+      // 1. Breathing Target
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.1, duration: 1000, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true })
+        ])
+      ).start();
+
+      // 2. Moving Scan Line
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(scanLineAnim, { toValue: 1, duration: 2000, easing: Easing.linear, useNativeDriver: true }),
+          Animated.timing(scanLineAnim, { toValue: 0, duration: 0, useNativeDriver: true })
+        ])
+      ).start();
+
+      // 3. Simulated Logic
+      setScanStatus('searching');
+      const t1 = setTimeout(() => setScanStatus('detecting'), 1500);
+      const t2 = setTimeout(async () => {
+        setScanStatus('locked');
+        Vibration.vibrate([0, 50, 50, 50]); // Distinct vibration pattern
+        
+        // Auto-Capture logic
+        if (cameraRef.current) {
+             const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+             // Short delay to show "Locked" state before navigating
+             setTimeout(() => {
+                 navigation.navigate('Results', { imageUri: photo.uri, type: 'image' });
+             }, 400);
+        }
+      }, 3500);
+
+      return () => { clearTimeout(t1); clearTimeout(t2); };
+    } else {
+      setScanStatus('idle');
+      pulseAnim.setValue(1);
+    }
+  }, [selectedMode]);
+
+  // --- RECORDING TIMER ---
+  useEffect(() => {
+    if (isRecording) {
+      timerRef.current = setInterval(() => setRecordingDuration(p => p + 1), 1000);
+    } else {
+      clearInterval(timerRef.current);
+      setRecordingDuration(0);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [isRecording]);
+
+  const formatDuration = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+  };
+
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All, // Accepts both now
+      mediaTypes: ImagePicker.MediaTypeOptions.All, 
       allowsEditing: true,
       quality: 1,
     });
     if (!result.canceled) {
-      // Determine if it's a video or image based on file extension
       const isVideo = result.assets[0].type === 'video';
       navigation.navigate('Results', { imageUri: result.assets[0].uri, type: isVideo ? 'video' : 'image' });
     }
   };
 
-  // FIXED: Recording now automatically navigates to Results when stopped
-  const handleMainAction = async () => {
+  const handleManualCapture = async () => {
     if (!cameraRef.current) return;
 
-    if (mode === 'photo') {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 1 });
-      navigation.navigate('Results', { imageUri: photo.uri, type: 'image' });
-    } else {
+    if (selectedMode === 'VIDEO') {
       if (isRecording) {
-        // This triggers the promise below to resolve
         cameraRef.current.stopRecording(); 
+        setIsRecording(false);
       } else {
         setIsRecording(true);
-        // Start recording. This waits until stopRecording() is called.
-        cameraRef.current.recordAsync().then((video) => {
-          setIsRecording(false);
-          // Send the recorded video to the Results Screen
+        try {
+          const video = await cameraRef.current.recordAsync();
           navigation.navigate('Results', { imageUri: video.uri, type: 'video' });
-        });
+        } catch (e) {
+          setIsRecording(false);
+        }
       }
+    } else if (selectedMode === 'PHOTO') {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 1 });
+      navigation.navigate('Results', { imageUri: photo.uri, type: 'image' });
     }
   };
 
-  if (!permission) return <View style={styles.container} />;
-  if (!permission.granted) return <Text style={styles.errorText}>No access to camera</Text>;
+  const scanLineTranslateY = scanLineAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-SCAN_HEIGHT/2, SCAN_HEIGHT/2]
+  });
+
+  if (!permission || !permission.granted) return <View style={styles.blackBg} />;
 
   return (
     <View style={styles.container}>
@@ -81,128 +159,269 @@ export default function CameraScreen({ navigation }) {
         style={StyleSheet.absoluteFillObject} 
         facing="back" 
         enableTorch={flashMode}
-        mode={mode}
+        mode={selectedMode === 'VIDEO' ? 'video' : 'picture'}
       >
         
-        {/* --- LIVE SCANNING OVERLAY --- */}
-        <View style={styles.overlayContainer}>
-          <View style={styles.overlayTop}>
-             {isRecording ? (
-                <View style={[styles.liveBadge, { backgroundColor: '#E74C3C' }]}>
-                  <View style={styles.pulseDot} />
-                  <Text style={styles.liveResultText}>RECORDING SCAN...</Text>
-                </View>
-             ) : (
-               liveResult ? (
-                 <View style={styles.liveBadge}>
-                   <Text style={styles.liveResultText}>DETECTION: {liveResult.gender}</Text>
-                   <Text style={styles.liveConfText}>{liveResult.confidence}</Text>
+        {/* --- 1. SCAN MODE OVERLAY --- */}
+        {selectedMode === 'SCAN' && (
+          <View style={styles.scanLayer}>
+            <View style={styles.scanBox}>
+               {/* Animated Corners */}
+               <View style={[styles.corner, styles.tl]} />
+               <View style={[styles.corner, styles.tr]} />
+               <View style={[styles.corner, styles.bl]} />
+               <View style={[styles.corner, styles.br]} />
+               
+               {/* Grid Background Effect */}
+               <View style={styles.gridOverlay}>
+                 <View style={styles.gridLineHorizontal} />
+                 <View style={styles.gridLineVertical} />
+               </View>
+
+               {/* Moving Laser Line */}
+               <Animated.View style={[styles.laserLine, { transform: [{ translateY: scanLineTranslateY }] }]} />
+
+               {/* Center Target Icon */}
+               <Animated.View style={[styles.centerTarget, { transform: [{ scale: pulseAnim }] }]}>
+                  {scanStatus === 'searching' && <Ionicons name="scan" size={48} color="rgba(255,255,255,0.7)" />}
+                  {scanStatus === 'detecting' && <Ionicons name="aperture" size={54} color="#FFD166" />}
+                  {scanStatus === 'locked' && <Ionicons name="checkmark-circle" size={80} color="#06D6A0" />}
+               </Animated.View>
+            </View>
+            
+            {/* --- IMPROVED STATUS BADGE --- */}
+            {/* Positioned directly under scan box, above footer */}
+            <View style={styles.statusContainer}>
+              <View style={[
+                  styles.statusBadge, 
+                  scanStatus === 'locked' ? styles.statusLocked : styles.statusActive
+              ]}>
+                {scanStatus === 'searching' && <ActivityIndicator size="small" color="#FFF" style={{marginRight:8}} />}
+                <Text style={styles.statusText}>
+                  {scanStatus === 'searching' ? 'LOCATING SUBJECT...' : 
+                   scanStatus === 'detecting' ? 'HOLD STEADY' : 'LOCKED'}
+                </Text>
+              </View>
+            </View>
+
+          </View>
+        )}
+
+        {/* --- VIDEO RECORDING PILL --- */}
+        {selectedMode === 'VIDEO' && isRecording && (
+          <View style={styles.timerPill}>
+            <View style={styles.recordDot} />
+            <Text style={styles.timerText}>{formatDuration(recordingDuration)}</Text>
+          </View>
+        )}
+
+        {/* --- HEADER --- */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.blurBtn}>
+            <Ionicons name="close" size={24} color="#FFF" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setFlashMode(!flashMode)} style={styles.blurBtn}>
+            <Ionicons name={flashMode ? "flash" : "flash-off"} size={22} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+
+        {/* --- FOOTER CONTROLS --- */}
+        <View style={styles.footer}>
+          
+          {/* MODE SELECTOR */}
+          <View style={styles.modeRow}>
+            {MODES.map((m) => (
+              <TouchableOpacity 
+                key={m} 
+                onPress={() => !isRecording && setSelectedMode(m)}
+                disabled={isRecording}
+                style={[styles.modeItem, selectedMode === m && styles.modeItemActive]}
+              >
+                <Text style={[styles.modeLabel, selectedMode === m && styles.activeModeLabel]}>{m}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* MAIN ACTIONS */}
+          <View style={styles.actionRow}>
+            
+            {/* Left: Gallery */}
+            <TouchableOpacity onPress={pickImage} disabled={isRecording} style={styles.sideActionBtn}>
+              <Ionicons name="images-outline" size={26} color="#FFF" />
+            </TouchableOpacity>
+
+            {/* Center: DYNAMIC SHUTTER */}
+            <View style={styles.shutterContainer}>
+               {selectedMode === 'SCAN' ? (
+                 <View style={styles.scanPlaceholder}>
+                    <MaterialCommunityIcons name="robot-outline" size={32} color="rgba(255,255,255,0.3)" />
                  </View>
                ) : (
-                 <View style={styles.scanningBadge}>
-                   <ActivityIndicator size="small" color="#FFF" style={{marginRight: 8}} />
-                   <Text style={styles.liveResultText}>ANALYZING...</Text>
-                 </View>
-               )
-             )}
-          </View>
-
-          <View style={styles.overlayMiddleRow}>
-            <View style={styles.overlaySide} />
-            <View style={styles.scanArea}>
-              <View style={[styles.corner, styles.cornerTL]} />
-              <View style={[styles.corner, styles.cornerTR]} />
-              <View style={[styles.corner, styles.cornerBL]} />
-              <View style={[styles.corner, styles.cornerBR]} />
-              <View style={[styles.scanLine, isRecording && { backgroundColor: '#E74C3C' }]} />
+                 <TouchableOpacity onPress={handleManualCapture} activeOpacity={0.8}>
+                    <Animated.View style={[
+                      styles.shutterOuter,
+                      selectedMode === 'VIDEO' && { borderColor: '#EF476F' }
+                    ]}>
+                      <View style={[
+                        styles.shutterInner,
+                        selectedMode === 'VIDEO' 
+                          ? (isRecording ? styles.recordingInner : styles.videoInner) 
+                          : styles.photoInner
+                      ]} />
+                    </Animated.View>
+                 </TouchableOpacity>
+               )}
             </View>
-            <View style={styles.overlaySide} />
+
+            {/* Right: Guide */}
+            <TouchableOpacity onPress={() => setModalVisible(true)} disabled={isRecording} style={styles.sideActionBtn}>
+              <Ionicons name="help-circle-outline" size={28} color="#FFF" />
+            </TouchableOpacity>
+
           </View>
-          <View style={styles.overlayBottom} />
         </View>
 
-        <View style={styles.topControls}>
-          <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="close" size={28} color="#FFF" />
-          </TouchableOpacity>
-          
-          <View style={styles.modeToggle}>
-             <TouchableOpacity onPress={() => setMode('photo')} style={[styles.modeBtn, mode === 'photo' && styles.activeMode]}>
-               <Text style={[styles.modeText, mode === 'photo' && styles.activeModeText]}>PHOTO</Text>
-             </TouchableOpacity>
-             <TouchableOpacity onPress={() => setMode('video')} style={[styles.modeBtn, mode === 'video' && styles.activeMode]}>
-               <Text style={[styles.modeText, mode === 'video' && styles.activeModeText]}>VIDEO</Text>
-             </TouchableOpacity>
+        {/* --- MODERN SLIDE-UP MODAL --- */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={modalVisible}
+          onRequestClose={() => setModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={{flex:1}} onPress={() => setModalVisible(false)} />
+            
+            <View style={styles.modalSheet}>
+              {/* Drag Handle */}
+              <View style={styles.dragHandle} />
+              
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Scan Guide</Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalCloseBtn}>
+                  <Ionicons name="close-circle" size={30} color="#E5E5E5" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                
+                <View style={styles.guideStep}>
+                   <View style={styles.stepIconContainer}>
+                      <MaterialCommunityIcons name="hand-back-left" size={28} color="#4CC9F0" />
+                   </View>
+                   <View style={styles.stepTextContainer}>
+                      <Text style={styles.stepHeader}>1. Grip Securely</Text>
+                      <Text style={styles.stepDesc}>Hold the crayfish by the back (thorax) to keep claws away.</Text>
+                   </View>
+                </View>
+
+                <View style={styles.guideStep}>
+                   <View style={styles.stepIconContainer}>
+                      <MaterialCommunityIcons name="rotate-3d-variant" size={28} color="#4CC9F0" />
+                   </View>
+                   <View style={styles.stepTextContainer}>
+                      <Text style={styles.stepHeader}>2. Expose Belly</Text>
+                      <Text style={styles.stepDesc}>Flip it over. We need a clear view between the walking legs.</Text>
+                   </View>
+                </View>
+
+                <View style={styles.guideStep}>
+                   <View style={styles.stepIconContainer}>
+                      <MaterialCommunityIcons name="white-balance-sunny" size={28} color="#4CC9F0" />
+                   </View>
+                   <View style={styles.stepTextContainer}>
+                      <Text style={styles.stepHeader}>3. Check Lighting</Text>
+                      <Text style={styles.stepDesc}>Ensure no heavy shadows. Toggle flash if needed.</Text>
+                   </View>
+                </View>
+
+                <TouchableOpacity style={styles.primaryBtn} onPress={() => setModalVisible(false)}>
+                  <Text style={styles.primaryBtnText}>I'm Ready</Text>
+                </TouchableOpacity>
+
+              </ScrollView>
+            </View>
           </View>
-
-          <TouchableOpacity style={styles.iconButton} onPress={() => setFlashMode(!flashMode)}>
-            <Ionicons name={flashMode ? "flash" : "flash-off"} size={26} color="#FFF" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.bottomControls}>
-          {/* FIXED: Added onPress={pickImage} back to the media button */}
-          <TouchableOpacity style={styles.secondaryButton} onPress={pickImage}>
-            <Ionicons name="image-outline" size={30} color="#FFF" />
-            <Text style={styles.btnLabel}>Media</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.captureButtonOuter} onPress={handleMainAction}>
-            <View style={[
-                styles.captureButtonInner, 
-                mode === 'video' && { backgroundColor: '#E74C3C', borderRadius: isRecording ? 10 : 32.5 }
-            ]} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => setModalVisible(true)}>
-            <Ionicons name="information-circle-outline" size={32} color="#FFF" />
-            <Text style={styles.btnLabel}>Guide</Text>
-          </TouchableOpacity>
-        </View>
+        </Modal>
 
       </CameraView>
     </View>
   );
 }
 
-const overlayColor = 'rgba(0,0,0,0.65)'; 
-
 const styles = StyleSheet.create({
+  blackBg: { flex: 1, backgroundColor: '#000' },
   container: { flex: 1, backgroundColor: '#000' },
-  overlayContainer: { ...StyleSheet.absoluteFillObject },
-  overlayTop: { flex: 1, backgroundColor: overlayColor, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 25 },
-  overlayBottom: { flex: 1, backgroundColor: overlayColor },
-  overlayMiddleRow: { flexDirection: 'row', height: SCAN_HEIGHT },
-  overlaySide: { flex: 1, backgroundColor: overlayColor },
-  scanArea: { width: SCAN_WIDTH, height: SCAN_HEIGHT, position: 'relative' },
-
-  liveBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#2A9D8F', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 15, gap: 10, elevation: 10 },
-  scanningBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#3D5A80', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 15 },
-  pulseDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FFF' },
-  liveResultText: { color: '#FFF', fontSize: 13, fontWeight: '900', letterSpacing: 1 },
-  liveConfText: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '700' },
-
-  scanLine: { width: '100%', height: 2, backgroundColor: '#58D68D', position: 'absolute', top: '50%', opacity: 0.6 },
-
-  modeToggle: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 4 },
-  modeBtn: { paddingHorizontal: 15, paddingVertical: 6, borderRadius: 18 },
-  activeMode: { backgroundColor: '#FFF' },
-  modeText: { color: '#FFF', fontSize: 11, fontWeight: '800' },
-  activeModeText: { color: '#293241' },
-
-  corner: { position: 'absolute', width: 40, height: 40, borderColor: '#58D68D', borderWidth: 5 },
-  cornerTL: { top: -2, left: -2, borderBottomWidth: 0, borderRightWidth: 0, borderTopLeftRadius: 20 },
-  cornerTR: { top: -2, right: -2, borderBottomWidth: 0, borderLeftWidth: 0, borderTopRightRadius: 20 },
-  cornerBL: { bottom: -2, left: -2, borderTopWidth: 0, borderRightWidth: 0, borderBottomLeftRadius: 20 },
-  cornerBR: { bottom: -2, right: -2, borderTopWidth: 0, borderLeftWidth: 0, borderBottomRightRadius: 20 },
-
-  topControls: { position: 'absolute', top: 50, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  iconButton: { width: 45, height: 45, borderRadius: 22.5, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-
-  bottomControls: { position: 'absolute', bottom: 40, width: '100%', flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
-  secondaryButton: { alignItems: 'center', gap: 5 },
-  btnLabel: { color: '#FFF', fontSize: 11, fontWeight: '700' },
   
-  captureButtonOuter: { width: 85, height: 85, borderRadius: 42.5, borderWidth: 5, borderColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
-  captureButtonInner: { width: 65, height: 65, borderRadius: 32.5, backgroundColor: '#FFF' },
+  // --- SCAN OVERLAY ---
+  scanLayer: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  scanBox: { width: SCAN_WIDTH, height: SCAN_HEIGHT, position: 'relative', justifyContent: 'center', alignItems: 'center' },
+  
+  // Corners
+  corner: { position: 'absolute', width: 30, height: 30, borderColor: '#FFF', borderWidth: 3 },
+  tl: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 12 },
+  tr: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 12 },
+  bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 12 },
+  br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 12 },
+
+  // Scan Visuals
+  gridOverlay: { width: '100%', height: '100%', opacity: 0.1, position: 'absolute' },
+  gridLineHorizontal: { width: '100%', height: 1, backgroundColor: '#FFF', top: '50%' },
+  gridLineVertical: { height: '100%', width: 1, backgroundColor: '#FFF', left: '50%', position: 'absolute' },
+  laserLine: { width: '120%', height: 2, backgroundColor: '#4CC9F0', shadowColor: '#4CC9F0', shadowOpacity: 1, shadowRadius: 10, elevation: 5 },
+  centerTarget: { position: 'absolute' },
+
+  // Status Badge (Fixed "Hold Steady")
+  statusContainer: { marginTop: 40, alignItems: 'center' },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 30, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  statusActive: { backgroundColor: 'rgba(0,0,0,0.6)' },
+  statusLocked: { backgroundColor: '#06D6A0', borderColor: '#06D6A0' },
+  statusText: { color: '#FFF', fontSize: 13, fontWeight: '700', letterSpacing: 1.2 },
+
+  // --- CONTROLS ---
+  header: { position: 'absolute', top: 50, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 10 },
+  blurBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  
+  timerPill: { position: 'absolute', top: 110, alignSelf: 'center', backgroundColor: '#EF476F', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, gap: 8 },
+  recordDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FFF' },
+  timerText: { color: '#FFF', fontWeight: 'bold' },
+
+  footer: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: 'rgba(0,0,0,0.85)', borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingBottom: 40, paddingTop: 15 },
+  
+  // Modes
+  modeRow: { flexDirection: 'row', justifyContent: 'center', marginBottom: 20, gap: 20 },
+  modeItem: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 15 },
+  modeItemActive: { backgroundColor: 'rgba(255,255,255,0.15)' },
+  modeLabel: { color: '#888', fontSize: 13, fontWeight: '600' },
+  activeModeLabel: { color: '#FFF', fontWeight: '800' },
+
+  // Actions
+  actionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly' },
+  sideActionBtn: { width: 50, height: 50, justifyContent: 'center', alignItems: 'center', borderRadius: 25, backgroundColor: 'rgba(255,255,255,0.1)' },
+  
+  shutterContainer: { width: 80, height: 80, justifyContent: 'center', alignItems: 'center' },
+  scanPlaceholder: { width: 70, height: 70, borderRadius: 35, borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
+  
+  shutterOuter: { width: 76, height: 76, borderRadius: 38, borderWidth: 4, borderColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
+  shutterInner: { width: 64, height: 64, borderRadius: 32 },
+  photoInner: { backgroundColor: '#FFF' },
+  videoInner: { backgroundColor: '#EF476F' },
+  recordingInner: { backgroundColor: '#EF476F', width: 28, height: 28, borderRadius: 6 },
+
+  // --- MODERN MODAL ---
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
+  modalSheet: { backgroundColor: '#1A1A1A', borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 25, maxHeight: '80%' },
+  dragHandle: { width: 40, height: 4, backgroundColor: '#444', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
+  modalTitle: { fontSize: 24, fontWeight: '800', color: '#FFF' },
+  modalCloseBtn: { opacity: 0.8 },
+  
+  modalBody: { marginBottom: 10 },
+  guideStep: { flexDirection: 'row', marginBottom: 25, gap: 15 },
+  stepIconContainer: { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(76, 201, 240, 0.1)', justifyContent: 'center', alignItems: 'center' },
+  stepTextContainer: { flex: 1, justifyContent: 'center' },
+  stepHeader: { fontSize: 17, fontWeight: '700', color: '#FFF', marginBottom: 4 },
+  stepDesc: { fontSize: 14, color: '#AAA', lineHeight: 20 },
+  
+  primaryBtn: { backgroundColor: '#4CC9F0', paddingVertical: 16, borderRadius: 18, alignItems: 'center', marginTop: 10 },
+  primaryBtnText: { color: '#000', fontSize: 16, fontWeight: '800' },
 });

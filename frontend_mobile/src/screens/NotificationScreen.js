@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, 
-  Platform, StatusBar, ActivityIndicator, RefreshControl, Dimensions 
+  Platform, StatusBar, ActivityIndicator, RefreshControl, Dimensions, Animated 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -70,8 +70,11 @@ export default function NotificationScreen({ navigation }) {
       const rawNotis = notiRes.data?.notifications || [];
       
       setNotifications(rawNotis);
-      setAlertsCount(rawNotis.length);
-      await AsyncStorage.setItem('alertsCount', String(rawNotis.length));
+
+      // Count Unread
+      const unreadCount = rawNotis.filter(n => !n.isRead).length;
+      setAlertsCount(unreadCount);
+      await AsyncStorage.setItem('alertsCount', String(unreadCount));
 
     } catch (error) {
       console.log("Error fetching notifications:", error);
@@ -88,9 +91,30 @@ export default function NotificationScreen({ navigation }) {
     }, [])
   );
 
-  const onRefresh = () => {
+  // --- REFRESH HANDLER (FIXED) ---
+  const onRefresh = async () => {
     setRefreshing(true);
-    fetchData();
+    
+    // 1. Optimistic Update: Visually clear everything immediately
+    setAlertsCount(0);
+    await AsyncStorage.setItem('alertsCount', '0');
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true }))); // Remove dots locally
+
+    try {
+       // 2. SERVER SYNC: Tell the backend these are read
+       // Ensure your backend has a PUT route at /notification/read-all
+       await client.put('/notification/read-all'); 
+       
+       // 3. Re-fetch to get the "official" clean state from server
+       await fetchData(); 
+
+    } catch (error) {
+       console.log("Refresh error (Backend sync failed):", error);
+       // Optional: If backend fails, we might want to keep the local change 
+       // so we DON'T call fetchData() in the catch block.
+    } finally {
+       setRefreshing(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -100,6 +124,30 @@ export default function NotificationScreen({ navigation }) {
       await AsyncStorage.removeItem('alertsCount');
       navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
     } catch (e) { console.log(e); }
+  };
+
+  // --- HANDLE CLICK ACTION ---
+  const handleNotificationClick = (item) => {
+    if (!item.sender) return;
+
+    // Optional: Mark single item read on click if you haven't refreshed yet
+    if (!item.isRead) {
+        setNotifications(prev => prev.map(n => n._id === item._id ? {...n, isRead: true} : n));
+        setAlertsCount(prev => Math.max(0, prev - 1));
+        client.put(`/notification/${item._id}/read`).catch(err => console.log(err)); // Fire and forget
+    }
+
+    if (item.type === 'message') {
+      navigation.navigate('Chat', { 
+        targetUser: { 
+          uid: item.sender._id || item.sender.id, 
+          name: item.sender.name || item.sender.firstName, 
+          profilePic: item.sender.profilePic 
+        } 
+      });
+    } else {
+      navigation.navigate('Profile', { userId: item.sender._id || item.sender.id });
+    }
   };
 
   // --- HELPER: SECTIONS ---
@@ -122,7 +170,6 @@ export default function NotificationScreen({ navigation }) {
 
   // --- RENDER ITEM ---
   const renderNotificationItem = (item) => {
-    // Determine Icon based on Type
     let iconName = "notifications";
     let iconColor = "#95A5A6";
     let iconBg = "#F4F6F6";
@@ -139,20 +186,22 @@ export default function NotificationScreen({ navigation }) {
     }
 
     return (
-      <View key={item._id} style={[styles.notiCard, styles.shadow]}>
-        {/* Left: Avatar */}
+      <TouchableOpacity 
+        key={item._id} 
+        style={[styles.notiCard, styles.shadow]} 
+        onPress={() => handleNotificationClick(item)}
+        activeOpacity={0.7}
+      >
         <View style={styles.avatarContainer}>
           <Image 
             source={item.sender?.profilePic ? { uri: item.sender.profilePic } : require('../../assets/profile-icon.png')} 
             style={styles.notiAvatar} 
           />
-          {/* Small overlapping type icon */}
           <View style={[styles.miniTypeIcon, { backgroundColor: iconColor }]}>
             <Ionicons name={iconName} size={10} color="#FFF" />
           </View>
         </View>
         
-        {/* Center: Text */}
         <View style={styles.notiContent}>
           <Text style={styles.notiText}>
             <Text style={styles.userName}>
@@ -166,11 +215,11 @@ export default function NotificationScreen({ navigation }) {
           <Text style={styles.timeText}>{formatTimeAgo(item.createdAt)}</Text>
         </View>
 
-        {/* Right: Context (e.g. arrow or status) */}
         <View style={styles.rightAction}>
            {!item.isRead && <View style={styles.unreadDot} />}
+           <Ionicons name="chevron-forward" size={16} color="#D0D3D4" />
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -188,12 +237,9 @@ export default function NotificationScreen({ navigation }) {
 
       <Header title="ACTIVITY" context="Alerts" onProfilePress={() => setSidebarVisible(true)} />
 
-      {/* --- GUEST VIEW --- */}
       {isGuest ? (
         <View style={styles.centerContainer}>
-          <View style={styles.guestIconCircle}>
-            <Ionicons name="notifications" size={60} color="#3D5A80" />
-          </View>
+          <Ionicons name="notifications-outline" size={80} color="#BDC3C7" style={{ marginBottom: 20 }} />
           <Text style={styles.largeTitle}>Stay Updated!</Text>
           <Text style={styles.subText}>
             Log in to see likes, comments, and new followers in real-time.
@@ -203,7 +249,6 @@ export default function NotificationScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       ) : (
-        /* --- LOGGED IN VIEW --- */
         <ScrollView 
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -212,7 +257,6 @@ export default function NotificationScreen({ navigation }) {
           {loading ? (
             <ActivityIndicator size="large" color="#3D5A80" style={{ marginTop: 50 }} />
           ) : notifications.length === 0 ? (
-            // --- EMPTY STATE (Matches your screenshot style) ---
             <View style={styles.emptyStateContainer}>
               <View style={styles.emptyIconCircle}>
                 <Ionicons name="file-tray-outline" size={60} color="#BDC3C7" />
@@ -224,7 +268,6 @@ export default function NotificationScreen({ navigation }) {
             </View>
           ) : (
             <>
-              {/* NEW SECTION */}
               {newNotis.length > 0 && (
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>New</Text>
@@ -232,7 +275,6 @@ export default function NotificationScreen({ navigation }) {
               )}
               {newNotis.map(renderNotificationItem)}
 
-              {/* EARLIER SECTION */}
               {oldNotis.length > 0 && (
                 <View style={[styles.sectionHeader, { marginTop: 25 }]}>
                   <Text style={styles.sectionTitle}>Earlier</Text>
@@ -244,7 +286,8 @@ export default function NotificationScreen({ navigation }) {
         </ScrollView>
       )}
 
-      <BottomNavBar navigation={navigation} activeTab="Alerts" alertsCount={alertsCount} />
+      {/* Pass the dynamic alertsCount */}
+      <BottomNavBar navigation={navigation} activeTab="Alerts" alertsCount={alertsCount} user={currentUser} />
     </View>
   );
 }
@@ -253,25 +296,25 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   scrollContent: { paddingHorizontal: 20, paddingTop: 15, paddingBottom: 120, minHeight: '100%' },
 
-  // --- GUEST STATE ---
-  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40, marginTop: -50 },
-  guestIconCircle: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#E0FBFC', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  largeTitle: { fontSize: 22, fontWeight: '800', color: '#293241', textAlign: 'center' },
-  subText: { fontSize: 14, color: '#7f8c8d', textAlign: 'center', marginTop: 8, lineHeight: 22, marginBottom: 30 },
+  centerContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingHorizontal: 40,
+  },
+  largeTitle: { fontSize: 22, fontWeight: '800', color: '#293241', textAlign: 'center', marginBottom: 10 },
+  subText: { fontSize: 14, color: '#7f8c8d', textAlign: 'center', lineHeight: 22, marginBottom: 30 },
   actionBtn: { backgroundColor: '#3D5A80', paddingHorizontal: 35, paddingVertical: 14, borderRadius: 30, elevation: 4, shadowColor: '#3D5A80', shadowOpacity: 0.3, shadowOffset: {width:0, height:4} },
   actionBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
 
-  // --- EMPTY STATE (LOGGED IN) ---
   emptyStateContainer: { alignItems: 'center', justifyContent: 'center', marginTop: 120 },
   emptyIconCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#EDF2F4', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   emptyTitle: { fontSize: 20, fontWeight: '800', color: '#2C3E50', marginBottom: 10 },
   emptyText: { fontSize: 14, color: '#95A5A6', textAlign: 'center', maxWidth: 260, lineHeight: 22 },
 
-  // --- SECTIONS ---
   sectionHeader: { marginBottom: 12, paddingLeft: 5 },
   sectionTitle: { fontSize: 13, fontWeight: '800', color: '#95A5A6', textTransform: 'uppercase', letterSpacing: 1 },
 
-  // --- NOTIFICATION CARD ---
   notiCard: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -279,7 +322,6 @@ const styles = StyleSheet.create({
     borderRadius: 18, 
     padding: 14, 
     marginBottom: 12, 
-    // Subtle modern shadow
     shadowColor: '#2C3E50', 
     shadowOffset: { width: 0, height: 4 }, 
     shadowOpacity: 0.06, 
@@ -287,7 +329,6 @@ const styles = StyleSheet.create({
     elevation: 2, 
   },
   
-  // Avatar Area
   avatarContainer: { position: 'relative', marginRight: 14 },
   notiAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F0F3F4' },
   miniTypeIcon: { 
@@ -297,14 +338,19 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: '#FFF' 
   },
 
-  // Content Area
   notiContent: { flex: 1, justifyContent: 'center' },
   notiText: { fontSize: 14, color: '#34495E', lineHeight: 20 },
   userName: { fontWeight: '700', color: '#2C3E50' },
   actionText: { fontWeight: '400', color: '#5D6D7E' },
   timeText: { fontSize: 11, color: '#BDC3C7', marginTop: 4, fontWeight: '600' },
 
-  // Right Side (Unread Dot)
-  rightAction: { paddingLeft: 10, justifyContent: 'center' },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#3D5A80' },
+  rightAction: { paddingLeft: 10, justifyContent: 'center', alignItems: 'flex-end', gap: 5 },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#3D5A80', marginBottom: 5 },
+  
+  shadow: {
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
+      android: { elevation: 3 },
+    }),
+  },
 });

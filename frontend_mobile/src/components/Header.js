@@ -6,24 +6,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function Header({ onProfilePress, title = "CRAYAI", context = "Home" }) {
   const [modalVisible, setModalVisible] = useState(false);
 
-  // Added 'icon' property to each tip object
+  // CHANGED: Content now represents FAQs (Question/Answer) instead of generic tips
   const tips = {
     Home: [
-      { t: 'Welcome', d: 'Explore analytics and start an AI scan from the banner.', icon: 'rocket-outline' },
-      { t: 'Shortcuts', d: 'Use the bottom bar to jump between tabs quickly.', icon: 'layers-outline' }
+      { t: 'How do I start scanning?', d: 'Tap the "Quick Scan" banner or the camera icon to begin AI classification.', icon: 'scan-circle-outline' },
+      { t: 'Where are my results?', d: 'Your recent scans are saved automatically in the "History" section below.', icon: 'time-outline' }
     ],
     Community: [
-      { t: 'Be Respectful', d: 'Share constructively. Avoid bad words and harassment.', icon: 'heart-circle-outline' },
-      { t: 'Quality Posts', d: 'Add clear photos or concise notes for better feedback.', icon: 'image-outline' },
-      { t: 'Follow & Engage', d: 'Follow researchers and comment with helpful insights.', icon: 'people-outline' }
+      { t: 'How do I post?', d: 'Tap the (+) button to share your crayfish findings with other researchers.', icon: 'add-circle-outline' },
+      { t: 'Why was my post removed?', d: 'Our AI filters harassing language. Please keep discussions respectful.', icon: 'shield-half-outline' }
     ],
     Chat: [
-      { t: 'Mutual Follows', d: 'Only mutual followers can chat. Others go to Requests.', icon: 'git-network-outline' },
-      { t: 'Stay Kind', d: 'No spam or offensive messages. Keep it professional.', icon: 'shield-checkmark-outline' }
+      { t: 'Why can\'t I reply?', d: 'You can only chat with "Mutual Followers". If you don\'t follow each other, check Requests.', icon: 'lock-closed-outline' },
+      { t: 'What are Requests?', d: 'Messages from people you don\'t follow appear here for your approval first.', icon: 'mail-unread-outline' }
     ],
     Alerts: [
-      { t: 'All Interactions', d: 'Likes, comments, follows, and chat updates show here.', icon: 'list-outline' },
-      { t: 'Badges', d: 'Watch the alert badge count on the bottom bar.', icon: 'notifications-circle-outline' }
+      { t: 'What notifications appear?', d: 'You will see likes, comments, new followers, and system updates here.', icon: 'notifications-outline' },
+      { t: 'How to clear badges?', d: 'Tap on a notification to read it. The red badge count will decrease automatically.', icon: 'checkmark-done-circle-outline' }
     ]
   };
   
@@ -43,7 +42,8 @@ export default function Header({ onProfilePress, title = "CRAYAI", context = "Ho
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Guides & Tips</Text>
+                {/* CHANGED TITLE TO REFLECT FAQS */}
+                <Text style={styles.modalTitle}>Help & FAQs</Text>
                 <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeIconBtn}>
                   <Ionicons name="close-circle" size={28} color="#BDC3C7" />
                 </TouchableOpacity>
@@ -52,7 +52,6 @@ export default function Header({ onProfilePress, title = "CRAYAI", context = "Ho
               <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
                 {sections.map((s, idx) => (
                   <View key={`${context}-tip-${idx}`} style={styles.instructionStep}>
-                    {/* Render Icon instead of Index Number */}
                     <View style={[styles.iconContainer, {backgroundColor: idx % 2 === 0 ? '#3D5A80' : '#E76F51'}]}>
                       <Ionicons name={s.icon} size={18} color="#FFF" />
                     </View>
@@ -66,7 +65,7 @@ export default function Header({ onProfilePress, title = "CRAYAI", context = "Ho
               </ScrollView>
 
               <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setModalVisible(false)}>
-                <Text style={styles.modalCloseBtnText}>I UNDERSTAND</Text>
+                <Text style={styles.modalCloseBtnText}>GOT IT</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -89,7 +88,7 @@ export default function Header({ onProfilePress, title = "CRAYAI", context = "Ho
           
           {/* Help Button - Pushed to Right */}
           <TouchableOpacity style={styles.headerActionBtn} onPress={() => setModalVisible(true)}>
-            <Ionicons name="help-outline" size={24} color="#FFF" />
+            <Ionicons name="help-circle-outline" size={24} color="#FFF" />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -136,7 +135,6 @@ const styles = StyleSheet.create({
   
   instructionStep: { flexDirection: 'row', marginBottom: 24, alignItems: 'flex-start' },
   
-  // Renamed from stepNumber to iconContainer for clarity
   iconContainer: { 
     width: 38, 
     height: 38, 
@@ -145,7 +143,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     marginRight: 18, 
     marginTop: 2,
-    // Added shadow for depth
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
@@ -154,7 +151,7 @@ const styles = StyleSheet.create({
   },
   
   stepBody: { flex: 1 },
-  stepTitle: { fontSize: 17, fontWeight: '700', color: '#3D5A80', marginBottom: 6 },
+  stepTitle: { fontSize: 16, fontWeight: '700', color: '#3D5A80', marginBottom: 6 },
   stepDesc: { fontSize: 14, color: '#546E7A', lineHeight: 20 },
   modalCloseBtn: { backgroundColor: '#3D5A80', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10 },
   modalCloseBtnText: { color: '#FFF', fontSize: 14, fontWeight: '800', letterSpacing: 1.5 },

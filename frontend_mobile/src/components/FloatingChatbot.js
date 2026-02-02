@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -9,24 +9,94 @@ import {
   Animated,
   PanResponder,
   Dimensions,
-  KeyboardAvoidingView,
-  Platform
+  Platform,
+  Keyboard
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const BUBBLE_SIZE = 60; 
+const MARGIN = 15;
+const INITIAL_BOTTOM = 100;
 
-const FloatingChatbot = () => {
-  const [messages, setMessages] = useState([
-    { id: 1, type: 'bot', text: '🦐 Hi! I\'m CrayBot, your friendly research assistant. How can I help you today?' }
-  ]);
+// 1. ACCEPT THE USER PROP
+const FloatingChatbot = ({ user }) => {
+  
+  const initialMessage = { id: 1, type: 'bot', text: '👋 Hi! I\'m CrayBot. Ask me about crayfish care, breeding, or gender ID!' };
+
+  const [messages, setMessages] = useState([initialMessage]);
   const [inputText, setInputText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   
-  // 1. ADD REF FOR SCROLLVIEW
   const scrollViewRef = useRef();
+  
+  // ANIMATED VALUES
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
+  const baseBottom = useRef(new Animated.Value(INITIAL_BOTTOM)).current; 
+  const opacityAnim = useRef(new Animated.Value(0)).current; 
 
-  const [position, setPosition] = useState({ x: screenWidth - 90, y: screenHeight - 150 });
+  // 2. RESET CHAT ON LOGOUT / HIDE LOGIC
+  // If the user logs out, we reset the messages so the next user doesn't see them.
+  useEffect(() => {
+    if (!user) {
+      setMessages([initialMessage]);
+      setIsExpanded(false);
+    }
+  }, [user]);
+
+  // KEYBOARD LISTENERS
+  useEffect(() => {
+    // Optimization: If no user, don't attach listeners
+    if (!user) return; 
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onKeyboardShow = (event) => {
+      Animated.parallel([
+        Animated.timing(keyboardOffset, {
+          toValue: event.endCoordinates.height, 
+          duration: 250,
+          useNativeDriver: false, 
+        }),
+        Animated.timing(baseBottom, {
+          toValue: 10, 
+          duration: 250,
+          useNativeDriver: false,
+        })
+      ]).start();
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    };
+
+    const onKeyboardHide = () => {
+      Animated.parallel([
+        Animated.timing(keyboardOffset, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: false,
+        }),
+        Animated.timing(baseBottom, {
+          toValue: INITIAL_BOTTOM,
+          duration: 250,
+          useNativeDriver: false,
+        })
+      ]).start();
+    };
+
+    const showListener = Keyboard.addListener(showEvent, onKeyboardShow);
+    const hideListener = Keyboard.addListener(hideEvent, onKeyboardHide);
+
+    return () => {
+      showListener.remove();
+      hideListener.remove();
+    };
+  }, [user]); // Add user dependency
+
+  const [position, setPosition] = useState({ 
+    x: screenWidth - BUBBLE_SIZE - MARGIN, 
+    y: screenHeight - 150 
+  });
+  
   const pan = useRef(new Animated.ValueXY({ x: position.x, y: position.y })).current;
 
   const panResponder = useRef(
@@ -40,23 +110,34 @@ const FloatingChatbot = () => {
       onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
       onPanResponderRelease: () => {
         pan.flattenOffset();
-        const margin = 10;
-        let newX = pan.x._value;
-        let newY = pan.y._value;
+        const currentX = pan.x._value;
+        const currentY = pan.y._value;
 
-        // Boundary checks
-        if (newX < margin) newX = margin;
-        if (newX > screenWidth - 80) newX = screenWidth - 80;
-        if (newY < margin) newY = margin;
-        if (newY > screenHeight - 80) newY = screenHeight - 80;
+        const centerOfBubble = currentX + (BUBBLE_SIZE / 2);
+        const centerOfScreen = screenWidth / 2;
+        let finalX = centerOfBubble < centerOfScreen ? MARGIN : screenWidth - BUBBLE_SIZE - MARGIN;
+
+        let finalY = currentY;
+        const topLimit = 100; 
+        const bottomLimit = screenHeight - 150; 
+        if (finalY < topLimit) finalY = topLimit;
+        if (finalY > bottomLimit) finalY = bottomLimit;
 
         Animated.spring(pan, {
-          toValue: { x: newX, y: newY },
+          toValue: { x: finalX, y: finalY },
+          friction: 6, 
+          tension: 40, 
           useNativeDriver: false,
         }).start();
       },
     })
   ).current;
+
+  // 3. CRITICAL CHECK: RENDER NULL IF NO USER
+  // We place this AFTER hooks are declared (Rules of Hooks) but BEFORE rendering UI.
+  if (!user) {
+    return null;
+  }
 
   const handleSendMessage = () => {
     if (!inputText.trim()) return;
@@ -64,13 +145,14 @@ const FloatingChatbot = () => {
     setMessages([...messages, userMsg]);
     setInputText('');
     
+    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+
     setTimeout(() => {
       const botResponses = [
-        '🦐 That\'s interesting! Tell me more about that.',
-        '🦐 I understand. How can I assist you further?',
-        '🦐 Great question! I\'m here to help you explore and share research.',
-        '🦐 Thanks for sharing! Would you like to create a post about this?',
-        '🦐 That sounds exciting! Remember to share your findings with the community.',
+        '🦐 Interesting! Tell me more.',
+        '🦐 I can help identify species from photos.',
+        '🦐 Have you checked the water turbidity lately?',
+        '🦐 Make sure to isolate berried females!',
       ];
       const randomResponse = botResponses[Math.floor(Math.random() * botResponses.length)];
       const botMsg = { id: messages.length + 2, type: 'bot', text: randomResponse };
@@ -79,41 +161,65 @@ const FloatingChatbot = () => {
   };
 
   const toggleExpand = () => {
-    setIsExpanded(!isExpanded);
+    if (isExpanded) {
+      Animated.timing(opacityAnim, { 
+        toValue: 0, 
+        duration: 200, 
+        useNativeDriver: false
+      }).start(() => setIsExpanded(false));
+      Keyboard.dismiss();
+    } else {
+      setIsExpanded(true);
+      Animated.timing(opacityAnim, { 
+        toValue: 1, 
+        duration: 200, 
+        useNativeDriver: false
+      }).start();
+    }
   };
 
-  const containerStyle = isExpanded 
-    ? styles.expandedContainer 
-    : pan.getLayout(); 
+  const chatWindowStyle = {
+    opacity: opacityAnim,
+    bottom: Animated.add(baseBottom, keyboardOffset), 
+    right: 20,
+    width: screenWidth - 40,
+    height: 450, 
+    transform: [{ scale: opacityAnim }] 
+  };
 
   return (
-    <Animated.View
-      style={[
-        styles.baseContainer,
-        containerStyle,
-        !isExpanded && { width: 70, height: 70 }
-      ]}
-      {...(!isExpanded ? panResponder.panHandlers : {})}
-    >
-      {!isExpanded ? (
-        <TouchableOpacity style={styles.floatingButton} onPress={toggleExpand} activeOpacity={0.8}>
-          <Text style={styles.crayIcon}>🦐</Text>
-        </TouchableOpacity>
-      ) : (
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.chatbotBox}
+    <>
+      {!isExpanded && (
+        <Animated.View
+          style={[
+            styles.bubbleContainer,
+            pan.getLayout(),
+            { width: BUBBLE_SIZE, height: BUBBLE_SIZE }
+          ]}
+          {...panResponder.panHandlers}
         >
+          <TouchableOpacity style={styles.floatingButton} onPress={toggleExpand} activeOpacity={0.9}>
+            <Text style={styles.crayIcon}>🦐</Text> 
+            <View style={styles.badge} />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {isExpanded && (
+        <Animated.View style={[styles.chatWindow, chatWindowStyle]}>
           <View style={styles.header}>
-            <Text style={styles.title}>🦐 CrayChat</Text>
-            <View style={styles.headerButtons}>
-              <TouchableOpacity onPress={toggleExpand} style={styles.headerButton}>
-                <MaterialIcons name="close" size={24} color="#fff" />
-              </TouchableOpacity>
+            <View style={styles.headerInfo}>
+               <Text style={{fontSize: 20, marginRight: 8}}>🦐</Text>
+               <View>
+                 <Text style={styles.title}>CrayBot</Text>
+                 <Text style={styles.subtitle}>Research Assistant • Online</Text>
+               </View>
             </View>
+            <TouchableOpacity onPress={toggleExpand} style={styles.closeBtn}>
+              <MaterialIcons name="close" size={22} color="#FFF" />
+            </TouchableOpacity>
           </View>
 
-          {/* 2. USE THE REF CORRECTLY HERE */}
           <ScrollView 
             ref={scrollViewRef}
             style={styles.messagesContainer} 
@@ -121,9 +227,10 @@ const FloatingChatbot = () => {
             onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
           >
             {messages.map((msg) => (
-              <View key={msg.id} style={[styles.messageWrapper, msg.type === 'user' ? styles.userMessageWrapper : styles.botMessageWrapper]}>
-                <View style={[styles.messageBubble, msg.type === 'user' ? styles.userMessage : styles.botMessage]}>
-                  <Text style={[styles.messageText, msg.type === 'user' ? {color:'#FFF'} : {color:'#333'}]}>{msg.text}</Text>
+              <View key={msg.id} style={[styles.messageWrapper, msg.type === 'user' ? styles.userWrapper : styles.botWrapper]}>
+                {msg.type === 'bot' && <View style={styles.botAvatar}><Text>🦐</Text></View>}
+                <View style={[styles.messageBubble, msg.type === 'user' ? styles.userBubble : styles.botBubble]}>
+                  <Text style={[styles.messageText, msg.type === 'user' ? styles.userText : styles.botText]}>{msg.text}</Text>
                 </View>
               </View>
             ))}
@@ -138,106 +245,123 @@ const FloatingChatbot = () => {
               onChangeText={setInputText}
               multiline
             />
-            <TouchableOpacity style={styles.sendButton} onPress={handleSendMessage} disabled={!inputText.trim()}>
-              <MaterialIcons name="send" size={20} color="#fff" />
+            <TouchableOpacity 
+              style={[styles.sendButton, !inputText.trim() && {backgroundColor:'#BDC3C7'}]} 
+              onPress={handleSendMessage} 
+              disabled={!inputText.trim()}
+            >
+              <Ionicons name="arrow-up" size={20} color="#FFF" />
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+
+        </Animated.View>
       )}
-    </Animated.View>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
-  baseContainer: {
+  bubbleContainer: {
     position: 'absolute',
     zIndex: 9999,
   },
-  expandedContainer: {
-    bottom: 90, 
-    right: 20,
-    width: screenWidth - 40,
-    height: screenHeight * 0.55,
-  },
   floatingButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#5B9BD5',
+    width: BUBBLE_SIZE,
+    height: BUBBLE_SIZE,
+    borderRadius: BUBBLE_SIZE / 2,
+    backgroundColor: '#3D5A80', 
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowRadius: 5,
     elevation: 8,
-    borderWidth: 3,
-    borderColor: '#FF9F43',
-  },
-  crayIcon: { fontSize: 35 },
-  chatbotBox: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 10,
     borderWidth: 2,
-    borderColor: '#5B9BD5',
+    borderColor: '#FFF',
+  },
+  crayIcon: { fontSize: 30 },
+  badge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#E76F51', 
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  chatWindow: {
+    position: 'absolute',
+    zIndex: 10000,
+    backgroundColor: '#FFF',
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 25,
+    borderWidth: 1,
+    borderColor: '#D1D9E6',
+    overflow: 'hidden',
   },
   header: { 
-    backgroundColor: '#5B9BD5', 
-    paddingHorizontal: 16, 
-    paddingVertical: 12, 
+    backgroundColor: '#3D5A80', 
+    padding: 15, 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
-    alignItems: 'center', 
-    borderBottomWidth: 2, 
-    borderBottomColor: '#FF9F43' 
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C3E50',
   },
-  title: { color: '#fff', fontSize: 16, fontWeight: '600', flex: 1 },
-  headerButtons: { flexDirection: 'row', gap: 8 },
-  headerButton: { padding: 4 },
-  messagesContainer: { flex: 1, backgroundColor: '#FAFAFA' },
-  messagesContent: { padding: 12, paddingBottom: 20 },
-  messageWrapper: { marginVertical: 6, flexDirection: 'row' },
-  userMessageWrapper: { justifyContent: 'flex-end' },
-  botMessageWrapper: { justifyContent: 'flex-start' },
-  messageBubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, maxWidth: '80%' },
-  userMessage: { backgroundColor: '#5B9BD5', borderBottomRightRadius: 2 },
-  botMessage: { backgroundColor: '#E0E0E0', borderBottomLeftRadius: 2 },
-  messageText: { fontSize: 14 },
+  headerInfo: { flexDirection: 'row', alignItems: 'center' },
+  title: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  subtitle: { color: '#E0FBFC', fontSize: 11, fontWeight: '600' },
+  closeBtn: { padding: 5, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 15 },
+  messagesContainer: { flex: 1, backgroundColor: '#F2F4F6' },
+  messagesContent: { padding: 15, paddingBottom: 10 },
+  messageWrapper: { marginVertical: 5, flexDirection: 'row', alignItems: 'flex-end' },
+  userWrapper: { justifyContent: 'flex-end' },
+  botWrapper: { justifyContent: 'flex-start' },
+  botAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', marginRight: 8, marginBottom: 2, borderWidth: 1, borderColor: '#E0E7ED' },
+  messageBubble: { padding: 12, borderRadius: 18, maxWidth: '75%', shadowColor: '#000', shadowOffset: {width: 0, height: 1}, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+  userBubble: { backgroundColor: '#3D5A80', borderBottomRightRadius: 4 },
+  botBubble: { backgroundColor: '#FFF', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: '#E0E7ED' },
+  userText: { color: '#FFF', fontSize: 14 },
+  botText: { color: '#2C3E50', fontSize: 14 },
   inputContainer: { 
     flexDirection: 'row', 
-    paddingHorizontal: 12, 
-    paddingVertical: 10, 
+    padding: 10, 
     borderTopWidth: 1, 
-    borderTopColor: '#EEE', 
+    borderTopColor: '#E0E7ED', 
     alignItems: 'center', 
-    gap: 8, 
-    backgroundColor: '#fff' 
+    gap: 10, 
+    backgroundColor: '#FFF' 
   },
   input: { 
     flex: 1, 
-    borderWidth: 1, 
-    borderColor: '#E0E0E0', 
-    borderRadius: 20, 
-    paddingHorizontal: 16, 
-    paddingVertical: 8, 
-    maxHeight: 80, 
+    backgroundColor: '#F8F9FA', 
+    borderWidth: 1,
+    borderColor: '#E0E7ED',
+    borderRadius: 25, 
+    paddingHorizontal: 15, 
+    paddingVertical: 10, 
+    maxHeight: 100, 
     fontSize: 14, 
-    backgroundColor: '#F9F9F9' 
+    color: '#2C3E50' 
   },
   sendButton: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: 20, 
-    backgroundColor: '#FF9F43', 
+    width: 42, 
+    height: 42, 
+    borderRadius: 21, 
+    backgroundColor: '#E76F51', 
     justifyContent: 'center', 
-    alignItems: 'center' 
+    alignItems: 'center',
+    shadowColor: '#E76F51',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4
   },
 });
 

@@ -170,7 +170,7 @@ export default function LoginScreen({ navigation }) {
           <View style={styles.registerLink}>
             <Text style={styles.noAccountText}>New to the community? </Text>
             <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-              <Text style={styles.registerText}>Apply for Access</Text>
+              <Text style={styles.registerText}>Create New Account</Text>
             </TouchableOpacity>
           </View>
         </View>

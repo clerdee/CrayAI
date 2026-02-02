@@ -121,7 +121,7 @@ export default function CommunityScreen({ navigation }) {
   const showToast = (title, body, type = 'info') => {
     setToastMessage({ title, body, type });
     setToastVisible(true);
-    Animated.timing(toastAnim, { toValue: 50, duration: 300, useNativeDriver: true }).start();
+    Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start();
     setTimeout(() => {
       Animated.timing(toastAnim, { toValue: -100, duration: 300, useNativeDriver: true }).start(() => setToastVisible(false));
     }, 3000);
@@ -281,7 +281,22 @@ export default function CommunityScreen({ navigation }) {
     } catch (error) { showToast("Error", "Could not update follow status.", 'error'); }
   };
 
-  // --- 7. COMMENTS ---
+  // --- 7. MESSAGE REDIRECTION LOGIC (UPDATED) ---
+  const handleMessageUser = (postItem) => {
+    if (checkGuestAction("send messages")) return;
+
+    // Navigate to ChatScreen and pass the user details as 'targetUser'
+    // The ChatScreen will read this param and set it as the active chat
+    navigation.navigate('Chat', { 
+      targetUser: { 
+        uid: postItem.userId, 
+        name: postItem.user, 
+        profilePic: postItem.userAvatar 
+      } 
+    });
+  };
+
+  // --- 8. COMMENTS ---
   const handlePostComment = async (post) => {
     if (checkGuestAction("comment")) return;
     const text = commentInputs[post._id];
@@ -403,17 +418,11 @@ export default function CommunityScreen({ navigation }) {
               <Text style={styles.actionCount}>{item.commentsData?.length || 0}</Text>
             </TouchableOpacity>
 
-            {/* --- UPDATED MESSAGE ICON (NAVIGATES TO CHAT WITH USER) --- */}
+            {/* --- UPDATED MESSAGE BUTTON --- */}
             {!isMyPost && !isGuest && (
               <TouchableOpacity 
                 style={[styles.actionBtn, { marginLeft: 15 }]} 
-                onPress={() => navigation.navigate('Chat', { 
-                  targetUser: { 
-                    uid: item.userId, 
-                    name: item.user, 
-                    profilePic: item.userAvatar 
-                  } 
-                })}
+                onPress={() => handleMessageUser(item)}
               >
                 <View style={[styles.iconCircle, { backgroundColor: '#E8F8F5' }]}>
                   <Ionicons name="chatbubble-ellipses-outline" size={22} color="#16A085" />
@@ -518,18 +527,28 @@ export default function CommunityScreen({ navigation }) {
         <Header title="COMMUNITY" context="Community" onProfilePress={() => setSidebarVisible(true)} />
 
         {toastVisible && (
-          <Animated.View style={[styles.toastContainer, { transform: [{ translateY: toastAnim }] }]}>
-            <View style={[styles.toastIcon, { backgroundColor: toastMessage.type === 'error' ? '#E74C3C' : (toastMessage.type === 'success' ? '#2ECC71' : '#3D5A80') }]}>
-              <Ionicons name={toastMessage.type === 'error' ? 'alert-circle' : 'information-circle'} size={24} color="#FFF" />
-            </View>
-            <View style={styles.toastContent}>
-              <Text style={styles.toastTitle}>{toastMessage.title}</Text>
-              <Text style={styles.toastBody}>{toastMessage.body}</Text>
+          <Animated.View style={[
+            styles.toastContainer, 
+            { transform: [{ translateY: toastAnim }] }
+          ]}>
+            <View style={[
+              styles.toastBar, 
+              toastMessage.type === 'error' ? styles.toastWarning : 
+              toastMessage.type === 'success' ? styles.toastSuccess : 
+              styles.toastInfo
+            ]}>
+              <Ionicons 
+                name={toastMessage.type === 'error' ? "alert-circle" : toastMessage.type === 'success' ? "checkmark-circle" : "information-circle"} 
+                size={20} 
+                color="#FFF" 
+              />
+              <Text style={styles.toastText} numberOfLines={1}>
+                {toastMessage.title}: {toastMessage.body}
+              </Text>
             </View>
           </Animated.View>
         )}
 
-        {/* --- CUSTOM OPTIONS MODAL --- */}
         <Modal animationType="fade" transparent={true} visible={optionsVisible} onRequestClose={closePostOptions}>
           <TouchableWithoutFeedback onPress={closePostOptions}>
             <View style={styles.modalOverlay}>
@@ -552,7 +571,6 @@ export default function CommunityScreen({ navigation }) {
           </TouchableWithoutFeedback>
         </Modal>
 
-        {/* --- CUSTOM DELETE CONFIRMATION MODAL (Centered) --- */}
         <Modal animationType="fade" transparent={true} visible={deleteModalVisible} onRequestClose={cancelDeletePost}>
           <View style={styles.deleteModalOverlay}>
             <View style={styles.deleteModalContent}>
@@ -629,11 +647,15 @@ export default function CommunityScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7F9' },
-  toastContainer: { position: 'absolute', top: 0, left: 20, right: 20, backgroundColor: '#FFF', borderRadius: 12, flexDirection: 'row', padding: 15, zIndex: 9999, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 10, alignItems: 'center' },
-  toastIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  toastContent: { flex: 1 },
-  toastTitle: { fontSize: 15, fontWeight: '700', color: '#2C3E50', marginBottom: 2 },
-  toastBody: { fontSize: 13, color: '#7F8C8D' },
+  
+  // --- UPDATED TOAST STYLES (PILL DESIGN) ---
+  toastContainer: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 20, left: 20, right: 20, zIndex: 9999, alignItems: 'center' },
+  toastBar: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 },
+  toastWarning: { backgroundColor: '#E76F51' }, 
+  toastSuccess: { backgroundColor: '#2A9D8F' }, 
+  toastInfo: { backgroundColor: '#3D5A80' },    
+  toastText: { color: '#FFF', fontWeight: '700', fontSize: 13, marginLeft: 10, flex: 1 },
+
   mainScrollView: { flex: 1 },
   mainScrollContent: { paddingBottom: 20 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },

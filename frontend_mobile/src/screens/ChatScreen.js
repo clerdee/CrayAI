@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   View, Text, StyleSheet, Image, TouchableOpacity, 
-  TextInput, Platform, KeyboardAvoidingView, FlatList, StatusBar, ActivityIndicator 
+  TextInput, Platform, KeyboardAvoidingView, FlatList, StatusBar, ActivityIndicator, Animated
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
@@ -13,11 +13,10 @@ import Sidebar from '../components/Sidebar';
 import client from '../api/client';
 import { CLOUDINARY_CONFIG } from '../config/cloudinary';
 
-const NAV_BAR_HEIGHT = 90; // The height of your floating bottom nav
-
 export default function ChatScreen({ navigation, route }) {
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [message, setMessage] = useState('');
+  
   const [activeTab, setActiveTab] = useState('chats'); 
   const [activeChatUser, setActiveChatUser] = useState(null); 
   const [messages, setMessages] = useState([]);
@@ -26,11 +25,24 @@ export default function ChatScreen({ navigation, route }) {
   const [stagedImage, setStagedImage] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
 
-  const [contacts, setContacts] = useState([]); 
+  const [myChats, setMyChats] = useState([]); 
   const [requests, setRequests] = useState([]); 
-  const [pending, setPending] = useState([]);   
 
   const flatListRef = useRef(null);
+
+  // --- TOAST STATE ---
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState({ title: '', body: '', type: 'info' });
+  const toastAnim = useRef(new Animated.Value(-100)).current; 
+
+  const showToast = (title, body, type = 'info') => {
+    setToastMessage({ title, body, type });
+    setToastVisible(true);
+    Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start();
+    setTimeout(() => {
+      Animated.timing(toastAnim, { toValue: -100, duration: 300, useNativeDriver: true }).start(() => setToastVisible(false));
+    }, 3000);
+  };
 
   // --- AUTH CHECK ---
   useEffect(() => {
@@ -52,7 +64,7 @@ export default function ChatScreen({ navigation, route }) {
     return () => { mounted = false; };
   }, []);
 
-  // --- REFRESH DATA HANDLER ---
+  // --- REFRESH DATA ---
   const fetchListData = async () => {
     if (!currentUser) return;
     try {
@@ -89,37 +101,86 @@ export default function ChatScreen({ navigation, route }) {
         isMutual: u.isMutualFollow
       }));
 
-      setContacts(merged.filter(u => u.status === 'accepted' || u.isMutual));
-      setRequests(merged.filter(u => u.status === 'pending' && u.initiator !== currentUserId));
-      setPending(merged.filter(u => u.status === 'pending' && u.initiator === currentUserId));
-    } catch (error) { console.log("Fetch List Error:", error); } 
+      const incoming = merged.filter(u => u.status === 'pending' && u.initiator !== currentUserId);
+      const active = merged.filter(u => 
+        u.status === 'accepted' || 
+        u.isMutual || 
+        (u.status === 'pending' && u.initiator === currentUserId)
+      );
+
+      setRequests(incoming);
+      setMyChats(active);
+
+    } catch (error) { showToast("Error", "Could not load chats.", "error"); } 
     finally { setLoadingContacts(false); }
   };
 
   useEffect(() => { fetchListData(); }, [currentUser, activeTab]);
 
-  // --- LOAD MESSAGES ---
+  // --- 1. NEW: HANDLE NAVIGATION FROM COMMUNITY SCREEN ---
   useEffect(() => {
-    if (!activeChatUser) return;
+    // If we have a targetUser passed from navigation AND contacts have loaded/exist
+    if (route.params?.targetUser) {
+        const target = route.params.targetUser;
+        const targetId = target.uid || target._id || target.id;
+
+        // Check if this user is already in My Chats
+        const existingChat = myChats.find(u => u.uid === targetId);
+        // Check if this user is in Requests
+        const existingRequest = requests.find(u => u.uid === targetId);
+
+        if (existingChat) {
+            setActiveTab('chats');
+            setActiveChatUser(existingChat);
+        } else if (existingRequest) {
+            setActiveTab('requests');
+            setActiveChatUser(existingRequest);
+        } else {
+            // It's a new conversation
+            setActiveTab('chats');
+            setActiveChatUser({
+                uid: targetId,
+                name: target.name,
+                profilePic: target.profilePic,
+                status: 'new', // Mark as new so we don't show "Pending" badge yet
+                chatId: null
+            });
+        }
+    }
+  }, [route.params, myChats, requests]); // Re-run when params change or lists load
+
+// --- LOAD MESSAGES (FIXED) ---
+  useEffect(() => {
+    // 1. Guard Clause: Don't load messages until we know who YOU are and who you are chatting with
+    if (!activeChatUser || !currentUser) return;
+
     const loadMessages = async () => {
       try {
         const res = await client.get(`/chat/messages/${activeChatUser.uid}`);
+        
+        // Safe access to ID
         const currentId = currentUser._id || currentUser.id;
+
         const fetched = (res.data?.messages || []).map(m => ({
           id: m._id,
           text: m.text || '',
+          // Ensure sender object exists before checking ID
           sender: (m.sender?._id || m.sender) === currentId ? 'me' : 'other',
           time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           type: m.image ? 'image' : 'text',
           image: m.image || null,
         }));
         setMessages(fetched);
-      } catch (err) { console.log("Load Msg Error:", err); }
+      } catch (err) { 
+        console.log("Load Msg Error:", err); 
+      }
     };
+
     loadMessages();
     const interval = setInterval(loadMessages, 5000);
     return () => clearInterval(interval);
-  }, [activeChatUser]);
+    
+  }, [activeChatUser, currentUser]); // 2. Add currentUser to dependency array
 
   const handleSendMessage = async () => {
     if (!message.trim() && !stagedImage) return;
@@ -127,18 +188,24 @@ export default function ChatScreen({ navigation, route }) {
     setMessage(''); 
     setSendingImage(true);
     let imageUrl = null;
-    if (stagedImage) {
-        const data = new FormData();
-        data.append('file', { uri: stagedImage, type: 'image/jpeg', name: 'chat.jpg' });
-        data.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
-        const res = await fetch(CLOUDINARY_CONFIG.apiUrl, { method: 'POST', body: data });
-        const result = await res.json();
-        imageUrl = result.secure_url;
-    }
     try {
-      await client.post('/chat/send', { receiverId: activeChatUser.uid, text: currentMsg, image: imageUrl });
-      setStagedImage(null);
-    } catch (error) { console.log(error); } 
+        if (stagedImage) {
+            const data = new FormData();
+            data.append('file', { uri: stagedImage, type: 'image/jpeg', name: 'chat.jpg' });
+            data.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
+            const res = await fetch(CLOUDINARY_CONFIG.apiUrl, { method: 'POST', body: data });
+            const result = await res.json();
+            imageUrl = result.secure_url;
+        }
+        await client.post('/chat/send', { receiverId: activeChatUser.uid, text: currentMsg, image: imageUrl });
+        
+        // If it was a new chat, refresh the list so they appear in the horizontal bar
+        if (activeChatUser.status === 'new') {
+            fetchListData();
+        }
+        
+        setStagedImage(null);
+    } catch (error) { showToast("Failed", "Message could not be sent.", "error"); } 
     finally { setSendingImage(false); }
   };
 
@@ -152,63 +219,112 @@ export default function ChatScreen({ navigation, route }) {
     </View>
   );
 
+  const renderEmptyContacts = () => (
+    <View style={styles.emptyListContainer}>
+       <View style={styles.emptyListIcon}>
+          <Ionicons name={activeTab === 'requests' ? "checkmark-done" : "people"} size={20} color="rgba(255,255,255,0.7)" />
+       </View>
+       <Text style={styles.emptyListText}>
+          {activeTab === 'requests' ? "All caught up" : "No active chats"}
+       </Text>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       <Sidebar visible={sidebarVisible} onClose={() => setSidebarVisible(false)} navigation={navigation} user={currentUser} />
       <Header title="CRAYCHAT" context="Chat" onProfilePress={() => setSidebarVisible(true)} />
 
+      {toastVisible && (
+        <Animated.View style={[styles.toastContainer, { transform: [{ translateY: toastAnim }] }]}>
+          <View style={[styles.toastBar, toastMessage.type === 'error' ? styles.toastWarning : toastMessage.type === 'success' ? styles.toastSuccess : styles.toastInfo]}>
+            <Ionicons name={toastMessage.type === 'error' ? "alert-circle" : toastMessage.type === 'success' ? "checkmark-circle" : "information-circle"} size={20} color="#FFF" />
+            <Text style={styles.toastText} numberOfLines={1}>{toastMessage.title}: {toastMessage.body}</Text>
+          </View>
+        </Animated.View>
+      )}
+
       {!currentUser ? (
         <View style={styles.centerContainer}>
-          <Ionicons name="lock-closed" size={60} color="#3D5A80" />
-          <Text style={styles.largeTitle}>Login Required</Text>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Login')}><Text style={styles.actionBtnText}>Log In</Text></TouchableOpacity>
+          <Ionicons name="chatbubbles-outline" size={80} color="#BDC3C7" style={{ marginBottom: 20 }} />
+          <Text style={styles.largeTitle}>Join the Chat</Text>
+          <Text style={styles.subText}>Connect with other researchers directly.</Text>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Login')}>
+            <Text style={styles.actionBtnText}>Log In to Chat</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.mainContent}>
-          {/* TAB BAR */}
+          
           <View style={styles.tabContainer}>
-            {['chats', 'requests', 'pending'].map(tab => (
-              <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && styles.activeTabButton]} onPress={() => { setActiveTab(tab); setActiveChatUser(null); }}>
-                <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab.toUpperCase()}</Text>
-                {tab === 'requests' && requests.length > 0 && <View style={styles.tabBadge} />}
-              </TouchableOpacity>
-            ))}
+            <TouchableOpacity style={[styles.tabButton, activeTab === 'chats' && styles.activeTabButton]} onPress={() => { setActiveTab('chats'); setActiveChatUser(null); }}>
+              <Text style={[styles.tabText, activeTab === 'chats' && styles.activeTabText]}>CHATS</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.tabButton, activeTab === 'requests' && styles.activeTabButton]} onPress={() => { setActiveTab('requests'); setActiveChatUser(null); }}>
+              <Text style={[styles.tabText, activeTab === 'requests' && styles.activeTabText]}>REQUESTS</Text>
+              {requests.length > 0 && <View style={styles.tabBadge}><Text style={styles.badgeText}>{requests.length}</Text></View>}
+            </TouchableOpacity>
           </View>
 
-          {/* CONTACTS LIST */}
-          <View style={[styles.contactsBar, activeTab !== 'chats' && { backgroundColor: '#2C3E50' }]}>
+          {/* CONTACTS BAR */}
+          <View style={[styles.contactsBar, activeTab === 'requests' && { backgroundColor: '#E76F51' }]}>
             <FlatList
-              data={activeTab === 'requests' ? requests : activeTab === 'pending' ? pending : contacts}
+              data={activeTab === 'requests' ? requests : myChats}
               renderItem={({ item }) => (
                 <TouchableOpacity style={styles.contactItem} onPress={() => setActiveChatUser(item)}>
-                  <View style={[styles.avatarPlaceholder, activeChatUser?.uid === item.uid && { borderColor: '#98C1D9', borderWidth: 2 }]}>
+                  <View style={[styles.avatarPlaceholder, activeChatUser?.uid === item.uid && { borderColor: '#FFF', borderWidth: 2 }]}>
                     <Image source={item.profilePic ? { uri: item.profilePic } : require('../../assets/profile-icon.png')} style={styles.contactImage} />
                   </View>
                   <Text style={styles.contactName} numberOfLines={1}>{item.name.split(' ')[0]}</Text>
+                  {activeTab === 'chats' && item.status === 'pending' && <View style={styles.pendingDot} />}
                 </TouchableOpacity>
               )}
-              horizontal showsHorizontalScrollIndicator={false}
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              ListEmptyComponent={renderEmptyContacts}
+              contentContainerStyle={{ paddingHorizontal: 15 }}
             />
           </View>
 
-          {/* CHAT LAYER */}
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
-            style={styles.chatEngine} 
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
-          >
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.chatEngine} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
             <View style={styles.chatLayer}>
               {!activeChatUser ? (
-                <View style={styles.centerContainer}>
-                  <Ionicons name="chatbubbles-outline" size={80} color="#E0E7ED" />
-                  <Text style={styles.subText}>Start a conversation</Text>
+                <View style={styles.emptyStateContainer}>
+                  <View style={styles.emptyStateCircle}>
+                     <Ionicons name="chatbubble-ellipses-outline" size={60} color="#3D5A80" />
+                  </View>
+                  <Text style={styles.emptyStateTitle}>
+                    {activeTab === 'requests' ? 'Message Requests' : 'Your Conversations'}
+                  </Text>
+                  <Text style={styles.emptyStateSub}>
+                    {activeTab === 'requests' 
+                      ? 'People who aren\'t in your contacts yet.' 
+                      : 'Select a user from the top bar to start chatting or find new people in Community.'}
+                  </Text>
+                  
+                  {/* Call To Action for empty chats */}
+                  {activeTab === 'chats' && (
+                    <TouchableOpacity style={styles.findUsersBtn} onPress={() => navigation.navigate('Community')}>
+                       <Feather name="search" size={16} color="#FFF" />
+                       <Text style={styles.findUsersText}>Find Researchers</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               ) : (
                 <>
                   <View style={styles.chatPartnerHeader}>
-                    <Text style={styles.partnerName}>{activeChatUser.name}</Text>
-                    {activeTab !== 'chats' && <View style={styles.requestBadge}><Text style={styles.requestBadgeText}>{activeTab.toUpperCase()}</Text></View>}
+                    <View>
+                        <Text style={styles.partnerName}>{activeChatUser.name}</Text>
+                        {activeTab === 'chats' && activeChatUser.status === 'pending' && (
+                            <Text style={{fontSize: 10, color: '#95A5A6'}}>Request Sent • Pending</Text>
+                        )}
+                        {/* New Status indicator */}
+                        {activeChatUser.status === 'new' && (
+                            <Text style={{fontSize: 10, color: '#2A9D8F'}}>New Conversation</Text>
+                        )}
+                    </View>
+                    {activeTab === 'requests' && <View style={styles.requestBadge}><Text style={styles.requestBadgeText}>REQUEST</Text></View>}
                   </View>
 
                   <FlatList
@@ -221,22 +337,31 @@ export default function ChatScreen({ navigation, route }) {
                     onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
                   />
 
-                  {/* ACTION AREA (Above Nav Bar) */}
                   <View style={styles.actionContainer}>
                     {activeTab === 'requests' ? (
                       <View style={styles.acceptBanner}>
                         <Text style={styles.acceptTitle}>Message Request</Text>
                         <Text style={styles.acceptSubText}>Accept to reply to {activeChatUser.name}.</Text>
                         <View style={styles.acceptActionRow}>
-                          <TouchableOpacity style={styles.ignoreBtn} onPress={() => setActiveChatUser(null)}>
-                            <Text style={styles.ignoreText}>Ignore</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.acceptBtn} onPress={async () => {
-                              const res = await client.post('/chat/accept', { chatId: activeChatUser.chatId });
-                              if (res.data.success) { setActiveTab('chats'); fetchListData(); }
-                          }}>
+                          <TouchableOpacity style={styles.ignoreBtn} onPress={() => setActiveChatUser(null)}><Text style={styles.ignoreText}>Ignore</Text></TouchableOpacity>
+                          
+                          <TouchableOpacity 
+                              style={styles.acceptBtn} 
+                              onPress={async () => {
+                                try {
+                                    const res = await client.post('/chat/accept', { chatId: activeChatUser.chatId });
+                                    if (res.data.success) { 
+                                        setActiveChatUser(prev => ({ ...prev, status: 'accepted' }));
+                                        setActiveTab('chats'); 
+                                        fetchListData(); 
+                                        showToast("Accepted", "You can now chat.", "success");
+                                    }
+                                } catch (err) { showToast("Error", "Could not accept request.", "error"); }
+                            }}
+                          >
                             <Text style={styles.acceptBtnText}>Accept</Text>
                           </TouchableOpacity>
+                          
                         </View>
                       </View>
                     ) : (
@@ -251,7 +376,6 @@ export default function ChatScreen({ navigation, route }) {
                         </TouchableOpacity>
                       </View>
                     )}
-                    {/* CRITICAL: Space for the Bottom Navigation Bar */}
                     <View style={styles.navBarSpacer} />
                   </View>
                 </>
@@ -269,20 +393,50 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7F9' },
   mainContent: { flex: 1 },
   
+  // --- TOAST ---
+  toastContainer: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 20, left: 20, right: 20, zIndex: 9999, alignItems: 'center' },
+  toastBar: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 },
+  toastWarning: { backgroundColor: '#E76F51' }, 
+  toastSuccess: { backgroundColor: '#2A9D8F' }, 
+  toastInfo: { backgroundColor: '#3D5A80' },    
+  toastText: { color: '#FFF', fontWeight: '700', fontSize: 13, marginLeft: 10, flex: 1 },
+
+  // --- CENTER EMPTY STATES (GUEST & CHAT) ---
+  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
+  largeTitle: { fontSize: 22, fontWeight: '800', color: '#293241', textAlign: 'center', marginBottom: 10 },
+  subText: { fontSize: 14, color: '#7f8c8d', textAlign: 'center', lineHeight: 22, marginBottom: 30 },
+  actionBtn: { backgroundColor: '#3D5A80', paddingHorizontal: 35, paddingVertical: 14, borderRadius: 30, elevation: 4 },
+  actionBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
+
+  // --- MAIN CHAT EMPTY STATE ---
+  emptyStateContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40, marginTop: -50 },
+  emptyStateCircle: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#F0F4F8', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  emptyStateTitle: { fontSize: 18, fontWeight: '800', color: '#2C3E50', marginBottom: 10 },
+  emptyStateSub: { fontSize: 13, color: '#7F8C8D', textAlign: 'center', lineHeight: 20, marginBottom: 25 },
+  findUsersBtn: { flexDirection: 'row', backgroundColor: '#3D5A80', paddingHorizontal: 25, paddingVertical: 12, borderRadius: 25, alignItems: 'center', gap: 8 },
+  findUsersText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+
+  // --- HORIZONTAL LIST EMPTY STATE ---
+  emptyListContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, marginLeft: 0 },
+  emptyListIcon: { marginRight: 8 },
+  emptyListText: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600' },
+
   // Tab Bar
-  tabContainer: { flexDirection: 'row', backgroundColor: '#FFF', paddingVertical: 12, justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: '#ECF0F1' },
-  tabButton: { paddingVertical: 6, paddingHorizontal: 15, borderRadius: 20 },
-  activeTabButton: { backgroundColor: '#EBF5FB' },
-  tabText: { fontSize: 12, fontWeight: '700', color: '#95A5A6' },
+  tabContainer: { flexDirection: 'row', backgroundColor: '#FFF', paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: '#ECF0F1' },
+  tabButton: { flex: 1, paddingVertical: 15, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  activeTabButton: { borderBottomColor: '#3D5A80' },
+  tabText: { fontSize: 13, fontWeight: '700', color: '#BDC3C7', letterSpacing: 1 },
   activeTabText: { color: '#3D5A80' },
-  tabBadge: { position: 'absolute', top: -2, right: 5, width: 8, height: 8, borderRadius: 4, backgroundColor: '#E74C3C' },
+  tabBadge: { position: 'absolute', top: 10, right: 30, backgroundColor: '#E74C3C', borderRadius: 10, paddingHorizontal: 5, paddingVertical: 1 },
+  badgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
   
-  // Horizontal Contacts
-  contactsBar: { backgroundColor: '#3D5A80', paddingVertical: 15, paddingLeft: 15, borderBottomRightRadius: 20, borderBottomLeftRadius: 20 },
+  // Contacts Bar
+  contactsBar: { backgroundColor: '#3D5A80', paddingVertical: 15, borderBottomRightRadius: 20, borderBottomLeftRadius: 20, minHeight: 90 },
   contactItem: { alignItems: 'center', marginRight: 15, width: 60 },
   avatarPlaceholder: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#FFF', overflow: 'hidden' },
   contactImage: { width: '100%', height: '100%' },
   contactName: { fontSize: 10, color: '#FFF', marginTop: 5, fontWeight: '600' },
+  pendingDot: { position: 'absolute', top: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#F1C40F', borderWidth: 1, borderColor: '#3D5A80' },
   
   // Chat Engine
   chatEngine: { flex: 1 },
@@ -301,12 +455,11 @@ const styles = StyleSheet.create({
   sentImage: { width: 200, height: 150, borderRadius: 10, marginBottom: 5 },
   timeLabel: { fontSize: 9, color: '#BDC3C7', marginTop: 4 },
 
-  // --- THE NEW ACTION AREA ---
+  // Action Area
   actionContainer: {
     backgroundColor: '#FFF',
     borderTopWidth: 1,
     borderTopColor: '#F0F3F4',
-    // iOS shadow to give separation from Nav Bar
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.05,
@@ -314,7 +467,6 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   
-  // Banner Styling
   acceptBanner: { padding: 20, alignItems: 'center' },
   acceptTitle: { fontWeight: '800', fontSize: 17, color: '#2C3E50' },
   acceptSubText: { fontSize: 12, color: '#7F8C8D', marginVertical: 8, textAlign: 'center' },
@@ -324,18 +476,11 @@ const styles = StyleSheet.create({
   ignoreText: { color: '#7F8C8D', fontWeight: '700' },
   acceptBtnText: { color: '#FFF', fontWeight: '700' },
 
-  // Input Area
   inputArea: { flexDirection: 'row', padding: 15, alignItems: 'center' },
   textInput: { flex: 1, marginHorizontal: 12, backgroundColor: '#F8F9F9', borderRadius: 20, paddingHorizontal: 15, paddingVertical: 10, maxHeight: 100, color: '#2C3E50' },
   sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#3D5A80', justifyContent: 'center', alignItems: 'center' },
 
-  // --- THE NAV BAR SPACER ---
-  navBarSpacer: { height: 95 }, // Exact height to clear your floating menu
-
-  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
-  largeTitle: { fontSize: 22, fontWeight: '800', color: '#293241' },
-  actionBtn: { backgroundColor: '#3D5A80', paddingHorizontal: 30, paddingVertical: 12, borderRadius: 25, marginTop: 20 },
-  actionBtnText: { color: '#FFF', fontWeight: '700' },
+  navBarSpacer: { height: 95 }, 
   requestBadge: { backgroundColor: '#E74C3C', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5 },
   requestBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' }
 });

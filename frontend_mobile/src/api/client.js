@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // REPLACE '192.168.X.X' with your actual IPv4 Address!
 // Keep the port :5000 at the end.
-const API_URL = 'http://192.168.1.16:5000/api'; 
+const API_URL = 'http://192.168.1.13:5000/api'; 
 
 const client = axios.create({
   baseURL: API_URL,
