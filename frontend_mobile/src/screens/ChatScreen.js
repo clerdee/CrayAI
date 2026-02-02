@@ -117,17 +117,22 @@ export default function ChatScreen({ navigation, route }) {
 
   useEffect(() => { fetchListData(); }, [currentUser, activeTab]);
 
-  // --- 1. NEW: HANDLE NAVIGATION FROM COMMUNITY SCREEN ---
+  // --- 1. HANDLE NAVIGATION FROM COMMUNITY SCREEN (FIXED) ---
   useEffect(() => {
-    // If we have a targetUser passed from navigation AND contacts have loaded/exist
+    // If we have a targetUser passed from navigation
     if (route.params?.targetUser) {
         const target = route.params.targetUser;
-        const targetId = target.uid || target._id || target.id;
+        
+        // --- FIX: Ensure targetId is a STRING, not an object ---
+        let targetId = target.uid || target._id || target.id;
+        if (typeof targetId === 'object') {
+            targetId = targetId.toString(); // Fallback if somehow an object slips through
+        }
 
         // Check if this user is already in My Chats
-        const existingChat = myChats.find(u => u.uid === targetId);
+        const existingChat = myChats.find(u => String(u.uid) === String(targetId));
         // Check if this user is in Requests
-        const existingRequest = requests.find(u => u.uid === targetId);
+        const existingRequest = requests.find(u => String(u.uid) === String(targetId));
 
         if (existingChat) {
             setActiveTab('chats');
@@ -139,32 +144,32 @@ export default function ChatScreen({ navigation, route }) {
             // It's a new conversation
             setActiveTab('chats');
             setActiveChatUser({
-                uid: targetId,
+                uid: targetId, // Explicit string ID
                 name: target.name,
                 profilePic: target.profilePic,
-                status: 'new', // Mark as new so we don't show "Pending" badge yet
+                status: 'new',
                 chatId: null
             });
         }
     }
-  }, [route.params, myChats, requests]); // Re-run when params change or lists load
+  }, [route.params, myChats, requests]); 
 
-// --- LOAD MESSAGES (FIXED) ---
+  // --- LOAD MESSAGES (FIXED) ---
   useEffect(() => {
-    // 1. Guard Clause: Don't load messages until we know who YOU are and who you are chatting with
     if (!activeChatUser || !currentUser) return;
 
     const loadMessages = async () => {
       try {
-        const res = await client.get(`/chat/messages/${activeChatUser.uid}`);
+        // --- FIX: Explicitly cast UID to string to prevent [object Object] error ---
+        const targetId = String(activeChatUser.uid); 
         
-        // Safe access to ID
+        const res = await client.get(`/chat/messages/${targetId}`);
+        
         const currentId = currentUser._id || currentUser.id;
 
         const fetched = (res.data?.messages || []).map(m => ({
           id: m._id,
           text: m.text || '',
-          // Ensure sender object exists before checking ID
           sender: (m.sender?._id || m.sender) === currentId ? 'me' : 'other',
           time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           type: m.image ? 'image' : 'text',
@@ -180,7 +185,7 @@ export default function ChatScreen({ navigation, route }) {
     const interval = setInterval(loadMessages, 5000);
     return () => clearInterval(interval);
     
-  }, [activeChatUser, currentUser]); // 2. Add currentUser to dependency array
+  }, [activeChatUser, currentUser]);
 
   const handleSendMessage = async () => {
     if (!message.trim() && !stagedImage) return;
@@ -193,13 +198,19 @@ export default function ChatScreen({ navigation, route }) {
             const data = new FormData();
             data.append('file', { uri: stagedImage, type: 'image/jpeg', name: 'chat.jpg' });
             data.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
+            data.append('cloud_name', CLOUDINARY_CONFIG.cloudName); // Make sure to send cloud_name if needed by your backend logic or if directly fetching cloudinary
             const res = await fetch(CLOUDINARY_CONFIG.apiUrl, { method: 'POST', body: data });
             const result = await res.json();
             imageUrl = result.secure_url;
         }
-        await client.post('/chat/send', { receiverId: activeChatUser.uid, text: currentMsg, image: imageUrl });
         
-        // If it was a new chat, refresh the list so they appear in the horizontal bar
+        // --- FIX: Ensure receiverId is a string ---
+        await client.post('/chat/send', { 
+            receiverId: String(activeChatUser.uid), 
+            text: currentMsg, 
+            image: imageUrl 
+        });
+        
         if (activeChatUser.status === 'new') {
             fetchListData();
         }
@@ -292,7 +303,7 @@ export default function ChatScreen({ navigation, route }) {
               {!activeChatUser ? (
                 <View style={styles.emptyStateContainer}>
                   <View style={styles.emptyStateCircle}>
-                     <Ionicons name="chatbubble-ellipses-outline" size={60} color="#3D5A80" />
+                      <Ionicons name="chatbubble-ellipses-outline" size={60} color="#3D5A80" />
                   </View>
                   <Text style={styles.emptyStateTitle}>
                     {activeTab === 'requests' ? 'Message Requests' : 'Your Conversations'}
@@ -303,11 +314,10 @@ export default function ChatScreen({ navigation, route }) {
                       : 'Select a user from the top bar to start chatting or find new people in Community.'}
                   </Text>
                   
-                  {/* Call To Action for empty chats */}
                   {activeTab === 'chats' && (
                     <TouchableOpacity style={styles.findUsersBtn} onPress={() => navigation.navigate('Community')}>
-                       <Feather name="search" size={16} color="#FFF" />
-                       <Text style={styles.findUsersText}>Find Researchers</Text>
+                        <Feather name="search" size={16} color="#FFF" />
+                        <Text style={styles.findUsersText}>Find Researchers</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -319,7 +329,6 @@ export default function ChatScreen({ navigation, route }) {
                         {activeTab === 'chats' && activeChatUser.status === 'pending' && (
                             <Text style={{fontSize: 10, color: '#95A5A6'}}>Request Sent • Pending</Text>
                         )}
-                        {/* New Status indicator */}
                         {activeChatUser.status === 'new' && (
                             <Text style={{fontSize: 10, color: '#2A9D8F'}}>New Conversation</Text>
                         )}

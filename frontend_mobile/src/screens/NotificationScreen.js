@@ -91,27 +91,22 @@ export default function NotificationScreen({ navigation }) {
     }, [])
   );
 
-  // --- REFRESH HANDLER (FIXED) ---
+  // --- REFRESH HANDLER ---
   const onRefresh = async () => {
     setRefreshing(true);
     
-    // 1. Optimistic Update: Visually clear everything immediately
+    // 1. Optimistic Update: Mark all as read locally
     setAlertsCount(0);
     await AsyncStorage.setItem('alertsCount', '0');
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true }))); // Remove dots locally
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true }))); 
 
     try {
-       // 2. SERVER SYNC: Tell the backend these are read
-       // Ensure your backend has a PUT route at /notification/read-all
+       // 2. SERVER SYNC: Tell backend to mark all read
        await client.put('/notification/read-all'); 
-       
-       // 3. Re-fetch to get the "official" clean state from server
+       // 3. Re-fetch fresh data
        await fetchData(); 
-
     } catch (error) {
-       console.log("Refresh error (Backend sync failed):", error);
-       // Optional: If backend fails, we might want to keep the local change 
-       // so we DON'T call fetchData() in the catch block.
+       console.log("Refresh error:", error);
     } finally {
        setRefreshing(false);
     }
@@ -130,13 +125,14 @@ export default function NotificationScreen({ navigation }) {
   const handleNotificationClick = (item) => {
     if (!item.sender) return;
 
-    // Optional: Mark single item read on click if you haven't refreshed yet
+    // 1. Mark as Read Locally
     if (!item.isRead) {
         setNotifications(prev => prev.map(n => n._id === item._id ? {...n, isRead: true} : n));
         setAlertsCount(prev => Math.max(0, prev - 1));
-        client.put(`/notification/${item._id}/read`).catch(err => console.log(err)); // Fire and forget
+        client.put(`/notification/${item._id}/read`).catch(err => console.log(err)); 
     }
 
+    // 2. REDIRECT LOGIC
     if (item.type === 'message') {
       navigation.navigate('Chat', { 
         targetUser: { 
@@ -145,28 +141,43 @@ export default function NotificationScreen({ navigation }) {
           profilePic: item.sender.profilePic 
         } 
       });
-    } else {
+    } 
+    else if (item.type === 'follow') {
+      navigation.navigate('Profile', { userId: item.sender._id || item.sender.id });
+    } 
+    else if (item.type === 'like' || item.type === 'comment') {
+      const targetPostId = item.post || item.postId; 
+      navigation.navigate('Community', { highlightPostId: targetPostId });
+    } 
+    else {
       navigation.navigate('Profile', { userId: item.sender._id || item.sender.id });
     }
   };
 
-  // --- HELPER: SECTIONS ---
+  // --- HELPER: SECTIONS (UPDATED) ---
   const getSections = () => {
     const now = new Date();
     const newNotis = [];
-    const oldNotis = [];
+    const moreNotis = []; // Renamed from oldNotis to moreNotis
 
     notifications.forEach(item => {
       const date = new Date(item.createdAt);
       const diffHours = (now - date) / (1000 * 60 * 60);
-      if (diffHours < 24) newNotis.push(item);
-      else oldNotis.push(item);
+
+      // UPDATED LOGIC: 
+      // It is only "New" if it is recent (< 24h) AND UNREAD.
+      // If refreshed (marked read), it moves to "More".
+      if (diffHours < 24 && !item.isRead) {
+        newNotis.push(item);
+      } else {
+        moreNotis.push(item);
+      }
     });
 
-    return { newNotis, oldNotis };
+    return { newNotis, moreNotis };
   };
 
-  const { newNotis, oldNotis } = getSections();
+  const { newNotis, moreNotis } = getSections();
 
   // --- RENDER ITEM ---
   const renderNotificationItem = (item) => {
@@ -268,6 +279,7 @@ export default function NotificationScreen({ navigation }) {
             </View>
           ) : (
             <>
+              {/* Only show "New" if there are unread items < 24h */}
               {newNotis.length > 0 && (
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>New</Text>
@@ -275,12 +287,13 @@ export default function NotificationScreen({ navigation }) {
               )}
               {newNotis.map(renderNotificationItem)}
 
-              {oldNotis.length > 0 && (
-                <View style={[styles.sectionHeader, { marginTop: 25 }]}>
-                  <Text style={styles.sectionTitle}>Earlier</Text>
+              {/* Rename "Earlier" to "More" as requested */}
+              {moreNotis.length > 0 && (
+                <View style={[styles.sectionHeader, { marginTop: newNotis.length > 0 ? 25 : 0 }]}>
+                  <Text style={styles.sectionTitle}>More</Text>
                 </View>
               )}
-              {oldNotis.map(renderNotificationItem)}
+              {moreNotis.map(renderNotificationItem)}
             </>
           )}
         </ScrollView>

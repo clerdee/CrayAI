@@ -107,6 +107,7 @@ export default function CommunityScreen({ navigation }) {
       try {
         const res = await client.get('/posts/feed');
         if (res.data && res.data.posts) {
+          // Backend now sends populated comments in 'commentsData'
           const posts = res.data.posts.map(post => ({ ...post, showComments: true }));
           setCommunityPosts(posts);
         }
@@ -219,7 +220,8 @@ export default function CommunityScreen({ navigation }) {
       } else {
         const res = await client.post('/posts/create', { content: postText, media: mediaUrls });
         if (res.data?.post) {
-          setCommunityPosts([{ ...res.data.post, showComments: true }, ...communityPosts]);
+          // New posts start with 0 comments
+          setCommunityPosts([{ ...res.data.post, showComments: true, commentsData: [] }, ...communityPosts]);
           showToast("Success", "Your post is live!", 'success');
         }
       }
@@ -264,6 +266,7 @@ export default function CommunityScreen({ navigation }) {
     try {
       const res = await client.post(`/posts/${post._id}/like`);
       if (res.data?.post) {
+        // Backend returns the updated post object with likes array
         setCommunityPosts(prev => prev.map(p => p._id === post._id ? { ...p, likes: res.data.post.likes } : p));
       }
     } catch (error) { showToast("Error", "Could not like post.", 'error'); }
@@ -281,41 +284,65 @@ export default function CommunityScreen({ navigation }) {
     } catch (error) { showToast("Error", "Could not update follow status.", 'error'); }
   };
 
-  // --- 7. MESSAGE REDIRECTION LOGIC (UPDATED) ---
+  // --- 7. MESSAGE REDIRECTION LOGIC ---
   const handleMessageUser = (postItem) => {
     if (checkGuestAction("send messages")) return;
+    
+    // --- FIX: Safely extract ID because userId might be an object ---
+    const rawId = postItem.userId;
+    const targetId = (rawId && typeof rawId === 'object') ? rawId._id : rawId;
 
-    // Navigate to ChatScreen and pass the user details as 'targetUser'
-    // The ChatScreen will read this param and set it as the active chat
     navigation.navigate('Chat', { 
       targetUser: { 
-        uid: postItem.userId, 
+        uid: targetId, 
         name: postItem.user, 
         profilePic: postItem.userAvatar 
       } 
     });
   };
 
-  // --- 8. COMMENTS ---
+  // --- 8. COMMENTS LOGIC (UPDATED FOR NEW BACKEND) ---
   const handlePostComment = async (post) => {
     if (checkGuestAction("comment")) return;
     const text = commentInputs[post._id];
     if (!text?.trim()) return;
+    
     try {
       const res = await client.post(`/posts/${post._id}/comment`, { text: text.trim() });
-      if (res.data?.post) {
-        setCommunityPosts(prev => prev.map(p => p._id === post._id ? { ...p, commentsData: res.data.post.commentsData } : p));
+      
+      if (res.data?.newComment) {
+        setCommunityPosts(prev => prev.map(p => {
+            if (p._id === post._id) {
+                return { 
+                    ...p, 
+                    commentsData: [...(p.commentsData || []), res.data.newComment] 
+                };
+            }
+            return p;
+        }));
+        
         setCommentInputs(prev => ({ ...prev, [post._id]: '' }));
         Keyboard.dismiss();
       }
-    } catch (error) { showToast("Error", "Could not post comment.", 'error'); }
+    } catch (error) { 
+        console.log(error);
+        showToast("Error", "Could not post comment.", 'error'); 
+    }
   };
 
   const deleteComment = async (post, commentId) => {
     try {
       const res = await client.delete(`/posts/${post._id}/comment/${commentId}`);
-      if (res.data?.post) {
-        setCommunityPosts(prev => prev.map(p => p._id === post._id ? { ...p, commentsData: res.data.post.commentsData } : p));
+      if (res.data?.success) {
+        setCommunityPosts(prev => prev.map(p => {
+            if (p._id === post._id) {
+                return {
+                    ...p,
+                    commentsData: p.commentsData.filter(c => c._id !== commentId)
+                };
+            }
+            return p;
+        }));
         showToast("Deleted", "Comment removed.", 'success');
       }
     } catch (error) { showToast("Error", "Failed to delete comment.", 'error'); }
@@ -325,8 +352,20 @@ export default function CommunityScreen({ navigation }) {
     if (!editingCommentText.trim()) return;
     try {
       const res = await client.put(`/posts/${post._id}/comment/${commentId}`, { text: editingCommentText });
-      if (res.data?.post) {
-        setCommunityPosts(prev => prev.map(p => p._id === post._id ? { ...p, commentsData: res.data.post.commentsData } : p));
+      
+      if (res.data?.comment) {
+        setCommunityPosts(prev => prev.map(p => {
+            if (p._id === post._id) {
+                return {
+                    ...p,
+                    commentsData: p.commentsData.map(c => 
+                        c._id === commentId ? { ...c, text: res.data.comment.text } : c
+                    )
+                };
+            }
+            return p;
+        }));
+
         setEditingCommentId(null);
         setEditingCommentText('');
         showToast("Updated", "Comment edited.", 'success');
@@ -346,9 +385,14 @@ export default function CommunityScreen({ navigation }) {
 
   // --- RENDER POST CARD ---
   const renderCard = ({ item }) => {
-    const currentUidString = currentUserInfo.uid ? String(currentUserInfo.uid) : '';
-    const postUserIdString = item.userId ? String(item.userId) : '';
+    // --- FIX: Safely extract User ID (handle if populated object or string) ---
+    const rawUserId = item.userId;
+    const postUserId = (rawUserId && typeof rawUserId === 'object') ? rawUserId._id : rawUserId;
+    const postUserIdString = String(postUserId);
     
+    const currentUidString = currentUserInfo.uid ? String(currentUserInfo.uid) : '';
+    
+    // --- FIX: Use safe string comparison ---
     const isLiked = item.likes?.some(id => String(id) === currentUidString);
     const isMyPost = !isGuest && (postUserIdString === currentUidString);
     const isFollowing = currentUserInfo.following?.includes(postUserIdString);
@@ -358,7 +402,7 @@ export default function CommunityScreen({ navigation }) {
         <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
           
           <View style={styles.cardHeader}>
-            <TouchableOpacity style={styles.userInfo} onPress={() => handleProfileClick(item.userId)}>
+            <TouchableOpacity style={styles.userInfo} onPress={() => handleProfileClick(postUserId)}>
               <Image source={{ uri: item.userAvatar || 'https://avatar.iran.liara.run/public/12' }} style={styles.avatar} />
               <View>
                 <Text style={styles.userName}>{item.user}</Text>
@@ -374,7 +418,7 @@ export default function CommunityScreen({ navigation }) {
               !isGuest && (
                 <TouchableOpacity 
                   style={[styles.followBtn, isFollowing ? styles.followingBtn : styles.notFollowingBtn]}
-                  onPress={() => handleFollow(item.userId)}
+                  onPress={() => handleFollow(postUserId)}
                 >
                   <Text style={[styles.followText, isFollowing && { color: '#3D5A80' }]}>
                     {isFollowing ? "Following" : "Follow"}
@@ -418,7 +462,6 @@ export default function CommunityScreen({ navigation }) {
               <Text style={styles.actionCount}>{item.commentsData?.length || 0}</Text>
             </TouchableOpacity>
 
-            {/* --- UPDATED MESSAGE BUTTON --- */}
             {!isMyPost && !isGuest && (
               <TouchableOpacity 
                 style={[styles.actionBtn, { marginLeft: 15 }]} 
