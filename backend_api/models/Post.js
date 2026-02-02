@@ -6,22 +6,14 @@ const postSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  user: {
-    type: String,
-    required: true
-  },
-  userAvatar: {
-    type: String,
-    default: ''
-  },
-  content: {
-    type: String,
-    default: ''
-  },
+  user: { type: String, required: true }, 
+  userAvatar: { type: String, default: '' },
+  
+  content: { type: String, default: '' },
   media: [
     {
       uri: String,
-      mediaType: String // 'image' or 'video'
+      mediaType: String
     }
   ],
   likes: [
@@ -30,29 +22,9 @@ const postSchema = new mongoose.Schema({
       ref: 'User'
     }
   ],
-  commentsData: [
-    {
-      _id: {
-        type: mongoose.Schema.Types.ObjectId,
-        auto: true
-      },
-      user: String,
-      userAvatar: String,
-      userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-      },
-      text: String,
-      createdAt: {
-        type: Date,
-        default: Date.now
-      }
-    }
-  ],
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
+
+  commentsCount: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now }
 });
 
 module.exports = mongoose.model('Post', postSchema);

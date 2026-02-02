@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Post = require('../models/Post');
+const Comment = require('../models/Comment'); // <--- Import New Model
 const { createNotification } = require('../utils/notificationHelper'); 
 
 // 1. CREATE POST
@@ -24,7 +25,7 @@ exports.createPost = async (req, res) => {
       content: content || '',
       media: media || [],
       likes: [],
-      commentsData: [],
+      commentsCount: 0,
       createdAt: new Date()
     });
 
@@ -40,24 +41,39 @@ exports.createPost = async (req, res) => {
 // 2. GET ALL POSTS (Feed)
 exports.getAllPosts = async (req, res) => {
   try {
+    // 1. Get posts
     const posts = await Post.find()
       .sort({ createdAt: -1 })
-      .populate('userId', 'firstName lastName profilePic');
+      .populate('userId', 'firstName lastName profilePic')
+      .lean(); // Convert to plain object to attach comments
+
+    // 2. Fetch comments for each post manually
+    // (In a large app, you would load comments only when "Show Comments" is clicked, 
+    // but this maintains your current functionality)
+    const postsWithComments = await Promise.all(posts.map(async (post) => {
+      const comments = await Comment.find({ postId: post._id })
+        .sort({ createdAt: 1 })
+        .populate('userId', 'firstName lastName profilePic');
+
+      const formattedComments = comments.map(c => ({
+        _id: c._id,
+        text: c.text,
+        userId: c.userId?._id,
+        user: c.userId ? `${c.userId.firstName} ${c.userId.lastName}` : 'Unknown',
+        userAvatar: c.userId?.profilePic,
+        createdAt: c.createdAt
+      }));
+
+      return {
+        ...post,
+        commentsData: formattedComments, // Re-attach so frontend doesn't break
+        showComments: false
+      };
+    }));
 
     res.status(200).json({
       success: true,
-      posts: posts.map(post => ({
-        _id: post._id,
-        userId: post.userId?._id, 
-        user: post.user,
-        userAvatar: post.userAvatar,
-        content: post.content,
-        media: post.media,
-        likes: post.likes,
-        commentsData: post.commentsData,
-        createdAt: post.createdAt,
-        showComments: false
-      }))
+      posts: postsWithComments
     });
   } catch (error) {
     console.error(error);
@@ -82,13 +98,15 @@ exports.toggleLike = async (req, res) => {
     } else {
       post.likes.push(userId);
       // Trigger Notification
-      await createNotification({
-        recipient: post.userId, 
-        sender: userId, 
-        type: 'like', 
-        postId: post._id, 
-        text: 'liked your post.' 
-      });
+      if (post.userId.toString() !== userId) {
+        await createNotification({
+          recipient: post.userId, 
+          sender: userId, 
+          type: 'like', 
+          postId: post._id, 
+          text: 'liked your post.' 
+        });
+      }
     }
 
     await post.save();
@@ -104,107 +122,7 @@ exports.toggleLike = async (req, res) => {
   }
 };
 
-// 4. POST COMMENT
-exports.postComment = async (req, res) => {
-  try {
-    const userId = req.user?.userId;
-    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
-
-    const { postId } = req.params;
-    const { text } = req.body;
-
-    if (!text || !text.trim()) return res.status(400).json({ message: 'Comment empty' });
-
-    const user = await User.findById(userId).select('firstName lastName profilePic');
-    const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ message: 'Post not found' });
-
-    const newComment = {
-      user: `${user.firstName} ${user.lastName}`,
-      userAvatar: user.profilePic,
-      userId: userId,
-      text: text.trim(),
-      createdAt: new Date()
-    };
-
-    post.commentsData.push(newComment);
-    await post.save();
-
-    // Trigger Notification
-    await createNotification({
-      recipient: post.userId, 
-      sender: userId, 
-      type: 'comment', 
-      postId: post._id, 
-      text: 'commented on your post.' 
-    });
-
-    res.status(200).json({ success: true, message: 'Comment posted', post });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
-  }
-};
-
-// 5. DELETE COMMENT
-exports.deleteComment = async (req, res) => {
-  try {
-    const userId = req.user?.userId;
-    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
-
-    const { postId, commentId } = req.params;
-    const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ message: 'Post not found' });
-
-    const comment = post.commentsData.find(c => c._id.toString() === commentId);
-    if (!comment) return res.status(404).json({ message: 'Comment not found' });
-
-    if (comment.userId.toString() !== userId && post.userId.toString() !== userId) {
-      return res.status(403).json({ message: 'Unauthorized' });
-    }
-
-    post.commentsData = post.commentsData.filter(c => c._id.toString() !== commentId);
-    await post.save();
-
-    res.status(200).json({ success: true, message: 'Comment deleted', post });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
-  }
-};
-
-// 6. EDIT COMMENT
-exports.editComment = async (req, res) => {
-  try {
-    const userId = req.user?.userId;
-    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
-
-    const { postId, commentId } = req.params;
-    const { text } = req.body;
-
-    if (!text || !text.trim()) return res.status(400).json({ message: 'Comment empty' });
-
-    const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ message: 'Post not found' });
-
-    const comment = post.commentsData.find(c => c._id.toString() === commentId);
-    if (!comment) return res.status(404).json({ message: 'Comment not found' });
-
-    if (comment.userId.toString() !== userId) {
-      return res.status(403).json({ message: 'Unauthorized' });
-    }
-
-    comment.text = text.trim();
-    await post.save();
-
-    res.status(200).json({ success: true, message: 'Comment updated', post });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
-  }
-};
-
-// 7. GET USER INFO
+// 4. GET USER INFO
 exports.getUserInfo = async (req, res) => {
   try {
     const userId = req.user?.userId;
@@ -227,7 +145,7 @@ exports.getUserInfo = async (req, res) => {
   }
 };
 
-// 8. DELETE POST
+// 5. DELETE POST (Cascade Delete Comments)
 exports.deletePost = async (req, res) => {
   try {
     const postId = req.params.id;
@@ -240,7 +158,12 @@ exports.deletePost = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
+    // Delete the post
     await Post.findByIdAndDelete(postId);
+    
+    // DELETE ALL COMMENTS ASSOCIATED WITH THIS POST
+    await Comment.deleteMany({ postId: postId });
+
     res.json({ success: true, message: "Post deleted" });
   } catch (error) {
     console.error("Delete Error:", error);
@@ -248,7 +171,7 @@ exports.deletePost = async (req, res) => {
   }
 };
 
-// 9. UPDATE POST
+// 6. UPDATE POST
 exports.updatePost = async (req, res) => {
   try {
     const postId = req.params.id;

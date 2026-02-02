@@ -5,6 +5,8 @@ const { registerUser, verifyOTP, resendOTP, loginUser, getMe,
         getUserPublicProfile, followUser, getAllUsers, deleteUser 
       } = require('../controllers/authController'); 
 
+const { getModerationContent, deleteContent } = require('../controllers/adminController');
+
 router.post('/signup', registerUser);
 router.post('/verify-otp', verifyOTP);
 router.post('/resend-otp', resendOTP);
@@ -17,5 +19,9 @@ router.get('/users/:id', authenticateToken, getUserPublicProfile);
 router.post('/follow/:id', authenticateToken, followUser);
 router.get('/admin/users', authenticateToken, getAllUsers);
 router.delete('/admin/users/:id', authenticateToken, deleteUser);
+
+// --- ADMIN ROUTES ---
+router.get('/admin/moderation', authenticateToken, getModerationContent);
+router.delete('/admin/moderation/:type/:id', authenticateToken, deleteContent);
 
 module.exports = router;
