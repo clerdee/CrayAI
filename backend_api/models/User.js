@@ -26,7 +26,7 @@ const userSchema = new mongoose.Schema({
   role: { 
     type: String, 
     enum: ['user', 'admin', 'Member', 'Verified'], 
-    default: 'Member' 
+    default: 'user' 
   },
 
   // --- SOCIAL GRAPH ---

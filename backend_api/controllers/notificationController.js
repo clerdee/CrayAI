@@ -4,6 +4,11 @@ const Notification = require('../models/Notification');
 // Fetch list for the screen
 exports.getNotifications = async (req, res) => {
   try {
+    // Ensure req.user exists
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
     const userId = req.user.userId;
 
     const notifications = await Notification.find({ recipient: userId })
@@ -22,6 +27,10 @@ exports.getNotifications = async (req, res) => {
 // For the badge number
 exports.getUnreadCount = async (req, res) => {
   try {
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
     const userId = req.user.userId;
     const count = await Notification.countDocuments({ 
       recipient: userId, 
@@ -29,21 +38,58 @@ exports.getUnreadCount = async (req, res) => {
     });
     res.json({ success: true, unreadCount: count });
   } catch (error) {
+    console.error("Count Error:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
-// POST /api/notification/mark-read
-// Call this when user opens the screen (Optional but recommended)
+// PUT /api/notification/read-all
+// Called when user pulls down to refresh
 exports.markAllRead = async (req, res) => {
   try {
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
     const userId = req.user.userId;
+    
     await Notification.updateMany(
       { recipient: userId, isRead: false },
       { $set: { isRead: true } }
     );
+    
+    res.json({ success: true, message: "All marked as read" });
+  } catch (error) {
+    console.error("Mark All Read Error:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// PUT /api/notification/:id/read
+// Called when user clicks a specific notification
+exports.markOneRead = async (req, res) => {
+  try {
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const userId = req.user.userId;
+    const notificationId = req.params.id;
+
+    // Find and update specific notification, ensuring it belongs to the user
+    const notification = await Notification.findOneAndUpdate(
+      { _id: notificationId, recipient: userId },
+      { $set: { isRead: true } },
+      { new: true }
+    );
+
+    if (!notification) {
+      return res.status(404).json({ success: false, message: "Notification not found or unauthorized" });
+    }
+
     res.json({ success: true });
   } catch (error) {
+    console.error("Mark One Read Error:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };

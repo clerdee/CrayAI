@@ -10,11 +10,15 @@ module.exports = (req, res, next) => {
     return res.status(401).json({ message: 'No token provided' });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
     if (err) {
       return res.status(403).json({ message: 'Invalid or expired token' });
     }
-    req.user = user; // { userId, email }
+    
+    // Make sure the decoded token has the userId structure your controller expects
+    // Typically: { userId: '12345', email: '...', ... }
+    req.user = decoded; 
+    
     next();
   });
 };

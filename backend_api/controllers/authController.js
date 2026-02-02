@@ -22,7 +22,7 @@ exports.registerUser = async (req, res) => {
 
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiry = Date.now() + 10 * 60 * 1000; // Expires in 10 mins
+    const otpExpiry = Date.now() + 10 * 60 * 1000; 
 
     // Create the user in MongoDB
     user = new User({
@@ -53,7 +53,7 @@ exports.registerUser = async (req, res) => {
 
 // 2. VERIFY OTP & COMPLETE PROFILE
 exports.verifyOTP = async (req, res) => {
-  const { email, otp, profileData } = req.body; // <--- Now accepting profileData
+  const { email, otp, profileData } = req.body; 
 
   try {
     const user = await User.findOne({ email });
@@ -496,6 +496,47 @@ exports.followUser = async (req, res) => {
         following: currentUser.following 
       });
     }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// 12. GET ALL USERS (Admin Only)
+exports.getAllUsers = async (req, res) => {
+  try {
+    // Fetch all users, sort by newest first
+    // .select('-password') hides the password from the result for security
+    const users = await User.find().select('-password -otpCode -otpExpires').sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      users
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// 13. DELETE USER PERMANENTLY (Admin Only)
+exports.deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if trying to delete self (Optional safety)
+    if (req.user.userId === id) {
+        return res.status(400).json({ message: "You cannot delete your own admin account." });
+    }
+
+    const deletedUser = await User.findByIdAndDelete(id);
+
+    if (!deletedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({ success: true, message: 'User deleted permanently' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server Error' });
