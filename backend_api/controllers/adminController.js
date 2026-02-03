@@ -25,10 +25,10 @@ exports.getModerationContent = async (req, res) => {
       author: p.userId ? `${p.userId.firstName} ${p.userId.lastName}` : 'Unknown',
       email: p.userId?.email || 'N/A',
       content: p.content || (p.media?.length ? '[Media Content]' : '[Empty]'),
-      reason: 'New Content', // Placeholder until you add AI detection
-      severity: 'Low',       // Placeholder
+      reason: 'New Content',
+      severity: 'Low',      
       timestamp: p.createdAt,
-      status: 'Pending',     // You could add a 'status' field to your schema later
+      status: 'Pending',
       media: p.media
     }));
 

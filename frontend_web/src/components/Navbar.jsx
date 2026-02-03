@@ -15,9 +15,9 @@ const Navbar = () => {
 
         {/* --- CENTER: LINKS (Flex-none ensures it sits perfectly in the middle) --- */}
         <div className="hidden md:flex gap-10 text-sm font-semibold text-slate-500">
-          <a href="#features" className="hover:text-teal-600 transition duration-300">Solutions</a>
+          {/* <a href="#features" className="hover:text-teal-600 transition duration-300">Solutions</a>
           <a href="#research" className="hover:text-teal-600 transition duration-300">For Researchers</a>
-          <a href="#about" className="hover:text-teal-600 transition duration-300">About Us</a>
+          <a href="#about" className="hover:text-teal-600 transition duration-300">About Us</a> */}
         </div>
 
         {/* --- RIGHT: BUTTONS (Flex-1 + Justify-End pushes these to the edge) --- */}

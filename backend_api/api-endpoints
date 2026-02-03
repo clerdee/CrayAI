@@ -1,8 +1,0 @@
-POST   /api/posts/create           - Create new post
-GET    /api/posts/feed             - Get all posts (feed)
-POST   /api/posts/:postId/like     - Like/unlike post
-POST   /api/posts/:postId/comment  - Add comment
-DELETE /api/posts/:postId/comment/:commentId - Delete comment
-PUT    /api/posts/:postId/comment/:commentId - Edit comment
-POST   /api/posts/follow/:targetUserId - Follow/unfollow user
-GET    /api/posts/user/info        - Get current user info

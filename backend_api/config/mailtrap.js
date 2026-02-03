@@ -1,15 +1,23 @@
 const nodemailer = require('nodemailer');
 const dotenv = require('dotenv');
 
-// Load env vars if this file is run directly
-dotenv.config(); 
+dotenv.config();
 
 const transport = nodemailer.createTransport({
   host: process.env.MAIL_HOST,
-  port: process.env.MAIL_PORT,
+  port: Number(process.env.MAIL_PORT), 
   auth: {
     user: process.env.MAIL_USER,
-    pass: process.env.MAIL_PASS
+    pass: process.env.MAIL_PASS,
+  },
+});
+
+// verify connection
+transport.verify((err, success) => {
+  if (err) {
+    console.error('Mailtrap connection error:', err);
+  } else {
+    console.log('Mailtrap is ready to send messages');
   }
 });
 
