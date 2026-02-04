@@ -3,7 +3,7 @@ const router = express.Router();
 const { registerUser, verifyOTP, resendOTP, loginUser, getMe, 
         authenticateToken, updateProfile, changePassword, updateEmail, 
         getUserPublicProfile, followUser, getAllUsers, deleteUser, 
-        socialLogin
+        socialLogin, getUserCount
       } = require('../controllers/authController'); 
 
 const { getModerationContent, deleteContent } = require('../controllers/adminController');
@@ -20,6 +20,7 @@ router.post('/update-email', authenticateToken, updateEmail);
 router.get('/users/:id', authenticateToken, getUserPublicProfile);
 router.post('/follow/:id', authenticateToken, followUser);
 router.get('/admin/users', authenticateToken, getAllUsers);
+router.get('/user-count', getUserCount);
 router.delete('/admin/users/:id', authenticateToken, deleteUser);
 
 // --- ADMIN ROUTES ---

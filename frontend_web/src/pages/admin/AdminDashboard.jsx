@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios'; // <--- 1. IMPORT AXIOS
 import AdminLayout from '../../layouts/AdminLayout';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -6,7 +7,10 @@ import {
 } from 'recharts';
 import { ScanEye, AlertTriangle, Users, Sprout, Activity, Droplets } from 'lucide-react';
 
-// 1. Scan Activity (AI Usage)
+// Get API URL from your existing .env
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'; 
+
+// ... (Keep your scanActivityData, populationData, waterQualityData arrays here) ...
 const scanActivityData = [
   { name: 'Mon', scans: 120, detected_disease: 5 },
   { name: 'Tue', scans: 150, detected_disease: 8 },
@@ -17,15 +21,13 @@ const scanActivityData = [
   { name: 'Sun', scans: 220, detected_disease: 9 },
 ];
 
-// 2. Population Demographics (Gender/Berried Status)
 const populationData = [
-  { name: 'Male', value: 450, color: '#3B82F6' }, // Blue
+  { name: 'Male', value: 450, color: '#3B82F6' }, 
   { name: 'Female (Non-Berried)', value: 300, color: '#EC4899' }, 
   { name: 'Berried (Pregnant)', value: 150, color: '#F59E0B' }, 
   { name: 'Juvenile/Unknown', value: 100, color: '#94A3B8' }, 
 ];
 
-// 3. Water Quality Reports (Turbidity/Algae)
 const waterQualityData = [
   { name: 'Pond A', turbidity: 20, algae: 15 },
   { name: 'Pond B', turbidity: 45, algae: 60 }, 
@@ -34,6 +36,28 @@ const waterQualityData = [
 ];
 
 const AdminDashboard = () => {
+  // --- 2. STATE FOR USER COUNT ---
+  const [userCount, setUserCount] = useState(0); 
+  const [loading, setLoading] = useState(true);
+
+  // --- 3. FETCH DATA ON MOUNT ---
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/auth/user-count`);
+        if (response.data.success) {
+          setUserCount(response.data.count);
+        }
+      } catch (error) {
+        console.error("Failed to load dashboard stats", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
   return (
     <AdminLayout title="System Overview">
       
@@ -53,13 +77,16 @@ const AdminDashboard = () => {
           icon={<AlertTriangle className="text-red-600" />} 
           bg="bg-red-50" 
         />
+        
+        {/* --- UPDATED ACTIVE USERS CARD --- */}
         <StatsCard 
-          title="Active Users" 
-          value="150+" 
-          subtext="5 Pending Approvals"
+          title="Total Users" 
+          value={loading ? "..." : userCount} 
+          subtext="Total Accounts"
           icon={<Users className="text-blue-600" />} 
           bg="bg-blue-50" 
         />
+        
         <StatsCard 
           title="Avg. Accuracy" 
           value="96.8%" 

@@ -605,3 +605,18 @@ exports.socialLogin = async (req, res) => {
     });
   }
 };
+
+// 15. GET USER COUNT 
+exports.getUserCount = async (req, res) => {
+  try {
+    const count = await User.countDocuments(); 
+    
+    res.status(200).json({
+      success: true,
+      count: count
+    });
+  } catch (error) {
+    console.error("Error fetching count:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};

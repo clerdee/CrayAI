@@ -25,6 +25,9 @@ const UserManagement = () => {
   const [deactivatingUser, setDeactivatingUser] = useState(null); // Deactivate
   const [deletingUser, setDeletingUser] = useState(null);      // Delete
 
+  // --- NEW: REASON STATE ---
+  const [deactivateReason, setDeactivateReason] = useState("");
+
   // --- HELPER: SHOW TOAST ---
   const showToast = (message, type = 'success') => {
     setNotification({ show: true, message, type });
@@ -61,10 +64,7 @@ const UserManagement = () => {
 
     try {
       const token = localStorage.getItem('token');
-      // Backend API Call Placeholder:
-      // await axios.put(`${API_BASE_URL}/auth/admin/users/${promotingUser._id}/make-admin`, {}, {
-      //   headers: { Authorization: `Bearer ${token}` }
-      // });
+      // Backend API Call Placeholder
       
       // Optimistic Update
       setUsers(users.map(u => 
@@ -80,21 +80,33 @@ const UserManagement = () => {
     }
   };
 
-  // --- 3. DEACTIVATE USER ACTION ---
+  // --- 3. DEACTIVATE USER ACTION (UPDATED) ---
   const confirmDeactivation = async () => {
     if (!deactivatingUser) return;
+    
+    // Validate Reason
+    if (!deactivateReason) {
+        showToast("Please select a reason for deactivation.", "error");
+        return;
+    }
+
     try {
       const token = localStorage.getItem('token');
+      
+      console.log(`Deactivating User: ${deactivatingUser.email}, Reason: ${deactivateReason}`);
+
       // Backend API Call Placeholder:
-      // await axios.put(`${API_BASE_URL}/auth/admin/users/${deactivatingUser._id}/status`, { status: 'Inactive' }, { 
-      //   headers: { Authorization: `Bearer ${token}` }
-      // });
+      // await axios.put(`${API_BASE_URL}/auth/admin/users/${deactivatingUser._id}/status`, 
+      //   { status: 'Inactive', reason: deactivateReason }, 
+      //   { headers: { Authorization: `Bearer ${token}` } }
+      // );
       
       setUsers(users.map(u => 
         u._id === deactivatingUser._id ? { ...u, accountStatus: 'Inactive' } : u
       ));
 
       setDeactivatingUser(null); 
+      setDeactivateReason(""); // Reset reason
       showToast("User account deactivated.", "success");
 
     } catch (error) {
@@ -254,7 +266,7 @@ const UserManagement = () => {
                                 </div>
                             </td>
 
-                            {/* Actions Column */}
+                            {/* Actions Column (UPDATED COLORS) */}
                             <td className="p-6 pr-8 text-right">
                                 <div className="flex items-center justify-end gap-2">
                                     
@@ -276,17 +288,19 @@ const UserManagement = () => {
                                         <Eye className="w-5 h-5" />
                                     </button>
 
+                                    {/* DEACTIVATE BUTTON: NOW HAS ORANGE BACKGROUND */}
                                     <button 
                                         onClick={() => setDeactivatingUser(user)}
-                                        className="p-2 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition-colors tooltip"
+                                        className="p-2 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors tooltip"
                                         title="Deactivate Account"
                                     >
                                         <Ban className="w-5 h-5" />
                                     </button>
 
+                                    {/* DELETE BUTTON: NOW HAS RED BACKGROUND */}
                                     <button 
                                         onClick={() => setDeletingUser(user)}
-                                        className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors tooltip"
+                                        className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors tooltip"
                                         title="Delete Permanently"
                                     >
                                         <Trash2 className="w-5 h-5" />
@@ -372,13 +386,13 @@ const UserManagement = () => {
         </div>
       )}
 
-      {/* --- MODAL 3: DEACTIVATE USER (ORANGE) --- */}
+      {/* --- MODAL 3: DEACTIVATE USER (ORANGE) - UPDATED WITH REASON --- */}
       {deactivatingUser && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-0 animate-in zoom-in-95 duration-200 flex flex-col">
                 
                 <div className="relative bg-orange-50 p-8 flex flex-col items-center justify-center border-b border-orange-100">
-                    <button onClick={() => setDeactivatingUser(null)} className="absolute top-4 right-4 p-2 text-orange-300 hover:text-orange-600 transition-colors"><X className="w-5 h-5" /></button>
+                    <button onClick={() => { setDeactivatingUser(null); setDeactivateReason(""); }} className="absolute top-4 right-4 p-2 text-orange-300 hover:text-orange-600 transition-colors"><X className="w-5 h-5" /></button>
                     <div className="w-20 h-20 rounded-full bg-white shadow-xl shadow-orange-100 flex items-center justify-center text-orange-500 mb-4 ring-4 ring-orange-100"><Ban className="w-10 h-10" /></div>
                     <h3 className="text-xl font-bold text-orange-900 text-center">Deactivate Account</h3>
                     <p className="text-orange-600/80 text-sm text-center mt-1">Temporarily suspend access?</p>
@@ -395,16 +409,45 @@ const UserManagement = () => {
                         </div>
                     </div>
 
+                    {/* --- NEW: REASON DROPDOWN --- */}
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase ml-1">Reason for Action</label>
+                        <div className="relative">
+                            <select 
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-orange-500 appearance-none font-medium text-slate-700"
+                                value={deactivateReason}
+                                onChange={(e) => setDeactivateReason(e.target.value)}
+                            >
+                                <option value="" disabled>Select a reason...</option>
+                                <option value="Nudity or Sexual Content">Nudity or Sexual Content</option>
+                                <option value="Hate Speech or Harassment">Hate Speech or Harassment</option>
+                                <option value="Cursing or Abusive Language">Cursing or Abusive Language</option>
+                                <option value="Violence or Graphic Content">Violence or Graphic Content</option>
+                                <option value="Spam or Misleading Behavior">Spam or Misleading Behavior</option>
+                                <option value="Suspicious Activity">Suspicious Activity</option>
+                                <option value="Fake Identity or Impersonation">Fake Identity or Impersonation</option>
+                                <option value="Gambling-Related Content">Gambling-Related Content</option>
+                                <option value="Scams or Fraud">Scams or Fraud</option>
+                                <option value="Copyright Infringement">Copyright Infringement</option>
+                                <option value="Repeated Policy Violations">Repeated Policy Violations</option>
+                                <option value="Other">Other</option>
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="bg-slate-50 rounded-xl p-4 flex gap-3 items-start border border-slate-100">
                         <AlertTriangle className="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5" />
                         <p className="text-xs text-slate-500 leading-relaxed">
-                            Deactivating this account will prevent the user from logging in and performing any scans. You can reactivate them later from the system settings.
+                            Deactivating this account will prevent the user from logging in and performing any scans. You can reactivate them later.
                         </p>
                     </div>
                 </div>
 
                 <div className="p-6 pt-0 flex gap-3">
-                    <button onClick={() => setDeactivatingUser(null)} className="flex-1 py-3 font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
+                    <button onClick={() => { setDeactivatingUser(null); setDeactivateReason(""); }} className="flex-1 py-3 font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
                     <button onClick={confirmDeactivation} className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600 shadow-lg shadow-orange-200">Deactivate</button>
                 </div>
             </div>
