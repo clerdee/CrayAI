@@ -20,12 +20,13 @@ const UserManagement = () => {
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
 
   // --- MODAL STATES ---
-  const [selectedUser, setSelectedUser] = useState(null);      // View Details
-  const [promotingUser, setPromotingUser] = useState(null);    // Make Admin
-  const [deactivatingUser, setDeactivatingUser] = useState(null); // Deactivate
-  const [deletingUser, setDeletingUser] = useState(null);      // Delete
+  const [selectedUser, setSelectedUser] = useState(null);      
+  const [promotingUser, setPromotingUser] = useState(null);    
+  const [deactivatingUser, setDeactivatingUser] = useState(null); 
+  const [reactivatingUser, setReactivatingUser] = useState(null); 
+  const [deletingUser, setDeletingUser] = useState(null);      
 
-  // --- NEW: REASON STATE ---
+  // --- REASON STATE ---
   const [deactivateReason, setDeactivateReason] = useState("");
 
   // --- HELPER: SHOW TOAST ---
@@ -33,7 +34,7 @@ const UserManagement = () => {
     setNotification({ show: true, message, type });
     setTimeout(() => {
         setNotification(prev => ({ ...prev, show: false }));
-    }, 3000); // Auto-hide after 3 seconds
+    }, 3000);
   };
 
   // --- 1. FETCH USERS FROM API ---
@@ -61,30 +62,23 @@ const UserManagement = () => {
   // --- 2. PROMOTE TO ADMIN ACTION ---
   const confirmPromotion = async () => {
     if (!promotingUser) return;
-
     try {
       const token = localStorage.getItem('token');
-      // Backend API Call Placeholder
-      
       // Optimistic Update
       setUsers(users.map(u => 
         u._id === promotingUser._id ? { ...u, role: 'admin' } : u
       ));
-
       setPromotingUser(null); 
       showToast(`${promotingUser.firstName} is now an Admin!`, 'success');
-
     } catch (error) {
       console.error(error);
       showToast("Failed to promote user.", "error");
     }
   };
 
-  // --- 3. DEACTIVATE USER ACTION (UPDATED) ---
+  // --- 3. DEACTIVATE USER ACTION ---
   const confirmDeactivation = async () => {
     if (!deactivatingUser) return;
-    
-    // Validate Reason
     if (!deactivateReason) {
         showToast("Please select a reason for deactivation.", "error");
         return;
@@ -92,48 +86,60 @@ const UserManagement = () => {
 
     try {
       const token = localStorage.getItem('token');
-      
-      console.log(`Deactivating User: ${deactivatingUser.email}, Reason: ${deactivateReason}`);
-
-      // Backend API Call Placeholder:
-      // await axios.put(`${API_BASE_URL}/auth/admin/users/${deactivatingUser._id}/status`, 
-      //   { status: 'Inactive', reason: deactivateReason }, 
-      //   { headers: { Authorization: `Bearer ${token}` } }
-      // );
+      await axios.put(`${API_BASE_URL}/auth/admin/users/${deactivatingUser._id}/status`, 
+        { status: 'Inactive', reason: deactivateReason }, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       
       setUsers(users.map(u => 
         u._id === deactivatingUser._id ? { ...u, accountStatus: 'Inactive' } : u
       ));
 
       setDeactivatingUser(null); 
-      setDeactivateReason(""); // Reset reason
+      setDeactivateReason(""); 
       showToast("User account deactivated.", "success");
-
     } catch (error) {
       console.error(error);
       showToast("Failed to deactivate user.", "error");
     }
   };
 
-  // --- 4. DELETE USER ACTION ---
-  const confirmDelete = async () => {
-    if (!deletingUser) return;
-
+  // --- 4. REACTIVATE USER ACTION ---
+  const confirmReactivation = async () => {
+    if (!reactivatingUser) return;
     try {
       const token = localStorage.getItem('token');
+      await axios.put(`${API_BASE_URL}/auth/admin/users/${reactivatingUser._id}/status`, 
+        { status: 'Active', reason: null }, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       
+      setUsers(users.map(u => 
+        u._id === reactivatingUser._id ? { ...u, accountStatus: 'Active' } : u
+      ));
+
+      setReactivatingUser(null); 
+      showToast("User account reactivated!", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("Failed to reactivate user.", "error");
+    }
+  };
+
+  // --- 5. DELETE USER ACTION ---
+  const confirmDelete = async () => {
+    if (!deletingUser) return;
+    try {
+      const token = localStorage.getItem('token');
       await axios.delete(`${API_BASE_URL}/auth/admin/users/${deletingUser._id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-
       setUsers(users.filter(u => u._id !== deletingUser._id));
       setDeletingUser(null);
       showToast("User deleted permanently.", "success");
-
     } catch (error) {
       console.error(error);
-      const errorMsg = error.response?.data?.message || "Failed to delete user.";
-      showToast(errorMsg, "error");
+      showToast("Failed to delete user.", "error");
     }
   };
 
@@ -189,8 +195,6 @@ const UserManagement = () => {
 
       {/* 2. MAIN TABLE AREA */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 min-h-[600px] flex flex-col">
-        
-        {/* Toolbar */}
         <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="relative w-full md:w-96">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -204,7 +208,6 @@ const UserManagement = () => {
             </div>
         </div>
 
-        {/* User Table */}
         <div className="overflow-visible flex-1">
             <table className="w-full text-left border-collapse">
                 <thead>
@@ -218,8 +221,6 @@ const UserManagement = () => {
                 <tbody className="divide-y divide-slate-100">
                     {filteredUsers.length > 0 ? filteredUsers.map((user) => (
                         <tr key={user._id} className="hover:bg-slate-50 transition-colors group">
-                            
-                            {/* Profile Column */}
                             <td className="p-6 pl-8">
                                 <div className="flex items-center gap-4">
                                     <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex-shrink-0">
@@ -238,7 +239,6 @@ const UserManagement = () => {
                                 </div>
                             </td>
 
-                            {/* Role Column */}
                             <td className="p-6">
                                 <span className={`px-3 py-1 rounded-full text-xs font-bold capitalize ${
                                     user.role === 'admin' ? 'bg-purple-50 text-purple-700 border border-purple-100' :
@@ -248,7 +248,6 @@ const UserManagement = () => {
                                 </span>
                             </td>
 
-                            {/* Status Column */}
                             <td className="p-6">
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-2">
@@ -266,10 +265,8 @@ const UserManagement = () => {
                                 </div>
                             </td>
 
-                            {/* Actions Column (UPDATED COLORS) */}
                             <td className="p-6 pr-8 text-right">
                                 <div className="flex items-center justify-end gap-2">
-                                    
                                     {user.role !== 'admin' && (
                                         <button 
                                             onClick={() => setPromotingUser(user)}
@@ -288,16 +285,24 @@ const UserManagement = () => {
                                         <Eye className="w-5 h-5" />
                                     </button>
 
-                                    {/* DEACTIVATE BUTTON: NOW HAS ORANGE BACKGROUND */}
-                                    <button 
-                                        onClick={() => setDeactivatingUser(user)}
-                                        className="p-2 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors tooltip"
-                                        title="Deactivate Account"
-                                    >
-                                        <Ban className="w-5 h-5" />
-                                    </button>
+                                    {user.accountStatus === 'Active' ? (
+                                      <button 
+                                          onClick={() => setDeactivatingUser(user)}
+                                          className="p-2 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors tooltip"
+                                          title="Deactivate Account"
+                                      >
+                                          <Ban className="w-5 h-5" />
+                                      </button>
+                                    ) : (
+                                      <button 
+                                          onClick={() => setReactivatingUser(user)}
+                                          className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors tooltip"
+                                          title="Reactivate Account"
+                                      >
+                                          <CheckCircle className="w-5 h-5" />
+                                      </button>
+                                    )}
 
-                                    {/* DELETE BUTTON: NOW HAS RED BACKGROUND */}
                                     <button 
                                         onClick={() => setDeletingUser(user)}
                                         className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors tooltip"
@@ -305,10 +310,8 @@ const UserManagement = () => {
                                     >
                                         <Trash2 className="w-5 h-5" />
                                     </button>
-
                                 </div>
                             </td>
-
                         </tr>
                     )) : (
                         <tr>
@@ -336,19 +339,14 @@ const UserManagement = () => {
       {promotingUser && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-0 animate-in zoom-in-95 duration-200 flex flex-col">
-                
                 <div className="relative bg-purple-50 p-8 flex flex-col items-center justify-center border-b border-purple-100">
-                    <button onClick={() => setPromotingUser(null)} className="absolute top-4 right-4 p-2 bg-white/50 hover:bg-white rounded-full text-purple-300 hover:text-purple-600 transition-colors">
-                        <X className="w-5 h-5" />
-                    </button>
-                    <div className="w-20 h-20 rounded-full bg-white shadow-xl shadow-purple-200 flex items-center justify-center text-purple-600 mb-4 ring-4 ring-purple-100">
-                        <ShieldCheck className="w-10 h-10" />
-                    </div>
+                    <button onClick={() => setPromotingUser(null)} className="absolute top-4 right-4 p-2 bg-white/50 hover:bg-white rounded-full text-purple-300 hover:text-purple-600 transition-colors"><X className="w-5 h-5" /></button>
+                    <div className="w-20 h-20 rounded-full bg-white shadow-xl shadow-purple-200 flex items-center justify-center text-purple-600 mb-4 ring-4 ring-purple-100"><ShieldCheck className="w-10 h-10" /></div>
                     <h3 className="text-xl font-bold text-purple-900 text-center">Grant Admin Access</h3>
                     <p className="text-purple-600/80 text-sm text-center mt-1">Make this user a system administrator?</p>
                 </div>
-
                 <div className="p-6 space-y-6">
+                    {/* DYNAMIC USER INFO IN MODAL */}
                     <div className="flex items-center gap-4 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
                         <div className="w-12 h-12 rounded-full bg-white border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center text-slate-500 font-bold text-sm">
                              {promotingUser.profilePic ? (
@@ -368,84 +366,54 @@ const UserManagement = () => {
                         <div>
                             <h5 className="text-xs font-bold text-orange-800 uppercase tracking-wide mb-1">Security Warning</h5>
                             <p className="text-xs text-orange-700 leading-relaxed">
-                                This user will gain <strong>full control</strong> over user management, system health, and datasets. This action cannot be easily undone by non-admins.
+                                This user will gain <strong>full control</strong> over user management, system health, and datasets. This action cannot be easily undone.
                             </p>
                         </div>
                     </div>
                 </div>
-
                 <div className="p-6 pt-0 flex gap-3">
-                    <button onClick={() => setPromotingUser(null)} className="flex-1 py-3 font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-xl transition-colors">
-                        Cancel
-                    </button>
-                    <button onClick={confirmPromotion} className="flex-1 py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition-all shadow-lg shadow-purple-200 active:scale-95">
-                        Confirm Access
-                    </button>
+                    <button onClick={() => setPromotingUser(null)} className="flex-1 py-3 font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
+                    <button onClick={confirmPromotion} className="flex-1 py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition-all shadow-lg shadow-purple-200 active:scale-95">Confirm Access</button>
                 </div>
             </div>
         </div>
       )}
 
-      {/* --- MODAL 3: DEACTIVATE USER (ORANGE) - UPDATED WITH REASON --- */}
+      {/* --- MODAL 3: DEACTIVATE USER (ORANGE) --- */}
       {deactivatingUser && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-0 animate-in zoom-in-95 duration-200 flex flex-col">
-                
                 <div className="relative bg-orange-50 p-8 flex flex-col items-center justify-center border-b border-orange-100">
                     <button onClick={() => { setDeactivatingUser(null); setDeactivateReason(""); }} className="absolute top-4 right-4 p-2 text-orange-300 hover:text-orange-600 transition-colors"><X className="w-5 h-5" /></button>
                     <div className="w-20 h-20 rounded-full bg-white shadow-xl shadow-orange-100 flex items-center justify-center text-orange-500 mb-4 ring-4 ring-orange-100"><Ban className="w-10 h-10" /></div>
                     <h3 className="text-xl font-bold text-orange-900 text-center">Deactivate Account</h3>
-                    <p className="text-orange-600/80 text-sm text-center mt-1">Temporarily suspend access?</p>
+                    <p className="text-orange-600/80 text-sm text-center mt-1">Temporarily suspend access for <b>{deactivatingUser.firstName}</b>?</p>
                 </div>
-
                 <div className="p-6 space-y-6">
-                    <div className="flex items-center gap-4 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                        <div className="w-12 h-12 rounded-full bg-white border border-slate-200 overflow-hidden flex items-center justify-center text-slate-500 font-bold text-sm">
-                             {deactivatingUser.profilePic ? <img src={deactivatingUser.profilePic} alt="profile" className="w-full h-full object-cover" /> : getInitials(deactivatingUser.firstName, deactivatingUser.lastName)}
-                        </div>
-                        <div className="overflow-hidden">
-                            <h4 className="font-bold text-slate-900 truncate">{deactivatingUser.firstName} {deactivatingUser.lastName}</h4>
-                            <p className="text-sm text-slate-500 truncate">{deactivatingUser.email}</p>
-                        </div>
-                    </div>
-
-                    {/* --- NEW: REASON DROPDOWN --- */}
                     <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase ml-1">Reason for Action</label>
-                        <div className="relative">
-                            <select 
-                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-orange-500 appearance-none font-medium text-slate-700"
-                                value={deactivateReason}
-                                onChange={(e) => setDeactivateReason(e.target.value)}
-                            >
-                                <option value="" disabled>Select a reason...</option>
-                                <option value="Nudity or Sexual Content">Nudity or Sexual Content</option>
-                                <option value="Hate Speech or Harassment">Hate Speech or Harassment</option>
-                                <option value="Cursing or Abusive Language">Cursing or Abusive Language</option>
-                                <option value="Violence or Graphic Content">Violence or Graphic Content</option>
-                                <option value="Spam or Misleading Behavior">Spam or Misleading Behavior</option>
-                                <option value="Suspicious Activity">Suspicious Activity</option>
-                                <option value="Fake Identity or Impersonation">Fake Identity or Impersonation</option>
-                                <option value="Gambling-Related Content">Gambling-Related Content</option>
-                                <option value="Scams or Fraud">Scams or Fraud</option>
-                                <option value="Copyright Infringement">Copyright Infringement</option>
-                                <option value="Repeated Policy Violations">Repeated Policy Violations</option>
-                                <option value="Other">Other</option>
-                            </select>
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-slate-50 rounded-xl p-4 flex gap-3 items-start border border-slate-100">
-                        <AlertTriangle className="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5" />
-                        <p className="text-xs text-slate-500 leading-relaxed">
-                            Deactivating this account will prevent the user from logging in and performing any scans. You can reactivate them later.
-                        </p>
+                        <select 
+                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-orange-500 appearance-none font-medium text-slate-700"
+                            value={deactivateReason}
+                            onChange={(e) => setDeactivateReason(e.target.value)}
+                        >
+                            <option value="" disabled>Select a reason...</option>
+                            <option value="Violation of Terms">Violation of Terms</option>
+                            <option value="Nudity or Sexual Content">Nudity or Sexual Content</option>
+                            <option value="Hate Speech or Harassment">Hate Speech or Harassment</option>
+                            <option value="Cursing or Abusive Language">Cursing or Abusive Language</option>
+                            <option value="Violence or Graphic Content">Violence or Graphic Content</option>
+                            <option value="Spam or Misleading Behavior">Spam or Misleading Behavior</option>
+                            <option value="Suspicious Activity">Suspicious Activity</option>
+                            <option value="Fake Identity or Impersonation">Fake Identity or Impersonation</option>
+                            <option value="Gambling-Related Content">Gambling-Related Content</option>
+                            <option value="Scams or Fraud">Scams or Fraud</option>
+                            <option value="Copyright Infringement">Copyright Infringement</option>
+                            <option value="Repeated Policy Violations">Repeated Policy Violations</option>
+                            <option value="Other">Other</option>
+                        </select>
                     </div>
                 </div>
-
                 <div className="p-6 pt-0 flex gap-3">
                     <button onClick={() => { setDeactivatingUser(null); setDeactivateReason(""); }} className="flex-1 py-3 font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
                     <button onClick={confirmDeactivation} className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600 shadow-lg shadow-orange-200">Deactivate</button>
@@ -454,28 +422,60 @@ const UserManagement = () => {
         </div>
       )}
 
-      {/* --- MODAL 4: DELETE PERMANENTLY (RED) --- */}
+      {/* --- MODAL 4: REACTIVATE USER (GREEN) --- */}
+      {reactivatingUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-0 animate-in zoom-in-95 duration-200 flex flex-col">
+                <div className="relative bg-green-50 p-8 flex flex-col items-center justify-center border-b border-green-100">
+                    <button onClick={() => setReactivatingUser(null)} className="absolute top-4 right-4 p-2 text-green-300 hover:text-green-600 transition-colors"><X className="w-5 h-5" /></button>
+                    <div className="w-20 h-20 rounded-full bg-white shadow-xl shadow-green-100 flex items-center justify-center text-green-500 mb-4 ring-4 ring-green-100"><CheckCircle className="w-10 h-10" /></div>
+                    <h3 className="text-xl font-bold text-green-900 text-center">Reactivate Account</h3>
+                    <p className="text-green-600/80 text-sm text-center mt-1">Restore user access?</p>
+                </div>
+                <div className="p-6 pt-0 flex flex-col gap-4 mt-4">
+                    <p className="text-sm text-slate-500 text-center px-4">This will allow <b>{reactivatingUser.firstName} {reactivatingUser.lastName}</b> to log in and use the platform again.</p>
+                    <div className="p-6 pt-0 flex gap-3">
+                        <button onClick={() => setReactivatingUser(null)} className="flex-1 py-3 font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
+                        <button onClick={confirmReactivation} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 shadow-lg shadow-green-200">Reactivate Access</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* --- MODAL 5: DELETE PERMANENTLY (RED) --- */}
       {deletingUser && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-0 animate-in zoom-in-95 duration-200 flex flex-col">
-                
                 <div className="relative bg-red-50 p-8 flex flex-col items-center justify-center border-b border-red-100">
                     <button onClick={() => setDeletingUser(null)} className="absolute top-4 right-4 p-2 text-red-300 hover:text-red-600 transition-colors"><X className="w-5 h-5" /></button>
                     <div className="w-20 h-20 rounded-full bg-white shadow-xl shadow-red-100 flex items-center justify-center text-red-600 mb-4 ring-4 ring-red-100"><Trash2 className="w-10 h-10" /></div>
                     <h3 className="text-xl font-bold text-red-900 text-center">Delete Permanently</h3>
                     <p className="text-red-600/80 text-sm text-center mt-1">Remove user and all data?</p>
                 </div>
-
                 <div className="p-6 space-y-6">
+                    {/* DYNAMIC USER INFO IN MODAL */}
+                    <div className="flex items-center gap-4 p-4 bg-red-50/50 border border-red-100 rounded-2xl">
+                        <div className="w-12 h-12 rounded-full bg-white border border-red-200 overflow-hidden flex-shrink-0 flex items-center justify-center text-red-500 font-bold text-sm">
+                             {deletingUser.profilePic ? (
+                                <img src={deletingUser.profilePic} alt={deletingUser.firstName} className="w-full h-full object-cover" />
+                             ) : (
+                                <span>{getInitials(deletingUser.firstName, deletingUser.lastName)}</span>
+                             )}
+                        </div>
+                        <div className="overflow-hidden">
+                            <h4 className="font-bold text-slate-900 truncate">{deletingUser.firstName} {deletingUser.lastName}</h4>
+                            <p className="text-sm text-slate-500 truncate">{deletingUser.email}</p>
+                        </div>
+                    </div>
+
                     <div className="bg-red-50 rounded-xl p-4 flex gap-3 items-start border border-red-100">
                         <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                         <p className="text-xs text-red-700 leading-relaxed font-bold">
                             Warning: This action is irreversible. The user profile and all associated data will be wiped from the database.
                         </p>
                     </div>
-                    <p className="text-sm text-center text-slate-500">Deleting: <span className="font-bold text-slate-900">{deletingUser.email}</span></p>
                 </div>
-
                 <div className="p-6 pt-0 flex gap-3">
                     <button onClick={() => setDeletingUser(null)} className="flex-1 py-3 font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
                     <button onClick={confirmDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-200">Delete Permanently</button>
@@ -487,15 +487,9 @@ const UserManagement = () => {
       {/* --- GLOBAL TOAST NOTIFICATION --- */}
       <div className={`fixed bottom-6 right-6 z-[150] transition-all duration-300 transform ${notification.show ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'}`}>
         <div className={`flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl border ${
-            notification.type === 'success' 
-            ? 'bg-white border-teal-100 text-teal-800' 
-            : 'bg-white border-red-100 text-red-800'
+            notification.type === 'success' ? 'bg-white border-teal-100 text-teal-800' : 'bg-white border-red-100 text-red-800'
         }`}>
-            {notification.type === 'success' ? (
-                <CheckCircle className="w-6 h-6 text-teal-500" />
-            ) : (
-                <XCircle className="w-6 h-6 text-red-500" />
-            )}
+            {notification.type === 'success' ? <CheckCircle className="w-6 h-6 text-teal-500" /> : <XCircle className="w-6 h-6 text-red-500" />}
             <div>
                 <h4 className="font-bold text-sm">{notification.type === 'success' ? 'Success' : 'Error'}</h4>
                 <p className="text-xs opacity-80">{notification.message}</p>

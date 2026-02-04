@@ -57,7 +57,7 @@ const AuthPage = () => {
     setToast({ show: true, message, type });
     setTimeout(() => {
       setToast((prev) => ({ ...prev, show: false }));
-    }, 3000);
+    }, 4000); // Increased time slightly to allow reading the reason
   };
 
   const handleImageChange = (e) => {
@@ -97,13 +97,23 @@ const AuthPage = () => {
       const response = await axios.post(`${API_BASE_URL}/auth/social-login`, socialData);
 
       if (response.data.success) {
+        const loggedInUser = response.data.user;
+
+        // --- CHECK ACCOUNT STATUS AND SHOW REASON ---
+        if (loggedInUser.accountStatus === 'Inactive') {
+            const reason = loggedInUser.deactivationReason || "No specific reason provided.";
+            showToast(`Account Deactivated. Reason: ${reason}`, "error");
+            setLoading(false);
+            return; 
+        }
+
         localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
+        localStorage.setItem('user', JSON.stringify(loggedInUser));
 
         showToast(`Welcome ${socialData.firstName}!`, 'success');
         
         setTimeout(() => {
-            if (response.data.user.role === 'admin') {
+            if (loggedInUser.role === 'admin') {
                 navigate('/admin/dashboard');
             } else {
                 navigate('/dashboard');
@@ -118,7 +128,8 @@ const AuthPage = () => {
       } else if (error.code === 'auth/account-exists-with-different-credential') {
         showToast('Account exists with a different login method.', 'error');
       } else {
-        showToast('Social authentication failed. Please try again.', 'error');
+        const errorMsg = error.response?.data?.message || 'Social authentication failed.';
+        showToast(errorMsg, 'error');
       }
     } finally {
       setLoading(false);
@@ -146,7 +157,6 @@ const AuthPage = () => {
 
       if (loginRes.data.success) {
         const token = loginRes.data.token;
-        localStorage.setItem('token', token);
 
         try {
             const profileRes = await axios.get(`${API_BASE_URL}/auth/profile`, {
@@ -154,6 +164,17 @@ const AuthPage = () => {
             });
 
             const fullUserData = profileRes.data.user;
+
+            // --- CHECK ACCOUNT STATUS AND SHOW REASON ---
+            if (fullUserData.accountStatus === 'Inactive') {
+                // const reason = fullUserData.deactivationReason || "No specific reason provided.";
+                showToast(`Access Denied. Account Deactivated.`, "error");
+                setLoading(false);
+                return; 
+            }
+
+            // If active, save and proceed
+            localStorage.setItem('token', token);
             localStorage.setItem('user', JSON.stringify(fullUserData));
 
             showToast('Login Successful! Redirecting...', 'success');
@@ -172,7 +193,8 @@ const AuthPage = () => {
         }
       }
     } catch (error) {
-      showToast(error.response?.data?.message || 'Login failed. Please check credentials.', 'error');
+      const errorMsg = error.response?.data?.message || 'Login failed. Please check credentials.';
+      showToast(errorMsg, 'error');
     } finally {
       setLoading(false);
     }
@@ -320,7 +342,7 @@ const AuthPage = () => {
                 <label className="relative cursor-pointer group">
                     <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
                     <div className={`w-24 h-24 rounded-full border-4 ${previewImage ? 'border-teal-500' : 'border-slate-100'} shadow-md flex items-center justify-center bg-slate-50 overflow-hidden hover:bg-slate-100 transition-all`}>
-                        {previewImage ? <img src={previewImage} className="w-full h-full object-cover" /> : <span className="text-2xl block opacity-50">📷</span>}
+                        {previewImage ? <img src={previewImage} className="w-full h-full object-cover" alt="Profile" /> : <span className="text-2xl block opacity-50">📷</span>}
                     </div>
                     <div className="absolute bottom-1 right-1 bg-teal-600 w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white shadow-md">+</div>
                 </label>

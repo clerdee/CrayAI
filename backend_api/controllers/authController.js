@@ -620,3 +620,40 @@ exports.getUserCount = async (req, res) => {
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+// 16. UPDATE USER STATUS (Deactivate/Reactivate)
+exports.updateUserStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, reason } = req.body; 
+
+    if (!status) {
+      return res.status(400).json({ success: false, message: "Status is required" });
+    }
+
+    const updateData = {
+      accountStatus: status,
+      deactivationReason: status === 'Active' ? null : reason 
+    };
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true } 
+    ).select('-password'); 
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `User marked as ${status}`,
+      user
+    });
+
+  } catch (error) {
+    console.error("Status Update Error:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};

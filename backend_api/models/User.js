@@ -41,14 +41,18 @@ const userSchema = new mongoose.Schema({
 
   accountStatus: {
     type: String,
-    enum: ['Active', 'Suspended', 'Pending'],
+    enum: ['Active', 'Inactive', 'Suspended', 'Pending'],
     default: 'Pending'
+  },
+   deactivationReason: {
+    type: String,
+    default: null
   },
   isVerified: {
     type: Boolean,
     default: false
   },
-
+ 
   otpCode: { type: String, default: null },
   otpExpires: { type: Date, default: null },
 
