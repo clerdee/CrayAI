@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { PH_CITIES } from '../../data/cities'; 
-import { CLOUDINARY_CONFIG } from '../../config/cloudinary'; // <--- 1. IMPORT CONFIG
+import { CLOUDINARY_CONFIG } from '../../config/cloudinary'; 
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'; 
 
 // --- REGEX PATTERNS ---
-const MOBILE_REGEX = /^9\d{9}$/; // Starts with 9, followed by exactly 9 digits (Total 10)
+const MOBILE_REGEX = /^9\d{9}$/; 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const NAME_REGEX = /^[a-zA-Z\s]+$/; // Only letters and spaces allowed
+const NAME_REGEX = /^[a-zA-Z\s]+$/; 
 
 const AuthPage = () => {
   const navigate = useNavigate();
@@ -19,7 +19,7 @@ const AuthPage = () => {
   const [loading, setLoading] = useState(false);
   
   // --- CUSTOM NOTIFICATION STATE ---
-  const [toast, setToast] = useState({ show: false, message: '', type: 'success' }); // type: 'success' | 'error'
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' }); 
 
   // --- PASSWORD VISIBILITY STATE ---
   const [showPassword, setShowPassword] = useState(false);
@@ -43,16 +43,14 @@ const AuthPage = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   
   const [previewImage, setPreviewImage] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null); // Track actual file for validation
+  const [selectedFile, setSelectedFile] = useState(null); 
 
   useEffect(() => {
     setIsRegister(location.pathname === '/register');
   }, [location.pathname]);
 
-  // --- HELPER: TRIGGER NOTIFICATION ---
   const showToast = (message, type = 'error') => {
     setToast({ show: true, message, type });
-    // Auto-hide after 3 seconds
     setTimeout(() => {
       setToast((prev) => ({ ...prev, show: false }));
     }, 3000);
@@ -77,7 +75,6 @@ const AuthPage = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
 
-    // --- CUSTOM VALIDATION (Replaces Browser Tooltip) ---
     if (!loginIdentifier.includes('@')) {
         showToast("Please include an '@' in the email address.", "error");
         return; 
@@ -126,48 +123,35 @@ const AuthPage = () => {
   };
 
   // ============================================================
-  // 2. HANDLE REGISTER (WITH STRICT VALIDATION)
+  // 2. HANDLE REGISTER
   // ============================================================
   const handleRegister = async (e) => {
     e.preventDefault();
 
-    // --- 1. PROFILE PICTURE CHECK ---
     if (!selectedFile) {
         showToast("Profile picture is required.", "error");
         return;
     }
-
-    // --- 2. NAMES CHECK (Only Letters) ---
     if (!NAME_REGEX.test(firstName) || !NAME_REGEX.test(lastName)) {
-        showToast("Names must only contain letters (no numbers or symbols).", "error");
+        showToast("Names must only contain letters.", "error");
         return;
     }
-
-    // --- 3. EMAIL CHECK ---
     if (!EMAIL_REGEX.test(email)) {
-        showToast("Please enter a valid email address with '@'.", "error");
+        showToast("Please enter a valid email address.", "error");
         return;
     }
-
-    // --- 4. MOBILE NUMBER CHECK ---
     if (!MOBILE_REGEX.test(mobileNumber)) {
         showToast("Mobile Number must be 10 digits and start with 9.", "error");
         return;
     }
-
-    // --- 5. ADDRESS CHECK (> 5 letters) ---
     if (streetAddress.trim().length <= 5) {
         showToast("Street Address must be more than 5 characters.", "error");
         return;
     }
-
-    // --- 6. CITY CHECK ---
     if (!city) {
         showToast("Please select a City from the list.", "error");
         return;
     }
-
-    // --- 7. PASSWORD CHECK ---
     if (regPassword !== confirmPassword) {
       showToast("Passwords do not match!", "error");
       return;
@@ -189,7 +173,6 @@ const AuthPage = () => {
       setShowOtpModal(true);
 
     } catch (error) {
-      // Backend returns 400 if user exists. We capture that message here.
       const msg = error.response?.data?.message || 'Registration failed.';
       showToast(msg, 'error');
     } finally {
@@ -198,7 +181,7 @@ const AuthPage = () => {
   };
 
   // ============================================================
-  // 3. HANDLE OTP VERIFICATION (With Cloudinary Upload)
+  // 3. HANDLE OTP VERIFICATION
   // ============================================================
   const handleVerifyOtp = async () => {
     if (otpCode.length !== 6) {
@@ -207,25 +190,17 @@ const AuthPage = () => {
     }
 
     setLoading(true);
-    
-    let imageUrl = ''; // Default to empty if no image
+    let imageUrl = ''; 
 
     try {
-      // --- A. UPLOAD IMAGE TO CLOUDINARY (If file exists) ---
       if (selectedFile) {
         const formData = new FormData();
         formData.append('file', selectedFile);
-        
-        // --- 2. USE CONFIG HERE ---
         formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset); 
 
         try {
-           // --- 3. USE CONFIG HERE ---
-           const uploadRes = await axios.post(
-             CLOUDINARY_CONFIG.apiUrl, 
-             formData
-           );
-           imageUrl = uploadRes.data.secure_url; // Get the URL
+           const uploadRes = await axios.post(CLOUDINARY_CONFIG.apiUrl, formData);
+           imageUrl = uploadRes.data.secure_url; 
         } catch (uploadError) {
            console.error("Image upload failed:", uploadError);
            showToast("Failed to upload profile picture. Try again.", "error");
@@ -234,7 +209,6 @@ const AuthPage = () => {
         }
       }
 
-      // --- B. SEND DATA TO BACKEND ---
       const profileData = {
         firstName, 
         lastName, 
@@ -269,9 +243,7 @@ const AuthPage = () => {
   return (
     <div className="min-h-screen w-full bg-white relative overflow-hidden font-sans selection:bg-teal-100 selection:text-teal-900">
       
-      {/* =======================
-          CUSTOM TOAST NOTIFICATION UI
-      ======================== */}
+      {/* TOAST NOTIFICATION */}
       <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[200] transition-all duration-300 transform ${toast.show ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'}`}>
         <div className={`flex items-center gap-3 px-6 py-3 rounded-xl shadow-2xl border ${
             toast.type === 'success' ? 'bg-white border-teal-100 text-teal-800' : 'bg-white border-red-100 text-red-800'
@@ -285,7 +257,7 @@ const AuthPage = () => {
         </div>
       </div>
 
-      {/* --- CLOSE BUTTON --- */}
+      {/* CLOSE BUTTON */}
       <button 
         onClick={() => navigate('/')}
         className="absolute top-6 right-6 p-3 rounded-full bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-900 transition-all z-50 shadow-sm border border-slate-100 group"
@@ -296,9 +268,7 @@ const AuthPage = () => {
         </svg>
       </button>
 
-      {/* =======================
-          OTP MODAL
-      ======================== */}
+      {/* OTP MODAL */}
       {showOtpModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl scale-100">
@@ -312,7 +282,7 @@ const AuthPage = () => {
       )}
 
       {/* =========================================================================
-          1. SLIDING VISUAL PANEL
+          1. SLIDING VISUAL PANEL (FIXED SIZE HERE)
       ========================================================================== */}
       <div 
         className={`hidden lg:flex w-1/2 h-full bg-[#0F172A] absolute top-0 z-20 items-center justify-center overflow-hidden transition-all duration-700 ease-in-out shadow-2xl`}
@@ -320,14 +290,14 @@ const AuthPage = () => {
       >
         <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#2DD4BF 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
         <div className="relative z-10 flex flex-col items-center">
-           <div className="relative w-[300px] h-[620px] bg-slate-950 rounded-[3rem] border-[8px] border-slate-900 shadow-2xl overflow-hidden ring-1 ring-white/10">
+           <div className="relative w-[260px] h-[540px] bg-slate-950 rounded-[2.5rem] border-[6px] border-slate-900 shadow-2xl overflow-hidden ring-1 ring-white/10">
               <div className="w-full h-full bg-black relative">
                  <img src="https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?q=80&w=600&auto=format&fit=crop" alt="Scan" className="w-full h-full object-cover opacity-60" />
-                 <div className="absolute inset-0 flex flex-col justify-end p-6">
+                 <div className="absolute inset-0 flex flex-col justify-end p-5">
                     <div className="bg-white/10 backdrop-blur-xl border border-white/10 p-4 rounded-2xl mb-4 shadow-lg">
                         <div className="flex items-center gap-3">
                            <div className="w-10 h-10 rounded-lg bg-teal-600 flex items-center justify-center text-xl">🦞</div>
-                           <div><p className="text-white text-sm font-bold">Cherax destructor</p><div className="flex gap-2 mt-0.5"><span className="bg-emerald-500/40 px-1.5 py-0.5 rounded text-[9px] text-emerald-100">98% Match</span></div></div>
+                           <div><p className="text-white text-sm font-bold">Cherax Quadricarinatus</p><div className="flex gap-2 mt-0.5"><span className="bg-emerald-500/40 px-1.5 py-0.5 rounded text-[9px] text-emerald-100">98% Match</span></div></div>
                         </div>
                     </div>
                  </div>
@@ -369,7 +339,6 @@ const AuthPage = () => {
                 </div>
                 <input type="email" required className="input-field pl-4" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} />
                 
-                {/* Mobile Number Field */}
                 <div className="relative">
                     <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 font-bold text-sm border-r border-slate-300 pr-2 pointer-events-none">+63</span>
                     <input 
@@ -379,7 +348,7 @@ const AuthPage = () => {
                         className="input-field !pl-16" 
                         placeholder="9XX XXX XXXX" 
                         value={mobileNumber} 
-                        onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, ''))} // Only allow numbers 
+                        onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, ''))} 
                     />
                 </div>
 
@@ -390,14 +359,12 @@ const AuthPage = () => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                    {/* Password Field */}
                     <div className="relative">
                         <input type={showPassword ? "text" : "password"} required className="input-field pl-4 pr-10" placeholder="Password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} />
                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
                             {showPassword ? "🙈" : "👁️"}
                         </button>
                     </div>
-                    {/* Confirm Field */}
                     <div className="relative">
                         <input type={showConfirmPassword ? "text" : "password"} required className="input-field pl-4 pr-10" placeholder="Confirm" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
                         <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
@@ -424,11 +391,7 @@ const AuthPage = () => {
              <p className="text-slate-500 text-base mt-2">Please enter your details to access the portal.</p>
           </div>
 
-          <form 
-            onSubmit={handleLogin} 
-            className="flex flex-col gap-5"
-            noValidate // <--- ADDED NOVALIDATE TO STOP BROWSER POPUPS
-          >
+          <form onSubmit={handleLogin} className="flex flex-col gap-5" noValidate>
             <div className="space-y-4">
               <div className="relative">
                 <input 

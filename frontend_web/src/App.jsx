@@ -1,8 +1,10 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import axios from 'axios'; // 1. Import Axios
+import axios from 'axios';
 
 import LandingPage from './pages/LandingPage';
+import AboutUs from './pages/AboutUs';
+import TheRedClaw from './pages/TheRedClaw';
 import AuthPage from './pages/auth/AuthPage';
 import UserDashboard from './pages/user/UserDashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -64,6 +66,8 @@ const App = () => {
     <Routes>
       {/* Public Routes */}
       <Route path="/" element={<LandingPage />} />
+      <Route path="/about" element={<AboutUs />} />
+      <Route path="/red-claw" element={<TheRedClaw />} />
       <Route path="/login" element={<AuthPage />} />
       <Route path="/register" element={<AuthPage />} />
 
