@@ -542,3 +542,66 @@ exports.deleteUser = async (req, res) => {
     res.status(500).json({ message: 'Server Error' });
   }
 };
+
+// 14. SOCIAL LOGIN (Google, GitHub)
+exports.socialLogin = async (req, res) => {
+  try {
+    const { email, firstName, lastName, profilePic, providerId, uid } = req.body;
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // 2. IF USER DOES NOT EXIST -> CREATE THEM
+      // Since Firebase verified them, we set isVerified to true and Status to Active
+      user = await User.create({
+        email,
+        firstName,
+        lastName,
+        profilePic,
+        provider: providerId || 'social',
+        firebaseUid: uid,
+        password: null,
+        isVerified: true, 
+        accountStatus: 'Active',
+        role: 'user'
+      });
+    } else {
+      // 3. IF USER EXISTS -> UPDATE INFO (Optional)
+      // If they logged in before with email/pass, we might want to link the provider
+      if (user.provider === 'local') {
+        // You can choose to update their provider or keep it as is.
+        // For now, we just let them log in.
+      }
+    }
+
+    // 4. GENERATE JWT TOKEN
+    // Ensure you use the same secret as your normal login
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    // 5. Send Response
+    res.status(200).json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        profilePic: user.profilePic,
+        isVerified: user.isVerified
+      }
+    });
+
+  } catch (error) {
+    console.error("Social Login Error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error during social login.' 
+    });
+  }
+};

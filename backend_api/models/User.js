@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-  // --- AUTH CREDENTIALS ---
   email: {
     type: String,
     required: true,
@@ -11,10 +10,18 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true
+    default: null 
   },
-  
-  // --- PROFILE DATA ---
+  provider: {
+    type: String,
+    enum: ['local', 'google.com', 'github.com'],
+    default: 'local'
+  },
+  firebaseUid: {
+    type: String, 
+    default: null
+  },
+
   firstName: { type: String, default: '' },
   lastName:  { type: String, default: '' },
   phone:     { type: String, default: '' },
@@ -29,11 +36,9 @@ const userSchema = new mongoose.Schema({
     default: 'user' 
   },
 
-  // --- SOCIAL GRAPH ---
   followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  
-  // --- SYSTEM FLAGS ---
+
   accountStatus: {
     type: String,
     enum: ['Active', 'Suspended', 'Pending'],
@@ -44,7 +49,6 @@ const userSchema = new mongoose.Schema({
     default: false
   },
 
-  // --- OTP LOGIC ---
   otpCode: { type: String, default: null },
   otpExpires: { type: Date, default: null },
 

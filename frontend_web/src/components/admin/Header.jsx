@@ -9,16 +9,10 @@ const Header = ({ title }) => {
       <h2 className="text-2xl font-bold text-slate-800">{title}</h2>
 
       <div className="flex items-center gap-6">
-        {/* Date Picker Dummy */}
-        <div className="hidden md:flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-full border border-slate-200 text-sm text-slate-600">
-            <Calendar className="w-4 h-4 text-slate-400" />
-            <span>Jan 2026 - Dec 2026</span>
-        </div>
-
         {/* Search */}
-        <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-500 hover:bg-slate-100 cursor-pointer transition">
+        {/* <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-500 hover:bg-slate-100 cursor-pointer transition">
             <Search className="w-5 h-5" />
-        </div>
+        </div> */}
 
         {/* Notification */}
         <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-500 hover:bg-slate-100 cursor-pointer transition relative">

@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { registerUser, verifyOTP, resendOTP, loginUser, getMe, 
         authenticateToken, updateProfile, changePassword, updateEmail, 
-        getUserPublicProfile, followUser, getAllUsers, deleteUser 
+        getUserPublicProfile, followUser, getAllUsers, deleteUser, 
+        socialLogin
       } = require('../controllers/authController'); 
 
 const { getModerationContent, deleteContent } = require('../controllers/adminController');
@@ -11,6 +12,7 @@ router.post('/signup', registerUser);
 router.post('/verify-otp', verifyOTP);
 router.post('/resend-otp', resendOTP);
 router.post('/login', loginUser); 
+router.post('/social-login', socialLogin);
 router.get('/profile', authenticateToken, getMe);
 router.put('/profile/update', authenticateToken, updateProfile);
 router.post('/change-password', authenticateToken, changePassword);

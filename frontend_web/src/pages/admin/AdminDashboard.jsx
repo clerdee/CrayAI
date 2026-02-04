@@ -6,13 +6,11 @@ import {
 } from 'recharts';
 import { ScanEye, AlertTriangle, Users, Sprout, Activity, Droplets } from 'lucide-react';
 
-// --- MOCK DATA (Aligned with Crayfish Research) ---
-
 // 1. Scan Activity (AI Usage)
 const scanActivityData = [
   { name: 'Mon', scans: 120, detected_disease: 5 },
   { name: 'Tue', scans: 150, detected_disease: 8 },
-  { name: 'Wed', scans: 180, detected_disease: 12 }, // Spikes might indicate outbreak
+  { name: 'Wed', scans: 180, detected_disease: 12 }, 
   { name: 'Thu', scans: 140, detected_disease: 4 },
   { name: 'Fri', scans: 200, detected_disease: 6 },
   { name: 'Sat', scans: 250, detected_disease: 10 },
@@ -22,15 +20,15 @@ const scanActivityData = [
 // 2. Population Demographics (Gender/Berried Status)
 const populationData = [
   { name: 'Male', value: 450, color: '#3B82F6' }, // Blue
-  { name: 'Female (Non-Berried)', value: 300, color: '#EC4899' }, // Pink
-  { name: 'Berried (Pregnant)', value: 150, color: '#F59E0B' }, // Orange (High Value)
-  { name: 'Juvenile/Unknown', value: 100, color: '#94A3B8' }, // Grey
+  { name: 'Female (Non-Berried)', value: 300, color: '#EC4899' }, 
+  { name: 'Berried (Pregnant)', value: 150, color: '#F59E0B' }, 
+  { name: 'Juvenile/Unknown', value: 100, color: '#94A3B8' }, 
 ];
 
 // 3. Water Quality Reports (Turbidity/Algae)
 const waterQualityData = [
   { name: 'Pond A', turbidity: 20, algae: 15 },
-  { name: 'Pond B', turbidity: 45, algae: 60 }, // High algae!
+  { name: 'Pond B', turbidity: 45, algae: 60 }, 
   { name: 'Pond C', turbidity: 25, algae: 20 },
   { name: 'Pond D', turbidity: 30, algae: 25 },
 ];

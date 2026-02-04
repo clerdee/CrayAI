@@ -4,6 +4,10 @@ import axios from 'axios';
 import { PH_CITIES } from '../../data/cities'; 
 import { CLOUDINARY_CONFIG } from '../../config/cloudinary'; 
 
+// --- 1. FIREBASE IMPORTS ---
+import { signInWithPopup } from "firebase/auth";
+import { auth, googleProvider, githubProvider } from '../../config/firebase'; 
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'; 
 
 // --- REGEX PATTERNS ---
@@ -70,6 +74,58 @@ const AuthPage = () => {
   };
 
   // ============================================================
+  // 0. HANDLE SOCIAL LOGIN (GOOGLE & GITHUB)
+  // ============================================================
+  const handleSocialLogin = async (provider) => {
+    setLoading(true);
+    try {
+      // 1. Trigger Firebase Popup
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      // 2. Prepare data for your backend
+      const socialData = {
+        email: user.email,
+        firstName: user.displayName ? user.displayName.split(' ')[0] : 'User',
+        lastName: user.displayName ? user.displayName.split(' ').slice(1).join(' ') : '',
+        profilePic: user.photoURL,
+        providerId: user.providerData[0]?.providerId,
+        uid: user.uid
+      };
+
+      // 3. Send to your Backend to create session/JWT
+      const response = await axios.post(`${API_BASE_URL}/auth/social-login`, socialData);
+
+      if (response.data.success) {
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+
+        showToast(`Welcome ${socialData.firstName}!`, 'success');
+        
+        setTimeout(() => {
+            if (response.data.user.role === 'admin') {
+                navigate('/admin/dashboard');
+            } else {
+                navigate('/dashboard');
+            }
+        }, 1000);
+      }
+
+    } catch (error) {
+      console.error("Social Login Error:", error);
+      if (error.code === 'auth/popup-closed-by-user') {
+        showToast('Login cancelled.', 'error');
+      } else if (error.code === 'auth/account-exists-with-different-credential') {
+        showToast('Account exists with a different login method.', 'error');
+      } else {
+        showToast('Social authentication failed. Please try again.', 'error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============================================================
   // 1. HANDLE LOGIN
   // ============================================================
   const handleLogin = async (e) => {
@@ -128,50 +184,21 @@ const AuthPage = () => {
   const handleRegister = async (e) => {
     e.preventDefault();
 
-    if (!selectedFile) {
-        showToast("Profile picture is required.", "error");
-        return;
-    }
-    if (!NAME_REGEX.test(firstName) || !NAME_REGEX.test(lastName)) {
-        showToast("Names must only contain letters.", "error");
-        return;
-    }
-    if (!EMAIL_REGEX.test(email)) {
-        showToast("Please enter a valid email address.", "error");
-        return;
-    }
-    if (!MOBILE_REGEX.test(mobileNumber)) {
-        showToast("Mobile Number must be 10 digits and start with 9.", "error");
-        return;
-    }
-    if (streetAddress.trim().length <= 5) {
-        showToast("Street Address must be more than 5 characters.", "error");
-        return;
-    }
-    if (!city) {
-        showToast("Please select a City from the list.", "error");
-        return;
-    }
-    if (regPassword !== confirmPassword) {
-      showToast("Passwords do not match!", "error");
-      return;
-    }
-    if (regPassword.length < 6) {
-        showToast("Password must be at least 6 characters long.", "error");
-        return;
-    }
+    if (!selectedFile) { showToast("Profile picture is required.", "error"); return; }
+    if (!NAME_REGEX.test(firstName) || !NAME_REGEX.test(lastName)) { showToast("Names must only contain letters.", "error"); return; }
+    if (!EMAIL_REGEX.test(email)) { showToast("Please enter a valid email address.", "error"); return; }
+    if (!MOBILE_REGEX.test(mobileNumber)) { showToast("Mobile Number must be 10 digits and start with 9.", "error"); return; }
+    if (streetAddress.trim().length <= 5) { showToast("Street Address must be more than 5 characters.", "error"); return; }
+    if (!city) { showToast("Please select a City from the list.", "error"); return; }
+    if (regPassword !== confirmPassword) { showToast("Passwords do not match!", "error"); return; }
+    if (regPassword.length < 6) { showToast("Password must be at least 6 characters long.", "error"); return; }
 
     setLoading(true);
 
     try {
-      await axios.post(`${API_BASE_URL}/auth/signup`, {
-        email,
-        password: regPassword
-      });
-      
+      await axios.post(`${API_BASE_URL}/auth/signup`, { email, password: regPassword });
       showToast("Account created! Check email for OTP.", "success");
       setShowOtpModal(true);
-
     } catch (error) {
       const msg = error.response?.data?.message || 'Registration failed.';
       showToast(msg, 'error');
@@ -184,10 +211,7 @@ const AuthPage = () => {
   // 3. HANDLE OTP VERIFICATION
   // ============================================================
   const handleVerifyOtp = async () => {
-    if (otpCode.length !== 6) {
-        showToast("Please enter the 6-digit code.", "error");
-        return;
-    }
+    if (otpCode.length !== 6) { showToast("Please enter the 6-digit code.", "error"); return; }
 
     setLoading(true);
     let imageUrl = ''; 
@@ -210,12 +234,8 @@ const AuthPage = () => {
       }
 
       const profileData = {
-        firstName, 
-        lastName, 
-        phone: `+63${mobileNumber}`,
-        street: streetAddress, 
-        city, 
-        country: 'Philippines',
+        firstName, lastName, phone: `+63${mobileNumber}`,
+        street: streetAddress, city, country: 'Philippines',
         profilePic: imageUrl 
       };
 
@@ -226,13 +246,10 @@ const AuthPage = () => {
       if (response.data.success) {
         localStorage.setItem('token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user)); 
-        
         showToast("Verification Successful!", "success");
         setShowOtpModal(false);
-        
         setTimeout(() => navigate('/dashboard'), 1000);
       }
-
     } catch (error) {
       showToast(error.response?.data?.message || 'Invalid OTP', 'error');
     } finally {
@@ -243,29 +260,15 @@ const AuthPage = () => {
   return (
     <div className="min-h-screen w-full bg-white relative overflow-hidden font-sans selection:bg-teal-100 selection:text-teal-900">
       
-      {/* TOAST NOTIFICATION */}
+      {/* TOAST */}
       <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[200] transition-all duration-300 transform ${toast.show ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'}`}>
-        <div className={`flex items-center gap-3 px-6 py-3 rounded-xl shadow-2xl border ${
-            toast.type === 'success' ? 'bg-white border-teal-100 text-teal-800' : 'bg-white border-red-100 text-red-800'
-        }`}>
-            {toast.type === 'success' ? (
-                <div className="w-6 h-6 rounded-full bg-teal-100 flex items-center justify-center text-teal-600">✓</div>
-            ) : (
-                <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center text-red-600">!</div>
-            )}
+        <div className={`flex items-center gap-3 px-6 py-3 rounded-xl shadow-2xl border ${toast.type === 'success' ? 'bg-white border-teal-100 text-teal-800' : 'bg-white border-red-100 text-red-800'}`}>
             <span className="font-bold text-sm">{toast.message}</span>
         </div>
       </div>
 
-      {/* CLOSE BUTTON */}
-      <button 
-        onClick={() => navigate('/')}
-        className="absolute top-6 right-6 p-3 rounded-full bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-900 transition-all z-50 shadow-sm border border-slate-100 group"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-90 transition-transform duration-300">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
+      <button onClick={() => navigate('/')} className="absolute top-6 right-6 p-3 rounded-full bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-900 transition-all z-50 shadow-sm border border-slate-100 group">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-90 transition-transform duration-300"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </button>
 
       {/* OTP MODAL */}
@@ -281,13 +284,8 @@ const AuthPage = () => {
         </div>
       )}
 
-      {/* =========================================================================
-          1. SLIDING VISUAL PANEL (FIXED SIZE HERE)
-      ========================================================================== */}
-      <div 
-        className={`hidden lg:flex w-1/2 h-full bg-[#0F172A] absolute top-0 z-20 items-center justify-center overflow-hidden transition-all duration-700 ease-in-out shadow-2xl`}
-        style={{ transform: isRegister ? 'translateX(100%)' : 'translateX(0%)', left: 0 }}
-      >
+      {/* VISUAL PANEL */}
+      <div className={`hidden lg:flex w-1/2 h-full bg-[#0F172A] absolute top-0 z-20 items-center justify-center overflow-hidden transition-all duration-700 ease-in-out shadow-2xl`} style={{ transform: isRegister ? 'translateX(100%)' : 'translateX(0%)', left: 0 }}>
         <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#2DD4BF 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
         <div className="relative z-10 flex flex-col items-center">
            <div className="relative w-[260px] h-[540px] bg-slate-950 rounded-[2.5rem] border-[6px] border-slate-900 shadow-2xl overflow-hidden ring-1 ring-white/10">
@@ -310,18 +308,14 @@ const AuthPage = () => {
         </div>
       </div>
 
-      {/* =========================================================================
-          2. REGISTER FORM
-      ========================================================================== */}
+      {/* REGISTER FORM */}
       <div className={`absolute top-0 left-0 h-full w-full lg:w-1/2 flex flex-col items-center justify-center bg-white transition-opacity duration-500 ${isRegister ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'}`}>
         <div className="w-full h-full px-8 flex flex-col items-center justify-center overflow-y-auto">
             <div className="w-full max-w-xl flex flex-col gap-5 py-8">
-            
             <div className="text-center">
                 <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Create Account</h1>
                 <p className="text-slate-500 text-sm mt-1">Fill in your details to get started.</p>
             </div>
-
             <div className="flex justify-center my-1">
                 <label className="relative cursor-pointer group">
                     <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
@@ -331,48 +325,31 @@ const AuthPage = () => {
                     <div className="absolute bottom-1 right-1 bg-teal-600 w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white shadow-md">+</div>
                 </label>
             </div>
-
             <form onSubmit={handleRegister} className="flex flex-col gap-3" noValidate>
                 <div className="grid grid-cols-2 gap-4">
                     <input type="text" required className="input-field pl-4" placeholder="First Name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
                     <input type="text" required className="input-field pl-4" placeholder="Last Name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
                 </div>
                 <input type="email" required className="input-field pl-4" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} />
-                
                 <div className="relative">
                     <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 font-bold text-sm border-r border-slate-300 pr-2 pointer-events-none">+63</span>
-                    <input 
-                        type="tel" 
-                        required 
-                        maxLength="10" 
-                        className="input-field !pl-16" 
-                        placeholder="9XX XXX XXXX" 
-                        value={mobileNumber} 
-                        onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, ''))} 
-                    />
+                    <input type="tel" required maxLength="10" className="input-field !pl-16" placeholder="9XX XXX XXXX" value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, ''))} />
                 </div>
-
                 <input type="text" required className="input-field pl-4" placeholder="Street Address" value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} />
                 <div className="grid grid-cols-2 gap-4">
                     <select required className="input-field pl-4 bg-transparent cursor-pointer" value={city} onChange={(e) => setCity(e.target.value)}><option value="" disabled>Select City</option>{PH_CITIES.map((c) => (<option key={c} value={c}>{c}</option>))}</select>
                     <input type="text" className="input-field pl-4 bg-slate-50 text-slate-500 cursor-not-allowed" value="Philippines" readOnly />
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                     <div className="relative">
                         <input type={showPassword ? "text" : "password"} required className="input-field pl-4 pr-10" placeholder="Password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} />
-                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
-                            {showPassword ? "🙈" : "👁️"}
-                        </button>
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">{showPassword ? "🙈" : "👁️"}</button>
                     </div>
                     <div className="relative">
                         <input type={showConfirmPassword ? "text" : "password"} required className="input-field pl-4 pr-10" placeholder="Confirm" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-                        <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
-                            {showConfirmPassword ? "🙈" : "👁️"}
-                        </button>
+                        <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">{showConfirmPassword ? "🙈" : "👁️"}</button>
                     </div>
                 </div>
-                
                 <button type="submit" disabled={loading} className="primary-btn mt-2 shadow-xl shadow-teal-500/20 disabled:opacity-70">{loading ? 'Processing...' : 'Register Account'}</button>
             </form>
             <div className="text-center"><p className="text-slate-500 text-sm">Already have an account? <span onClick={toggleMode} className="text-teal-600 font-bold hover:underline cursor-pointer">Log In</span></p></div>
@@ -380,9 +357,7 @@ const AuthPage = () => {
         </div>
       </div>
 
-      {/* =========================================================================
-          3. LOGIN FORM
-      ========================================================================== */}
+      {/* LOGIN FORM */}
       <div className={`absolute top-0 right-0 h-full w-full lg:w-1/2 flex flex-col items-center justify-center p-8 bg-white transition-opacity duration-500 ${!isRegister ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'}`}>
         <div className="w-full max-w-lg flex flex-col gap-8">
           <div className="text-center">
@@ -394,29 +369,37 @@ const AuthPage = () => {
           <form onSubmit={handleLogin} className="flex flex-col gap-5" noValidate>
             <div className="space-y-4">
               <div className="relative">
-                <input 
-                    type="email" 
-                    required 
-                    className="input-field pl-4 py-3.5" 
-                    placeholder="Email / Username" 
-                    value={loginIdentifier} 
-                    onChange={(e) => setLoginIdentifier(e.target.value)} 
-                />
+                <input type="email" required className="input-field pl-4 py-3.5" placeholder="Email / Username" value={loginIdentifier} onChange={(e) => setLoginIdentifier(e.target.value)} />
               </div>
-              
               <div className="relative">
                  <input type={showPassword ? "text" : "password"} required className="input-field pl-4 pr-10 py-3.5" placeholder="Password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
-                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
-                    {showPassword ? "🙈" : "👁️"}
-                 </button>
+                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">{showPassword ? "🙈" : "👁️"}</button>
               </div>
             </div>
-
             <button type="submit" disabled={loading} className="primary-btn py-3.5 text-base disabled:opacity-70">{loading ? 'Signing In...' : 'Sign In to Dashboard'}</button>
           </form>
 
+          {/* --- SOCIAL LOGIN BUTTONS (UPDATED) --- */}
           <div className="relative flex py-2 items-center"><div className="flex-grow border-t border-slate-100"></div><span className="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase tracking-wider">Or continue with</span><div className="flex-grow border-t border-slate-100"></div></div>
-          <div className="grid grid-cols-2 gap-4"><button className="social-btn py-3"><span className="font-bold text-lg text-blue-500">G</span> Google</button><button className="social-btn py-3">GitHub</button></div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <button 
+                type="button" 
+                onClick={() => handleSocialLogin(googleProvider)} 
+                className="social-btn py-3"
+            >
+                <span className="font-bold text-lg text-blue-500">G</span> Google
+            </button>
+            <button 
+                type="button" 
+                onClick={() => handleSocialLogin(githubProvider)} 
+                className="social-btn py-3"
+            >
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.285 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" /></svg> 
+                GitHub
+            </button>
+          </div>
+
           <div className="text-center"><p className="text-slate-500 text-sm">Don't have an account? <span onClick={toggleMode} className="text-teal-600 font-bold hover:text-teal-700 hover:underline cursor-pointer">Sign up</span></p></div>
         </div>
       </div>
@@ -426,7 +409,7 @@ const AuthPage = () => {
         .input-field:focus { outline: none; border-color: #14B8A6; box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.1); }
         .primary-btn { width: 100%; background-color: #0F172A; color: white; font-weight: 700; font-size: 0.875rem; border-radius: 0.75rem; padding: 1rem; transition: all 0.2s; }
         .primary-btn:hover { background-color: #0D9488; box-shadow: 0 10px 15px -3px rgba(13, 148, 136, 0.3); transform: translateY(-1px); }
-        .social-btn { display: flex; align-items: center; justify-content: center; gap: 0.5rem; border: 1px solid #E2E8F0; background-color: white; color: #334155; font-weight: 700; font-size: 0.875rem; border-radius: 0.75rem; transition: all 0.2s; }
+        .social-btn { display: flex; align-items: center; justify-content: center; gap: 0.5rem; border: 1px solid #E2E8F0; background-color: white; color: #334155; font-weight: 700; font-size: 0.875rem; border-radius: 0.75rem; transition: all 0.2s; cursor: pointer; }
         .social-btn:hover { background-color: #F8FAFC; border-color: #CBD5E1; }
       `}</style>
     </div>
