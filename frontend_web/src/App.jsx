@@ -9,11 +9,12 @@ import AuthPage from './pages/auth/AuthPage';
 import UserDashboard from './pages/user/UserDashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AIScanLogs from './pages/admin/AIScanLogs';
-import TrainingData from './pages/admin/TrainingData';
+import TrainingData from './pages/admin/Training/TrainingData';
 import Moderation from './pages/admin/Moderation';
 import UserManagement from './pages/admin/UserManagement';
 import SystemHealth from './pages/admin/SystemHealth';
 import Settings from './pages/admin/Settings';
+
 
 // =========================================================
 // 2. ADD AXIOS INTERCEPTOR (The Session Guard)

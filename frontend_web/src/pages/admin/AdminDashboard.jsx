@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios'; // <--- 1. IMPORT AXIOS
+import axios from 'axios'; 
 import AdminLayout from '../../layouts/AdminLayout';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -7,10 +7,8 @@ import {
 } from 'recharts';
 import { ScanEye, AlertTriangle, Users, Sprout, Activity, Droplets } from 'lucide-react';
 
-// Get API URL from your existing .env
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'; 
 
-// ... (Keep your scanActivityData, populationData, waterQualityData arrays here) ...
 const scanActivityData = [
   { name: 'Mon', scans: 120, detected_disease: 5 },
   { name: 'Tue', scans: 150, detected_disease: 8 },

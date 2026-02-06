@@ -1,5 +1,18 @@
 {
+  "name": "crayai",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "server-node": "cd backend_api && npx nodemon server.js",
+    "server-python": "cd backend_api && python app.py",
+    "web": "cd frontend_web && npm run dev",
+    "dev": "concurrently -n \"NODE,PY,WEB\" -c \"blue,yellow,green\" \"npm run server-node\" \"npm run server-python\" \"npm run web\""
+  },
   "dependencies": {
     "mongodb": "^7.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
+ 
