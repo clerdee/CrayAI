@@ -20,7 +20,7 @@ const Moderation = () => {
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
 
   // --- MODAL STATE (CONFIRMATION) ---
-  const [actionModal, setActionModal] = useState(null); // { id, type, action }
+  const [actionModal, setActionModal] = useState(null); 
 
   // --- HELPER: SHOW TOAST ---
   const showToast = (message, type = 'success') => {
@@ -86,7 +86,7 @@ const Moderation = () => {
       ));
 
       showToast(`${type} ${action} successfully!`, "success");
-      setActionModal(null); // Close Modal
+      setActionModal(null); 
 
     } catch (error) {
       console.error(error);

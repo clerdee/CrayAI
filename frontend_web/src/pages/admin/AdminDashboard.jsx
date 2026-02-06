@@ -5,9 +5,10 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend, BarChart, Bar 
 } from 'recharts';
-import { ScanEye, AlertTriangle, Users, Sprout, Activity, Droplets } from 'lucide-react';
+import { ScanEye, Users, Activity, Droplets, HelpCircle, ShieldAlert } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'; 
+const CHATBOT_API_URL = 'http://localhost:5001/api/training/chatbot'; // Python Backend
 
 const scanActivityData = [
   { name: 'Mon', scans: 120, detected_disease: 5 },
@@ -34,18 +35,43 @@ const waterQualityData = [
 ];
 
 const AdminDashboard = () => {
-  // --- 2. STATE FOR USER COUNT ---
+  // --- STATE ---
   const [userCount, setUserCount] = useState(0); 
+  const [chatbotStats, setChatbotStats] = useState({ failed_count: 0 }); 
+  const [moderationCount, setModerationCount] = useState(0); // 🆕 New State for Moderation
   const [loading, setLoading] = useState(true);
 
-  // --- 3. FETCH DATA ON MOUNT ---
+  // --- FETCH DATA ON MOUNT ---
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/auth/user-count`);
-        if (response.data.success) {
-          setUserCount(response.data.count);
+        const token = localStorage.getItem('token'); // Needed for moderation endpoint
+
+        // Run fetches in parallel
+        const [userResponse, botResponse, modResponse] = await Promise.all([
+            axios.get(`${API_BASE_URL}/auth/user-count`),
+            axios.get(`${CHATBOT_API_URL}/stats`),
+            axios.get(`${API_BASE_URL}/auth/admin/moderation`, {
+                headers: { Authorization: `Bearer ${token}` }
+            })
+        ]);
+
+        // 1. Set User Count
+        if (userResponse.data.success) {
+          setUserCount(userResponse.data.count);
         }
+        
+        // 2. Set Chatbot Stats
+        if (botResponse.data) {
+            setChatbotStats(botResponse.data);
+        }
+
+        // 3. Set Moderation Stats (Count items NOT 'Resolved')
+        if (modResponse.data.success) {
+            const pendingItems = modResponse.data.items.filter(item => item.status !== 'Resolved').length;
+            setModerationCount(pendingItems);
+        }
+
       } catch (error) {
         console.error("Failed to load dashboard stats", error);
       } finally {
@@ -68,15 +94,15 @@ const AdminDashboard = () => {
           icon={<ScanEye className="text-teal-600" />} 
           bg="bg-teal-50" 
         />
+        
         <StatsCard 
-          title="Disease Alerts" 
-          value="32" 
-          subtext="Requires Moderation"
-          icon={<AlertTriangle className="text-red-600" />} 
-          bg="bg-red-50" 
+          title="Unanswered Queries" 
+          value={loading ? "..." : chatbotStats.failed_count} 
+          subtext="Needs Admin Review"
+          icon={<HelpCircle className={chatbotStats.failed_count > 0 ? "text-orange-600" : "text-green-600"} />} 
+          bg={chatbotStats.failed_count > 0 ? "bg-orange-50" : "bg-green-50"} 
         />
         
-        {/* --- UPDATED ACTIVE USERS CARD --- */}
         <StatsCard 
           title="Total Users" 
           value={loading ? "..." : userCount} 
@@ -85,12 +111,13 @@ const AdminDashboard = () => {
           bg="bg-blue-50" 
         />
         
+        {/* 👇 REPLACED: Bot Accuracy -> Pending Moderation */}
         <StatsCard 
-          title="Avg. Accuracy" 
-          value="96.8%" 
-          subtext="Based on user validation"
-          icon={<Activity className="text-purple-600" />} 
-          bg="bg-purple-50" 
+          title="Pending Moderation" 
+          value={loading ? "..." : moderationCount} 
+          subtext="Flagged Posts & Comments"
+          icon={<ShieldAlert className={moderationCount > 0 ? "text-red-600" : "text-slate-400"} />} 
+          bg={moderationCount > 0 ? "bg-red-50" : "bg-slate-50"} 
         />
       </div>
 
