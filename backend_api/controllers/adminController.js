@@ -1,4 +1,3 @@
-// controllers/adminController.js
 const Post = require('../models/Post');
 const Comment = require('../models/Comment');
 const User = require('../models/User');
@@ -8,7 +7,7 @@ exports.getModerationContent = async (req, res) => {
   try {
     // A. Fetch All Posts
     const posts = await Post.find()
-      .populate('userId', 'firstName lastName profilePic email')
+      .populate('userId', 'firstName lastName profilePic email') // Fetch profile info
       .sort({ createdAt: -1 })
       .lean();
 
@@ -22,13 +21,18 @@ exports.getModerationContent = async (req, res) => {
     const formattedPosts = posts.map(p => ({
       id: p._id,
       type: 'Post',
-      author: p.userId ? `${p.userId.firstName} ${p.userId.lastName}` : 'Unknown',
-      email: p.userId?.email || 'N/A',
+      // 👇 IMPORTANT: Send Author as an Object with profilePic
+      author: {
+        name: p.userId ? `${p.userId.firstName} ${p.userId.lastName}` : 'Unknown',
+        email: p.userId?.email || 'N/A',
+        profilePic: p.userId?.profilePic || null 
+      },
       content: p.content || (p.media?.length ? '[Media Content]' : '[Empty]'),
       reason: 'New Content',
       severity: 'Low',      
       timestamp: p.createdAt,
-      status: 'Pending',
+      status: p.moderationStatus || 'Pending', // Ensure your DB has this field
+      actionTaken: p.moderationStatus === 'Resolved' ? 'Approved' : null,
       media: p.media
     }));
 
@@ -36,13 +40,18 @@ exports.getModerationContent = async (req, res) => {
     const formattedComments = comments.map(c => ({
       id: c._id,
       type: 'Comment',
-      author: c.userId ? `${c.userId.firstName} ${c.userId.lastName}` : 'Unknown',
-      email: c.userId?.email || 'N/A',
+      // 👇 IMPORTANT: Same here for Comments
+      author: {
+        name: c.userId ? `${c.userId.firstName} ${c.userId.lastName}` : 'Unknown',
+        email: c.userId?.email || 'N/A',
+        profilePic: c.userId?.profilePic || null
+      },
       content: c.text,
       reason: 'New Comment',
       severity: 'Low',
       timestamp: c.createdAt,
-      status: 'Pending'
+      status: c.moderationStatus || 'Pending',
+      actionTaken: c.moderationStatus === 'Resolved' ? 'Approved' : null
     }));
 
     // E. Combine and Sort by Newest
@@ -58,24 +67,31 @@ exports.getModerationContent = async (req, res) => {
   }
 };
 
-// 2. ADMIN DELETE CONTENT (Handles both types)
-exports.deleteContent = async (req, res) => {
+// 2. MODERATE CONTENT (Approve OR Delete)
+exports.moderateContent = async (req, res) => {
   try {
-    const { id, type } = req.params; // Expects type to be 'Post' or 'Comment'
+    const { id, type } = req.params; 
+    const { status } = req.body; // Expecting 'Approved' or 'Deleted'
 
-    if (type === 'Post') {
-        await Post.findByIdAndDelete(id);
-        // Optional: Delete associated comments if you want strict cleanup
-        await Comment.deleteMany({ postId: id });
-    } else if (type === 'Comment') {
-        await Comment.findByIdAndDelete(id);
+    const Model = type === 'Post' ? Post : Comment;
+    
+    if (status === 'Deleted') {
+        // Option A: Hard Delete (Permanently remove)
+        await Model.findByIdAndDelete(id);
+        
+        // Option B: Soft Delete (Hide but keep record) - UNCOMMENT TO USE
+        // await Model.findByIdAndUpdate(id, { moderationStatus: 'Rejected', isVisible: false });
+    } 
+    else if (status === 'Approved') {
+        // ✅ Updates status to 'Resolved' so it disappears from Pending list
+        await Model.findByIdAndUpdate(id, { moderationStatus: 'Resolved' });
     } else {
-        return res.status(400).json({ message: "Invalid content type" });
+        return res.status(400).json({ message: "Invalid status action" });
     }
 
-    res.status(200).json({ success: true, message: `${type} deleted successfully` });
+    res.status(200).json({ success: true, message: `${type} ${status} successfully` });
   } catch (error) {
-    console.error("Delete Error:", error);
+    console.error("Moderation Action Error:", error);
     res.status(500).json({ message: 'Server Error' });
   }
 };
