@@ -4,7 +4,7 @@ import AdminLayout from '../../layouts/AdminLayout';
 import { 
   Search, Users, BadgeCheck, Shield, Eye, Ban, 
   Loader, ShieldCheck, AlertTriangle, X, UserX, Trash2,
-  CheckCircle, XCircle 
+  CheckCircle, XCircle, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import UserDetailsModal from './UserDetailsModal'; 
 
@@ -16,15 +16,19 @@ const UserManagement = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
+  // --- PAGINATION STATE ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5; // Change this to show more/less users per page
+
   // --- NOTIFICATION STATE ---
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
 
   // --- MODAL STATES ---
-  const [selectedUser, setSelectedUser] = useState(null);      
-  const [promotingUser, setPromotingUser] = useState(null);    
+  const [selectedUser, setSelectedUser] = useState(null);       
+  const [promotingUser, setPromotingUser] = useState(null);     
   const [deactivatingUser, setDeactivatingUser] = useState(null); 
   const [reactivatingUser, setReactivatingUser] = useState(null); 
-  const [deletingUser, setDeletingUser] = useState(null);      
+  const [deletingUser, setDeletingUser] = useState(null);       
 
   // --- REASON STATE ---
   const [deactivateReason, setDeactivateReason] = useState("");
@@ -154,12 +158,34 @@ const UserManagement = () => {
   const totalVerified = users.filter(u => u.isVerified).length;
   const totalAdmins = users.filter(u => u.role === 'admin').length;
 
+  // --- FILTERING & PAGINATION LOGIC ---
   const filteredUsers = users.filter(user => {
     const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
     const email = user.email.toLowerCase();
     const search = searchTerm.toLowerCase();
     return fullName.includes(search) || email.includes(search);
   });
+
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentUsers = filteredUsers.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+
+  // Generate Page Numbers Array
+  const pageNumbers = [];
+  for (let i = 1; i <= totalPages; i++) {
+    pageNumbers.push(i);
+  }
+
+  const paginate = (pageNumber) => setCurrentPage(pageNumber);
+
+  const nextPage = () => {
+    if (currentPage < totalPages) setCurrentPage(currentPage + 1);
+  };
+
+  const prevPage = () => {
+    if (currentPage > 1) setCurrentPage(currentPage - 1);
+  };
 
   if (loading) {
     return (
@@ -195,6 +221,8 @@ const UserManagement = () => {
 
       {/* 2. MAIN TABLE AREA */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 min-h-[600px] flex flex-col">
+        
+        {/* Toolbar */}
         <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="relative w-full md:w-96">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -203,11 +231,12 @@ const UserManagement = () => {
                     placeholder="Search users..." 
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500"
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} // Reset to page 1 on search
                 />
             </div>
         </div>
 
+        {/* Table Content */}
         <div className="overflow-visible flex-1">
             <table className="w-full text-left border-collapse">
                 <thead>
@@ -219,7 +248,7 @@ const UserManagement = () => {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                    {filteredUsers.length > 0 ? filteredUsers.map((user) => (
+                    {currentUsers.length > 0 ? currentUsers.map((user) => (
                         <tr key={user._id} className="hover:bg-slate-50 transition-colors group">
                             <td className="p-6 pl-8">
                                 <div className="flex items-center gap-4">
@@ -323,6 +352,48 @@ const UserManagement = () => {
                 </tbody>
             </table>
         </div>
+
+        {/* PAGINATION CONTROLS (NUMBERED) */}
+        {filteredUsers.length > 0 && (
+            <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50 rounded-b-3xl">
+                <p className="text-xs text-slate-500 font-medium">
+                    Showing <span className="font-bold text-slate-700">{indexOfFirstItem + 1}</span> to <span className="font-bold text-slate-700">{Math.min(indexOfLastItem, filteredUsers.length)}</span> of <span className="font-bold text-slate-700">{filteredUsers.length}</span> users
+                </p>
+                
+                <div className="flex items-center gap-1">
+                    <button 
+                        onClick={prevPage} 
+                        disabled={currentPage === 1}
+                        className={`p-2 rounded-lg border border-slate-200 transition-all ${currentPage === 1 ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white hover:bg-teal-50 hover:border-teal-200 text-slate-600 hover:text-teal-600'}`}
+                    >
+                        <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    
+                    {/* Render Page Numbers */}
+                    {pageNumbers.map(number => (
+                        <button
+                            key={number}
+                            onClick={() => paginate(number)}
+                            className={`px-3 py-1.5 text-sm font-bold rounded-lg border transition-all ${
+                                currentPage === number 
+                                ? 'bg-teal-600 text-white border-teal-600 shadow-md shadow-teal-200' 
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-teal-50 hover:border-teal-200 hover:text-teal-600'
+                            }`}
+                        >
+                            {number}
+                        </button>
+                    ))}
+
+                    <button 
+                        onClick={nextPage} 
+                        disabled={currentPage === totalPages}
+                        className={`p-2 rounded-lg border border-slate-200 transition-all ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white hover:bg-teal-50 hover:border-teal-200 text-slate-600 hover:text-teal-600'}`}
+                    >
+                        <ChevronRight className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+        )}
       </div>
 
       {/* --- MODAL 1: VIEW DETAILS --- */}
@@ -346,7 +417,6 @@ const UserManagement = () => {
                     <p className="text-purple-600/80 text-sm text-center mt-1">Make this user a system administrator?</p>
                 </div>
                 <div className="p-6 space-y-6">
-                    {/* DYNAMIC USER INFO IN MODAL */}
                     <div className="flex items-center gap-4 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
                         <div className="w-12 h-12 rounded-full bg-white border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center text-slate-500 font-bold text-sm">
                              {promotingUser.profilePic ? (

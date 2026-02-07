@@ -6,7 +6,7 @@ const { registerUser, verifyOTP, resendOTP, loginUser, getMe,
         socialLogin, getUserCount, updateUserStatus
       } = require('../controllers/authController'); 
 
-const { getModerationContent, moderateContent } = require('../controllers/adminController');
+const { getModerationContent, moderateContent, getDashboardAnalytics } = require('../controllers/adminController');
 
 router.post('/signup', registerUser);
 router.post('/verify-otp', verifyOTP);
@@ -27,5 +27,6 @@ router.put('/admin/moderation/:type/:id', authenticateToken, moderateContent);
 router.delete('/admin/users/:id', authenticateToken, deleteUser);
 router.put('/admin/users/:id/status', authenticateToken, updateUserStatus);
 router.get('/admin/users', authenticateToken, getAllUsers);
+router.get('/admin/analytics', authenticateToken, getDashboardAnalytics);
 
 module.exports = router;

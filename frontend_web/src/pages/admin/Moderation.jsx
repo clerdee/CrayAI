@@ -3,7 +3,8 @@ import axios from 'axios';
 import AdminLayout from '../../layouts/AdminLayout';
 import { 
   ShieldAlert, CheckCircle, XCircle, MessageSquare, Image as ImageIcon, 
-  AlertTriangle, Calendar, X, Loader, Trash2, Mail, Layers, CheckCheck, Globe, User
+  AlertTriangle, Calendar, X, Loader, Trash2, Mail, Layers, CheckCheck, Globe, User,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
@@ -15,11 +16,14 @@ const Moderation = () => {
   const [activeTab, setActiveTab] = useState('All'); 
   const [selectedDateTime, setSelectedDateTime] = useState(''); 
 
+  // --- PAGINATION STATE (Restored) ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6; // Shows 6 items (2 columns x 3 rows)
+
   // --- NOTIFICATION STATE (TOAST) ---
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
 
   // --- MODAL STATE (CONFIRMATION) ---
-  // Structure: { id: null, type: 'BULK' | 'Post' | 'Comment', action: 'Approved' | 'Deleted', count: 0 }
   const [actionModal, setActionModal] = useState(null); 
 
   // --- HELPER: SHOW TOAST ---
@@ -40,7 +44,6 @@ const Moderation = () => {
   };
 
   // --- HELPER: GET USER DETAILS ---
-  // Extracts user info safely from the item object
   const getUserDetails = (item) => {
     const authorObj = item.author || {};
     return {
@@ -71,6 +74,11 @@ const Moderation = () => {
   useEffect(() => {
     fetchModerationData();
   }, []);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, selectedDateTime]);
 
   // --- 2. INITIATE ACTIONS (OPEN MODAL) ---
   
@@ -179,6 +187,22 @@ const Moderation = () => {
     return matchesType && matchesDate;
   });
 
+  // --- PAGINATION CALCULATION ---
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = finalFilteredItems.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(finalFilteredItems.length / itemsPerPage);
+
+  const paginate = (pageNumber) => setCurrentPage(pageNumber);
+  const nextPage = () => currentPage < totalPages && setCurrentPage(currentPage + 1);
+  const prevPage = () => currentPage > 1 && setCurrentPage(currentPage - 1);
+
+  // Generate Page Numbers Array
+  const pageNumbers = [];
+  for (let i = 1; i <= totalPages; i++) {
+    pageNumbers.push(i);
+  }
+
   if (loading) {
     return (
         <AdminLayout title="Content Moderation">
@@ -243,7 +267,7 @@ const Moderation = () => {
         {/* TOOLBAR */}
         <div className="p-6 border-b border-slate-100 flex flex-col xl:flex-row justify-between items-center gap-4">
             
-            {/* Tabs */}
+            {/* Tabs with Quantity Badges */}
             <div className="flex bg-slate-100 p-1 rounded-xl w-full xl:w-auto overflow-x-auto gap-1">
                 <button 
                     onClick={() => setActiveTab('All')} 
@@ -282,7 +306,7 @@ const Moderation = () => {
                 </button>
             </div>
 
-            {/* Actions */}
+            {/* Right Side: Date Filter & Bulk Actions */}
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
                 <div className="relative flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm w-full sm:w-auto focus-within:border-teal-500 transition-all">
                     <Calendar className="w-4 h-4 text-slate-400 mr-2" />
@@ -290,7 +314,7 @@ const Moderation = () => {
                     {selectedDateTime && <button onClick={() => setSelectedDateTime('')} className="ml-2 text-slate-400 hover:text-red-500"><X className="w-4 h-4" /></button>}
                 </div>
                 
-                {/* 👇 APPROVE ALL (Triggers Modal) */}
+                {/* APPROVE ALL BUTTON */}
                 <button 
                     onClick={initiateBulkApprove} 
                     disabled={finalFilteredItems.length === 0}
@@ -314,10 +338,10 @@ const Moderation = () => {
                 </h3>
             </div>
 
-            {finalFilteredItems.length > 0 ? (
+            {/* Using currentItems instead of finalFilteredItems for Pagination */}
+            {currentItems.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {finalFilteredItems.map((item) => {
-                        // 👇 GET USER DATA HERE
+                    {currentItems.map((item) => {
                         const user = getUserDetails(item); 
 
                         return (
@@ -340,6 +364,7 @@ const Moderation = () => {
 
                                     {/* User Details Card */}
                                     <div className="flex items-center gap-3 bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                                        {/* Profile Pic */}
                                         {user.image ? (
                                             <img 
                                                 src={user.image} 
@@ -408,7 +433,48 @@ const Moderation = () => {
             )}
         </div>
 
-        {/* --- CUSTOM CONFIRMATION MODAL (Handles Both Single & Bulk) --- */}
+        {/* 4. NUMBERED PAGINATION */}
+        {finalFilteredItems.length > 0 && (
+            <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50 rounded-b-3xl">
+                <p className="text-xs text-slate-500 font-medium">
+                    Showing <span className="font-bold text-slate-700">{indexOfFirstItem + 1}</span> to <span className="font-bold text-slate-700">{Math.min(indexOfLastItem, finalFilteredItems.length)}</span> of <span className="font-bold text-slate-700">{finalFilteredItems.length}</span> items
+                </p>
+                
+                <div className="flex items-center gap-1">
+                    <button 
+                        onClick={prevPage} 
+                        disabled={currentPage === 1}
+                        className={`p-2 rounded-lg border border-slate-200 transition-all ${currentPage === 1 ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white hover:bg-teal-50 hover:border-teal-200 text-slate-600 hover:text-teal-600'}`}
+                    >
+                        <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    
+                    {pageNumbers.map(number => (
+                        <button
+                            key={number}
+                            onClick={() => paginate(number)}
+                            className={`px-3 py-1.5 text-sm font-bold rounded-lg border transition-all ${
+                                currentPage === number 
+                                ? 'bg-teal-600 text-white border-teal-600 shadow-md shadow-teal-200' 
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-teal-50 hover:border-teal-200 hover:text-teal-600'
+                            }`}
+                        >
+                            {number}
+                        </button>
+                    ))}
+
+                    <button 
+                        onClick={nextPage} 
+                        disabled={currentPage === totalPages}
+                        className={`p-2 rounded-lg border border-slate-200 transition-all ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white hover:bg-teal-50 hover:border-teal-200 text-slate-600 hover:text-teal-600'}`}
+                    >
+                        <ChevronRight className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+        )}
+
+        {/* --- CUSTOM CONFIRMATION MODAL --- */}
         {actionModal && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                 <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-0 animate-in zoom-in-95 duration-200 flex flex-col">

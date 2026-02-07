@@ -95,3 +95,56 @@ exports.moderateContent = async (req, res) => {
     res.status(500).json({ message: 'Server Error' });
   }
 };
+
+// 3. DASHBOARD ANALYTICS (Placeholder Data for Now)
+exports.getDashboardAnalytics = async (req, res) => {
+  try {
+
+    // 1. SCANS COUNT
+    const totalScans = 0; 
+
+    // 2. SCAN ACTIVITY (Last 7 Days)
+    // Sending empty structure so the chart renders (flat line) instead of crashing
+    const activity = [
+        { name: 'Mon', scans: 0, detected_disease: 0 },
+        { name: 'Tue', scans: 0, detected_disease: 0 },
+        { name: 'Wed', scans: 0, detected_disease: 0 },
+        { name: 'Thu', scans: 0, detected_disease: 0 },
+        { name: 'Fri', scans: 0, detected_disease: 0 },
+        { name: 'Sat', scans: 0, detected_disease: 0 },
+        { name: 'Sun', scans: 0, detected_disease: 0 },
+    ];
+
+    // 3. POPULATION STATS
+    const population = [
+        { name: 'Male', value: 0, color: '#3B82F6' },
+        { name: 'Female', value: 0, color: '#EC4899' },
+        { name: 'Berried', value: 0, color: '#F59E0B' },
+        { name: 'Juvenile', value: 0, color: '#94A3B8' },
+    ];
+
+    // 4. WATER QUALITY
+    const water = [
+        { name: 'Pond A', turbidity: 0, algae: 0 },
+        { name: 'Pond B', turbidity: 0, algae: 0 },
+    ];
+
+    // 5. RECENT LOGS
+    const logs = []; // Empty array for now
+
+    res.status(200).json({
+      success: true,
+      data: {
+        scans: totalScans,
+        activity,
+        population,
+        water,
+        logs
+      }
+    });
+
+  } catch (error) {
+    console.error("Analytics Error:", error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};

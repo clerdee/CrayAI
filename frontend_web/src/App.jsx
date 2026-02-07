@@ -10,6 +10,7 @@ import UserDashboard from './pages/user/UserDashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AIScanLogs from './pages/admin/AIScanLogs';
 import TrainingData from './pages/admin/Training/TrainingData';
+import ChatbotMode from './pages/admin/Training/ChatbotMode';
 import Moderation from './pages/admin/Moderation';
 import UserManagement from './pages/admin/UserManagement';
 import SystemHealth from './pages/admin/SystemHealth';
@@ -20,18 +21,14 @@ import Settings from './pages/admin/Settings';
 // 2. ADD AXIOS INTERCEPTOR (The Session Guard)
 // =========================================================
 axios.interceptors.response.use(
-  (response) => response, // Pass successful requests through
+  (response) => response, 
   (error) => {
-    // Check if error is 401 (Unauthorized) or 403 (Forbidden)
     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       console.warn('Session expired or unauthorized. Logging out...');
       
-      // Clear local storage
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      
-      // Force redirect to login page
-      // Note: We use window.location because navigate() isn't available outside components
+
       window.location.href = '/login'; 
     }
     return Promise.reject(error);
@@ -40,7 +37,6 @@ axios.interceptors.response.use(
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token');
-  // Add safety check: parse might fail if storage is corrupted
   let user = null;
   try {
     user = JSON.parse(localStorage.getItem('user'));
@@ -49,7 +45,6 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   if (!token || !user) {
-    // Double safety: if data is missing/corrupt, clear it
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     return <Navigate to="/login" replace />;
@@ -104,6 +99,11 @@ const App = () => {
 
       <Route path="/admin/moderation" 
         element={<ProtectedRoute allowedRoles={['admin']}><Moderation /></ProtectedRoute>} 
+      />
+
+      <Route 
+        path="/admin/training" 
+        element={<ProtectedRoute allowedRoles={['admin']}><ChatbotMode /></ProtectedRoute>} 
       />
 
       <Route 

@@ -5,75 +5,70 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend, BarChart, Bar 
 } from 'recharts';
-import { ScanEye, Users, Activity, Droplets, HelpCircle, ShieldAlert } from 'lucide-react';
+import { ScanEye, Users, Activity, Droplets, HelpCircle, ShieldAlert, Loader } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'; 
-const CHATBOT_API_URL = 'http://localhost:5001/api/training/chatbot'; // Python Backend
-
-const scanActivityData = [
-  { name: 'Mon', scans: 120, detected_disease: 5 },
-  { name: 'Tue', scans: 150, detected_disease: 8 },
-  { name: 'Wed', scans: 180, detected_disease: 12 }, 
-  { name: 'Thu', scans: 140, detected_disease: 4 },
-  { name: 'Fri', scans: 200, detected_disease: 6 },
-  { name: 'Sat', scans: 250, detected_disease: 10 },
-  { name: 'Sun', scans: 220, detected_disease: 9 },
-];
-
-const populationData = [
-  { name: 'Male', value: 450, color: '#3B82F6' }, 
-  { name: 'Female (Non-Berried)', value: 300, color: '#EC4899' }, 
-  { name: 'Berried (Pregnant)', value: 150, color: '#F59E0B' }, 
-  { name: 'Juvenile/Unknown', value: 100, color: '#94A3B8' }, 
-];
-
-const waterQualityData = [
-  { name: 'Pond A', turbidity: 20, algae: 15 },
-  { name: 'Pond B', turbidity: 45, algae: 60 }, 
-  { name: 'Pond C', turbidity: 25, algae: 20 },
-  { name: 'Pond D', turbidity: 30, algae: 25 },
-];
+const CHATBOT_API_URL = 'http://localhost:5001/api/training/chatbot'; 
 
 const AdminDashboard = () => {
   // --- STATE ---
+  const [loading, setLoading] = useState(true);
+  
+  // KPI Cards State (Defaulting to 0)
   const [userCount, setUserCount] = useState(0); 
   const [chatbotStats, setChatbotStats] = useState({ failed_count: 0 }); 
-  const [moderationCount, setModerationCount] = useState(0); // 🆕 New State for Moderation
-  const [loading, setLoading] = useState(true);
+  const [moderationCount, setModerationCount] = useState(0);
+  const [totalScans, setTotalScans] = useState(0);
+
+  // Charts State (Defaulting to empty arrays)
+  const [scanActivityData, setScanActivityData] = useState([]);
+  const [populationData, setPopulationData] = useState([]);
+  const [waterQualityData, setWaterQualityData] = useState([]);
+  const [recentLogs, setRecentLogs] = useState([]);
 
   // --- FETCH DATA ON MOUNT ---
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const token = localStorage.getItem('token'); // Needed for moderation endpoint
+        const token = localStorage.getItem('token'); 
 
-        // Run fetches in parallel
-        const [userResponse, botResponse, modResponse] = await Promise.all([
+        // We use Promise.allSettled so one failure doesn't crash the whole dashboard
+        const results = await Promise.allSettled([
             axios.get(`${API_BASE_URL}/auth/user-count`),
             axios.get(`${CHATBOT_API_URL}/stats`),
-            axios.get(`${API_BASE_URL}/auth/admin/moderation`, {
-                headers: { Authorization: `Bearer ${token}` }
-            })
+            axios.get(`${API_BASE_URL}/auth/admin/moderation`, { headers: { Authorization: `Bearer ${token}` }}),
+            // 👇 UPDATED ENDPOINT to match your new route
+            axios.get(`${API_BASE_URL}/auth/admin/analytics`, { headers: { Authorization: `Bearer ${token}` }})
         ]);
 
-        // 1. Set User Count
-        if (userResponse.data.success) {
-          setUserCount(userResponse.data.count);
-        }
-        
-        // 2. Set Chatbot Stats
-        if (botResponse.data) {
-            setChatbotStats(botResponse.data);
+        // 1. User Count
+        if (results[0].status === 'fulfilled' && results[0].value.data.success) {
+            setUserCount(results[0].value.data.count);
         }
 
-        // 3. Set Moderation Stats (Count items NOT 'Resolved')
-        if (modResponse.data.success) {
-            const pendingItems = modResponse.data.items.filter(item => item.status !== 'Resolved').length;
+        // 2. Chatbot Stats
+        if (results[1].status === 'fulfilled' && results[1].value.data) {
+            setChatbotStats(results[1].value.data);
+        }
+
+        // 3. Moderation Stats
+        if (results[2].status === 'fulfilled' && results[2].value.data.success) {
+            const pendingItems = results[2].value.data.items.filter(item => item.status !== 'Resolved').length;
             setModerationCount(pendingItems);
         }
 
+        // 4. Analytics (Scans, Charts)
+        if (results[3].status === 'fulfilled' && results[3].value.data.success) {
+            const { scans, activity, population, water, logs } = results[3].value.data.data;
+            setTotalScans(scans || 0);
+            setScanActivityData(activity || []);
+            setPopulationData(population || []);
+            setWaterQualityData(water || []);
+            setRecentLogs(logs || []);
+        }
+
       } catch (error) {
-        console.error("Failed to load dashboard stats", error);
+        console.error("Critical Dashboard Error", error);
       } finally {
         setLoading(false);
       }
@@ -82,6 +77,22 @@ const AdminDashboard = () => {
     fetchStats();
   }, []);
 
+  // --- HELPER: Population Graph Empty State ---
+  const hasPopulationData = populationData.length > 0 && populationData.some(item => item.value > 0);
+  const finalPopulationData = hasPopulationData 
+    ? populationData 
+    : [{ name: 'No Data Yet', value: 100, color: '#f1f5f9' }]; 
+
+  if (loading) {
+    return (
+        <AdminLayout title="System Overview">
+            <div className="h-[80vh] flex items-center justify-center text-slate-400">
+                <Loader className="animate-spin w-8 h-8 mr-2" /> Loading Dashboard...
+            </div>
+        </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout title="System Overview">
       
@@ -89,32 +100,31 @@ const AdminDashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatsCard 
           title="Total AI Scans" 
-          value="1,245" 
-          subtext="+12% from last week"
+          value={totalScans.toLocaleString()} 
+          subtext="Processed images"
           icon={<ScanEye className="text-teal-600" />} 
           bg="bg-teal-50" 
         />
         
         <StatsCard 
           title="Unanswered Queries" 
-          value={loading ? "..." : chatbotStats.failed_count} 
+          value={chatbotStats.failed_count || 0} 
           subtext="Needs Admin Review"
-          icon={<HelpCircle className={chatbotStats.failed_count > 0 ? "text-orange-600" : "text-green-600"} />} 
-          bg={chatbotStats.failed_count > 0 ? "bg-orange-50" : "bg-green-50"} 
+          icon={<HelpCircle className={(chatbotStats.failed_count || 0) > 0 ? "text-orange-600" : "text-green-600"} />} 
+          bg={(chatbotStats.failed_count || 0) > 0 ? "bg-orange-50" : "bg-green-50"} 
         />
         
         <StatsCard 
           title="Total Users" 
-          value={loading ? "..." : userCount} 
-          subtext="Total Accounts"
+          value={userCount} 
+          subtext="Registered Accounts"
           icon={<Users className="text-blue-600" />} 
           bg="bg-blue-50" 
         />
         
-        {/* 👇 REPLACED: Bot Accuracy -> Pending Moderation */}
         <StatsCard 
           title="Pending Moderation" 
-          value={loading ? "..." : moderationCount} 
+          value={moderationCount} 
           subtext="Flagged Posts & Comments"
           icon={<ShieldAlert className={moderationCount > 0 ? "text-red-600" : "text-slate-400"} />} 
           bg={moderationCount > 0 ? "bg-red-50" : "bg-slate-50"} 
@@ -124,7 +134,7 @@ const AdminDashboard = () => {
       {/* 2. CHARTS ROW */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         
-        {/* Main Chart: Scan Activity & Disease Detection */}
+        {/* Main Chart: Scan Activity */}
         <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
             <div className="flex justify-between items-center mb-6">
                 <div>
@@ -134,7 +144,7 @@ const AdminDashboard = () => {
             </div>
             <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={scanActivityData}>
+                    <AreaChart data={scanActivityData.length > 0 ? scanActivityData : [{name:'No Data', scans:0, detected_disease:0}]}>
                         <defs>
                             <linearGradient id="colorScans" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#0D9488" stopOpacity={0.1}/>
@@ -156,32 +166,42 @@ const AdminDashboard = () => {
             </div>
         </div>
 
-        {/* Pie Chart: Population Demographics */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+        {/* Pie Chart: Population Gender Stats */}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col">
             <h3 className="font-bold text-slate-800 text-lg mb-2">Population Gender Stats</h3>
             <p className="text-xs text-slate-500 mb-6">Aggregated from valid species scans</p>
-            <div className="h-64 w-full relative">
+            <div className="h-64 w-full relative flex-1">
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                        <Pie data={populationData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                            {populationData.map((entry, index) => (
+                        <Pie 
+                            data={finalPopulationData} 
+                            innerRadius={60} 
+                            outerRadius={80} 
+                            paddingAngle={hasPopulationData ? 5 : 0} 
+                            dataKey="value"
+                            stroke="none"
+                        >
+                            {finalPopulationData.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                         </Pie>
-                        <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                        <Tooltip />
+                        {hasPopulationData && <Legend verticalAlign="bottom" height={36} iconType="circle" />}
+                        {hasPopulationData && <Tooltip />}
                     </PieChart>
                 </ResponsiveContainer>
+                
                 {/* Center Text */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center">
-                    <p className="text-2xl font-bold text-slate-800">1K+</p>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
+                    <p className={`text-2xl font-bold ${hasPopulationData ? 'text-slate-800' : 'text-slate-300'}`}>
+                        {hasPopulationData ? totalScans : '0'}
+                    </p>
                     <p className="text-xs text-slate-400">Specimens</p>
                 </div>
             </div>
         </div>
       </div>
 
-      {/* 3. BOTTOM ROW: Water Quality & Moderation */}
+      {/* 3. BOTTOM ROW: Water Quality & Logs */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
           {/* Water Quality Bar Chart */}
@@ -192,22 +212,29 @@ const AdminDashboard = () => {
                   </h3>
               </div>
               <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={waterQualityData}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                          <YAxis />
-                          <Tooltip cursor={{fill: 'transparent'}} />
-                          <Legend />
-                          <Bar dataKey="turbidity" fill="#94A3B8" radius={[4, 4, 0, 0]} name="Turbidity (NTU)" />
-                          <Bar dataKey="algae" fill="#10B981" radius={[4, 4, 0, 0]} name="Algae Level" />
-                      </BarChart>
-                  </ResponsiveContainer>
+                  {waterQualityData.length > 0 && waterQualityData.some(d => d.turbidity > 0 || d.algae > 0) ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={waterQualityData}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                              <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                              <YAxis />
+                              <Tooltip cursor={{fill: 'transparent'}} />
+                              <Legend />
+                              <Bar dataKey="turbidity" fill="#94A3B8" radius={[4, 4, 0, 0]} name="Turbidity (NTU)" />
+                              <Bar dataKey="algae" fill="#10B981" radius={[4, 4, 0, 0]} name="Algae Level" />
+                          </BarChart>
+                      </ResponsiveContainer>
+                  ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-300">
+                          <Droplets className="w-8 h-8 mb-2 opacity-50" />
+                          <p className="text-sm">No water quality data recorded.</p>
+                      </div>
+                  )}
               </div>
           </div>
 
           {/* Recent AI Logs Table */}
-          <RecentScansTable />
+          <RecentScansTable logs={recentLogs} />
       </div>
 
     </AdminLayout>
@@ -229,32 +256,46 @@ const StatsCard = ({ title, value, subtext, icon, bg }) => (
     </div>
 );
 
-const RecentScansTable = () => (
+const RecentScansTable = ({ logs = [] }) => (
     <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
             <h3 className="font-bold text-slate-800 text-lg">Recent AI Logs</h3>
             <button className="text-xs text-teal-600 font-bold hover:underline">View All</button>
         </div>
         <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer border border-slate-50">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-slate-200 overflow-hidden">
-                            <img src={`https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?q=80&w=100&auto=format&fit=crop`} alt="Scan" className="w-full h-full object-cover" />
+            {logs.length > 0 ? (
+                logs.map((log, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer border border-slate-50">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-slate-200 overflow-hidden">
+                                {log.image ? (
+                                    <img src={log.image} alt="Scan" className="w-full h-full object-cover" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+                                        <ScanEye className="w-5 h-5" />
+                                    </div>
+                                )}
+                            </div>
+                            <div>
+                                <p className="text-sm font-bold text-slate-900">{log.species || 'Unknown Species'}</p>
+                                <p className="text-xs text-slate-500">User: {log.user || 'Anonymous'}</p>
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-sm font-bold text-slate-900">Cherax quadricarinatus</p>
-                            <p className="text-xs text-slate-500">User: Farmer_{i}</p>
+                        <div className="text-right">
+                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                                log.health === 'Healthy' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                            }`}>
+                                {log.health || 'Analyzing...'}
+                            </span>
+                            <p className="text-[10px] text-slate-400 mt-1">{log.confidence ? `${log.confidence}% Confidence` : ''}</p>
                         </div>
                     </div>
-                    <div className="text-right">
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${i === 2 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
-                            {i === 2 ? 'High Turbidity' : 'Healthy'}
-                        </span>
-                        <p className="text-[10px] text-slate-400 mt-1">98% Confidence</p>
-                    </div>
+                ))
+            ) : (
+                <div className="text-center py-8 text-slate-400">
+                    <p className="text-sm">No recent scans found.</p>
                 </div>
-            ))}
+            )}
         </div>
     </div>
 );

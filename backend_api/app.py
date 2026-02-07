@@ -11,8 +11,7 @@ app = Flask(__name__)
 # 1. Enable CORS (Allow React Frontend to talk to Python Backend)
 CORS(app)
 
-# 2. Database Config (Replace with your actual Connection String)
-#                                                                           
+# 2. Database Config (Replace with your actual Connection String)                                      
 app.config["MONGO_URI"] ="mongodb+srv://clerdeecruz_db_user:0cL6e3Daa2ZsYypT@crayai.hc7kwql.mongodb.net/crayai_db?appName=CrayAI"
 
 # 3. Initialize DB
