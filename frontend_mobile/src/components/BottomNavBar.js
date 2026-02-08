@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -10,23 +10,32 @@ import {
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 
-export default function BottomNavBar({ navigation, activeTab, alertsCount = 0, user }) {
+export default function BottomNavBar({ navigation, activeTab, alertsCount = 0 }) {
   
   const [showToast, setShowToast] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current; 
 
-  const getIconColor = (tabName) => activeTab === tabName ? '#2C5364' : '#999';
-  const getTextColor = (tabName) => activeTab === tabName ? '#2C5364' : '#999';
-
-  const handleScanPress = () => {
-    if (!user) {
+  // --- 1. ROBUST LOGIN CHECK (No Props Needed) ---
+  // We check AsyncStorage directly on press to guarantee accuracy
+  const handleScanPress = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (token) {
+        navigation.navigate('Camera');
+      } else {
+        triggerToast();
+      }
+    } catch (error) {
       triggerToast();
-    } else {
-      navigation.navigate('Camera');
     }
   };
+
+  const getIconColor = (tabName) => activeTab === tabName ? '#2C5364' : '#999';
+  const getTextColor = (tabName) => activeTab === tabName ? '#2C5364' : '#999';
 
   const triggerToast = () => {
     if (showToast) return; 
@@ -75,7 +84,7 @@ export default function BottomNavBar({ navigation, activeTab, alertsCount = 0, u
         <Text style={[styles.navText, { color: getTextColor('Community') }]}>Community</Text>
       </TouchableOpacity>
       
-      {/* 3. Scan */}
+      {/* 3. Scan (Direct Async Check) */}
       <View style={styles.fabContainer}>
         <TouchableOpacity style={[styles.fab, styles.shadow]} onPress={handleScanPress} activeOpacity={0.9}>
           <LinearGradient colors={['#FF6347', '#ff2727']} style={styles.fabGradient}>

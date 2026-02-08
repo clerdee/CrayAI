@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, Image, TouchableOpacity, 
-  TextInput, Platform, StatusBar, FlatList, Dimensions, Keyboard, ScrollView, KeyboardAvoidingView, ActivityIndicator, Animated, Modal, TouchableWithoutFeedback, Alert
+  TextInput, Platform, StatusBar, FlatList, Dimensions, Keyboard, ScrollView, KeyboardAvoidingView, ActivityIndicator, Animated, Modal, TouchableWithoutFeedback
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -48,16 +48,28 @@ export default function CommunityScreen({ navigation }) {
   const [uploading, setUploading] = useState(false); 
   const [communityPosts, setCommunityPosts] = useState([]); 
   const [isGuest, setIsGuest] = useState(false);
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
 
-  // --- EDITING STATES ---
+  // --- EDITING POST STATE ---
   const [editingPostId, setEditingPostId] = useState(null); 
-  const [editingCommentId, setEditingCommentId] = useState(null); 
-  const [editingCommentText, setEditingCommentText] = useState(''); 
 
-  // --- MENUS STATE ---
+  // --- MODAL STATES (NEW & EDIT COMMENT) ---
+  const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [editCommentModalVisible, setEditCommentModalVisible] = useState(false); 
+  
+  const [activePostId, setActivePostId] = useState(null); // Post we are interacting with
+  const [activeCommentId, setActiveCommentId] = useState(null); // Comment we are editing
+  
+  const [commentDraft, setCommentDraft] = useState(''); // New comment text
+  const [editCommentDraft, setEditCommentDraft] = useState(''); // Edited comment text
+
+  // --- MENUS & DELETE STATES ---
   const [optionsVisible, setOptionsVisible] = useState(false);        
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false); 
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false); // For POSTS
+  const [deleteCommentModalVisible, setDeleteCommentModalVisible] = useState(false); // For COMMENTS (NEW)
+  
   const [selectedPostForOptions, setSelectedPostForOptions] = useState(null);
+  const [commentToDelete, setCommentToDelete] = useState(null); // Stores { post, commentId } for deletion
 
   // User Info
   const [currentUserInfo, setCurrentUserInfo] = useState({
@@ -67,15 +79,27 @@ export default function CommunityScreen({ navigation }) {
     following: [] 
   });
   
-  const [commentInputs, setCommentInputs] = useState({});
-
   // --- TOAST STATE ---
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState({ title: '', body: '', type: 'info' });
   const toastAnim = useRef(new Animated.Value(-100)).current; 
   const scrollViewRef = useRef(); 
 
-  // --- 1. INITIAL LOAD ---
+  // --- 1. KEYBOARD LISTENER ---
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const keyboardDidShowListener = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const keyboardDidHideListener = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+
+    return () => {
+      keyboardDidHideListener.remove();
+      keyboardDidShowListener.remove();
+    };
+  }, []);
+
+  // --- 2. INITIAL LOAD ---
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -101,13 +125,12 @@ export default function CommunityScreen({ navigation }) {
     fetchUser();
   }, []);
 
-  // --- 2. FEED LISTENER ---
+  // --- 3. FEED LISTENER ---
   useEffect(() => {
     const fetchFeed = async () => {
       try {
         const res = await client.get('/posts/feed');
         if (res.data && res.data.posts) {
-          // Backend now sends populated comments in 'commentsData'
           const posts = res.data.posts.map(post => ({ ...post, showComments: true }));
           setCommunityPosts(posts);
         }
@@ -136,7 +159,7 @@ export default function CommunityScreen({ navigation }) {
     return false; 
   };
 
-  // --- 3. POST OPTIONS ---
+  // --- POST OPTIONS ---
   const openPostOptions = (post) => {
     setSelectedPostForOptions(post);
     setOptionsVisible(true);
@@ -174,7 +197,7 @@ export default function CommunityScreen({ navigation }) {
     setSelectedPostForOptions(null);
   };
 
-  // --- 4. POST ACTIONS ---
+  // --- POST ACTIONS ---
   const handleDeletePost = async (postId) => {
     try {
       await client.delete(`/posts/${postId}`);
@@ -220,7 +243,6 @@ export default function CommunityScreen({ navigation }) {
       } else {
         const res = await client.post('/posts/create', { content: postText, media: mediaUrls });
         if (res.data?.post) {
-          // New posts start with 0 comments
           setCommunityPosts([{ ...res.data.post, showComments: true, commentsData: [] }, ...communityPosts]);
           showToast("Success", "Your post is live!", 'success');
         }
@@ -234,7 +256,7 @@ export default function CommunityScreen({ navigation }) {
     } finally { setUploading(false); }
   };
 
-  // --- 5. MEDIA HELPERS ---
+  // --- MEDIA HELPERS ---
   const pickMedia = async () => {
     if (checkGuestAction("upload photos")) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -260,13 +282,12 @@ export default function CommunityScreen({ navigation }) {
     return data.secure_url ? { uri: data.secure_url, mediaType: file.type } : null;
   };
 
-  // --- 6. SOCIAL ACTIONS ---
+  // --- SOCIAL ACTIONS ---
   const handleLike = async (post) => {
     if (checkGuestAction("like posts")) return;
     try {
       const res = await client.post(`/posts/${post._id}/like`);
       if (res.data?.post) {
-        // Backend returns the updated post object with likes array
         setCommunityPosts(prev => prev.map(p => p._id === post._id ? { ...p, likes: res.data.post.likes } : p));
       }
     } catch (error) { showToast("Error", "Could not like post.", 'error'); }
@@ -284,11 +305,8 @@ export default function CommunityScreen({ navigation }) {
     } catch (error) { showToast("Error", "Could not update follow status.", 'error'); }
   };
 
-  // --- 7. MESSAGE REDIRECTION LOGIC ---
   const handleMessageUser = (postItem) => {
     if (checkGuestAction("send messages")) return;
-    
-    // --- FIX: Safely extract ID because userId might be an object ---
     const rawId = postItem.userId;
     const targetId = (rawId && typeof rawId === 'object') ? rawId._id : rawId;
 
@@ -301,76 +319,110 @@ export default function CommunityScreen({ navigation }) {
     });
   };
 
-  // --- 8. COMMENTS LOGIC (UPDATED FOR NEW BACKEND) ---
-  const handlePostComment = async (post) => {
+  // --- 1. NEW COMMENT LOGIC (MODAL) ---
+  const openCommentModal = (postId) => {
     if (checkGuestAction("comment")) return;
-    const text = commentInputs[post._id];
-    if (!text?.trim()) return;
+    setActivePostId(postId);
+    setCommentDraft('');
+    setCommentModalVisible(true);
+  };
+
+  const closeCommentModal = () => {
+    setCommentModalVisible(false);
+    setActivePostId(null);
+    setCommentDraft('');
+    Keyboard.dismiss();
+  };
+
+  const submitCommentFromModal = async () => {
+    if (!commentDraft.trim() || !activePostId) return;
     
     try {
-      const res = await client.post(`/posts/${post._id}/comment`, { text: text.trim() });
-      
+      const res = await client.post(`/posts/${activePostId}/comment`, { text: commentDraft.trim() });
       if (res.data?.newComment) {
         setCommunityPosts(prev => prev.map(p => {
-            if (p._id === post._id) {
-                return { 
-                    ...p, 
-                    commentsData: [...(p.commentsData || []), res.data.newComment] 
+            if (p._id === activePostId) {
+                return { ...p, commentsData: [...(p.commentsData || []), res.data.newComment] };
+            }
+            return p;
+        }));
+        closeCommentModal(); 
+      }
+    } catch (error) { showToast("Error", "Could not post comment.", 'error'); }
+  };
+
+  // --- 2. EDIT COMMENT LOGIC (MODAL) ---
+  const openEditCommentModal = (post, comment) => {
+    if (checkGuestAction("edit comment")) return;
+    setActivePostId(post._id);
+    setActiveCommentId(comment._id);
+    setEditCommentDraft(comment.text);
+    setEditCommentModalVisible(true);
+  };
+
+  const closeEditCommentModal = () => {
+    setEditCommentModalVisible(false);
+    setActivePostId(null);
+    setActiveCommentId(null);
+    setEditCommentDraft('');
+    Keyboard.dismiss();
+  };
+
+  const submitEditCommentFromModal = async () => {
+    if (!editCommentDraft.trim() || !activePostId || !activeCommentId) return;
+
+    try {
+      const res = await client.put(`/posts/${activePostId}/comment/${activeCommentId}`, { text: editCommentDraft.trim() });
+      
+      if (res.data?.comment) {
+        setCommunityPosts(prev => prev.map(p => {
+            if (p._id === activePostId) {
+                return {
+                    ...p,
+                    commentsData: p.commentsData.map(c => 
+                        c._id === activeCommentId ? { ...c, text: res.data.comment.text } : c
+                    )
                 };
             }
             return p;
         }));
-        
-        setCommentInputs(prev => ({ ...prev, [post._id]: '' }));
-        Keyboard.dismiss();
+        showToast("Updated", "Comment edited successfully.", 'success');
+        closeEditCommentModal();
       }
-    } catch (error) { 
-        console.log(error);
-        showToast("Error", "Could not post comment.", 'error'); 
-    }
+    } catch (error) { showToast("Error", "Failed to edit comment.", 'error'); }
   };
 
-  const deleteComment = async (post, commentId) => {
+  // --- 3. DELETE COMMENT LOGIC (WITH CONFIRMATION) ---
+  const promptDeleteComment = (post, commentId) => {
+    setCommentToDelete({ post, commentId });
+    setDeleteCommentModalVisible(true);
+  };
+
+  const confirmDeleteComment = async () => {
+    if (!commentToDelete) return;
+    const { post, commentId } = commentToDelete;
+
     try {
       const res = await client.delete(`/posts/${post._id}/comment/${commentId}`);
       if (res.data?.success) {
         setCommunityPosts(prev => prev.map(p => {
             if (p._id === post._id) {
-                return {
-                    ...p,
-                    commentsData: p.commentsData.filter(c => c._id !== commentId)
-                };
+                return { ...p, commentsData: p.commentsData.filter(c => c._id !== commentId) };
             }
             return p;
         }));
         showToast("Deleted", "Comment removed.", 'success');
       }
     } catch (error) { showToast("Error", "Failed to delete comment.", 'error'); }
+    
+    // Close modal and reset state
+    setDeleteCommentModalVisible(false);
+    setCommentToDelete(null);
   };
 
-  const updateComment = async (post, commentId) => {
-    if (!editingCommentText.trim()) return;
-    try {
-      const res = await client.put(`/posts/${post._id}/comment/${commentId}`, { text: editingCommentText });
-      
-      if (res.data?.comment) {
-        setCommunityPosts(prev => prev.map(p => {
-            if (p._id === post._id) {
-                return {
-                    ...p,
-                    commentsData: p.commentsData.map(c => 
-                        c._id === commentId ? { ...c, text: res.data.comment.text } : c
-                    )
-                };
-            }
-            return p;
-        }));
-
-        setEditingCommentId(null);
-        setEditingCommentText('');
-        showToast("Updated", "Comment edited.", 'success');
-      }
-    } catch (error) { showToast("Error", "Failed to edit comment.", 'error'); }
+  const cancelDeleteComment = () => {
+    setDeleteCommentModalVisible(false);
+    setCommentToDelete(null);
   };
 
   const toggleComments = (id) => {
@@ -385,22 +437,22 @@ export default function CommunityScreen({ navigation }) {
 
   // --- RENDER POST CARD ---
   const renderCard = ({ item }) => {
-    // --- FIX: Safely extract User ID (handle if populated object or string) ---
     const rawUserId = item.userId;
     const postUserId = (rawUserId && typeof rawUserId === 'object') ? rawUserId._id : rawUserId;
     const postUserIdString = String(postUserId);
-    
     const currentUidString = currentUserInfo.uid ? String(currentUserInfo.uid) : '';
-    
-    // --- FIX: Use safe string comparison ---
     const isLiked = item.likes?.some(id => String(id) === currentUidString);
     const isMyPost = !isGuest && (postUserIdString === currentUidString);
     const isFollowing = currentUserInfo.following?.includes(postUserIdString);
 
     return (
       <View style={[styles.cardContainer, styles.shadow]}>
-        <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
-          
+        <ScrollView 
+            nestedScrollEnabled={true} 
+            showsVerticalScrollIndicator={false} 
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.cardHeader}>
             <TouchableOpacity style={styles.userInfo} onPress={() => handleProfileClick(postUserId)}>
               <Image source={{ uri: item.userAvatar || 'https://avatar.iran.liara.run/public/12' }} style={styles.avatar} />
@@ -409,7 +461,6 @@ export default function CommunityScreen({ navigation }) {
                 <Text style={styles.userRole}>{formatTimeAgo(item.createdAt)}</Text>
               </View>
             </TouchableOpacity>
-            
             {isMyPost ? (
               <TouchableOpacity style={styles.optionsBtn} onPress={() => openPostOptions(item)}>
                 <Ionicons name="ellipsis-horizontal" size={20} color="#7F8C8D" />
@@ -463,10 +514,7 @@ export default function CommunityScreen({ navigation }) {
             </TouchableOpacity>
 
             {!isMyPost && !isGuest && (
-              <TouchableOpacity 
-                style={[styles.actionBtn, { marginLeft: 15 }]} 
-                onPress={() => handleMessageUser(item)}
-              >
+              <TouchableOpacity style={[styles.actionBtn, { marginLeft: 15 }]} onPress={() => handleMessageUser(item)}>
                 <View style={[styles.iconCircle, { backgroundColor: '#E8F8F5' }]}>
                   <Ionicons name="chatbubble-ellipses-outline" size={22} color="#16A085" />
                 </View>
@@ -482,7 +530,6 @@ export default function CommunityScreen({ navigation }) {
                 {item.commentsData?.length > 0 ? (
                   item.commentsData.map((comment) => {
                     const isMyComment = !isGuest && (String(comment.userId) === currentUidString);
-                    const isEditing = editingCommentId === comment._id;
 
                     return (
                       <View key={comment._id} style={styles.commentRowContainer}>
@@ -497,39 +544,19 @@ export default function CommunityScreen({ navigation }) {
                             </TouchableOpacity>
                             <View style={{flexDirection:'row', alignItems:'center', gap: 8}}>
                                 <Text style={styles.commentTime}>{formatTimeAgo(comment.createdAt)}</Text>
-                                {isMyComment && !isEditing && (
+                                {isMyComment && (
                                     <View style={{flexDirection:'row', gap: 8}}>
-                                        <TouchableOpacity onPress={() => { setEditingCommentId(comment._id); setEditingCommentText(comment.text); }}>
+                                        <TouchableOpacity onPress={() => openEditCommentModal(item, comment)}>
                                             <Ionicons name="pencil" size={14} color="#3D5A80" />
                                         </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => deleteComment(item, comment._id)}>
+                                        <TouchableOpacity onPress={() => promptDeleteComment(item, comment._id)}>
                                             <Ionicons name="trash" size={14} color="#E76F51" />
                                         </TouchableOpacity>
                                     </View>
                                 )}
                             </View>
                           </View>
-
-                          {isEditing ? (
-                            <View style={styles.editContainer}>
-                                <TextInput 
-                                    style={styles.editInput} 
-                                    value={editingCommentText} 
-                                    onChangeText={setEditingCommentText} 
-                                    autoFocus
-                                />
-                                <View style={styles.editActions}>
-                                    <TouchableOpacity onPress={() => updateComment(item, comment._id)}>
-                                        <Text style={styles.saveText}>Save</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity onPress={() => setEditingCommentId(null)}>
-                                        <Text style={styles.cancelText}>Cancel</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                          ) : (
-                            <Text style={styles.commentText}>{comment.text}</Text>
-                          )}
+                          <Text style={styles.commentText}>{comment.text}</Text>
                         </View>
                       </View>
                     );
@@ -542,14 +569,17 @@ export default function CommunityScreen({ navigation }) {
               {!isGuest && (
                 <View style={styles.addCommentRow}>
                   <Image source={currentUserInfo.profilePic ? { uri: currentUserInfo.profilePic } : require('../../assets/profile-icon.png')} style={styles.commentUserAvatarInput} />
-                  <TextInput 
-                    placeholder="Write a comment..." 
-                    style={styles.commentInput} 
-                    placeholderTextColor="#95A5A6"
-                    value={commentInputs[item._id] || ''}
-                    onChangeText={(text) => setCommentInputs(prev => ({...prev, [item._id]: text}))}
-                  />
-                  <TouchableOpacity onPress={() => handlePostComment(item)}>
+                  
+                  {/* FAKE INPUT -> TRIGGERS MODAL */}
+                  <TouchableOpacity 
+                    style={styles.fakeCommentInput} 
+                    onPress={() => openCommentModal(item._id)}
+                    activeOpacity={0.9}
+                  >
+                    <Text style={{color: '#95A5A6', fontSize: 13}}>Write a comment...</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => openCommentModal(item._id)}>
                     <Ionicons name="send" size={20} color="#3D5A80" style={{marginLeft: 5}} />
                   </TouchableOpacity>
                 </View>
@@ -566,69 +596,13 @@ export default function CommunityScreen({ navigation }) {
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#3D5A80" />
         
-        <Sidebar visible={sidebarVisible} onClose={() => setSidebarVisible(false)} user={currentUser} navigation={navigation} />
         <Header title="COMMUNITY" context="Community" onProfilePress={() => setSidebarVisible(true)} />
-
-        {toastVisible && (
-          <Animated.View style={[
-            styles.toastContainer, 
-            { transform: [{ translateY: toastAnim }] }
-          ]}>
-            <View style={[
-              styles.toastBar, 
-              toastMessage.type === 'error' ? styles.toastWarning : 
-              toastMessage.type === 'success' ? styles.toastSuccess : 
-              styles.toastInfo
-            ]}>
-              <Ionicons 
-                name={toastMessage.type === 'error' ? "alert-circle" : toastMessage.type === 'success' ? "checkmark-circle" : "information-circle"} 
-                size={20} 
-                color="#FFF" 
-              />
-              <Text style={styles.toastText} numberOfLines={1}>
-                {toastMessage.title}: {toastMessage.body}
-              </Text>
-            </View>
-          </Animated.View>
-        )}
-
-        <Modal animationType="fade" transparent={true} visible={optionsVisible} onRequestClose={closePostOptions}>
-          <TouchableWithoutFeedback onPress={closePostOptions}>
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback>
-                <View style={styles.modalContent}>
-                  <View style={styles.modalHandle} />
-                  <Text style={styles.modalTitle}>Manage Post</Text>
-                  <TouchableOpacity style={styles.modalOption} onPress={handleOptionEdit}>
-                    <View style={[styles.modalIconBox, { backgroundColor: '#EBF5FB' }]}><Ionicons name="pencil" size={20} color="#3D5A80" /></View>
-                    <Text style={styles.modalOptionText}>Edit Post</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.modalOption} onPress={handleOptionDelete}>
-                    <View style={[styles.modalIconBox, { backgroundColor: '#FDEDEC' }]}><Ionicons name="trash-outline" size={20} color="#E74C3C" /></View>
-                    <Text style={[styles.modalOptionText, { color: '#E74C3C' }]}>Delete Post</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.modalCancelBtn} onPress={closePostOptions}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-
-        <Modal animationType="fade" transparent={true} visible={deleteModalVisible} onRequestClose={cancelDeletePost}>
-          <View style={styles.deleteModalOverlay}>
-            <View style={styles.deleteModalContent}>
-              <View style={styles.deleteIconCircle}><Ionicons name="trash" size={28} color="#E74C3C" /></View>
-              <Text style={styles.deleteTitle}>Delete Post?</Text>
-              <Text style={styles.deleteSubText}>Are you sure you want to remove this post? This action cannot be undone.</Text>
-              <View style={styles.deleteActions}>
-                <TouchableOpacity style={styles.deleteCancelBtn} onPress={cancelDeletePost}><Text style={styles.deleteCancelText}>Cancel</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.deleteConfirmBtn} onPress={confirmDeletePost}><Text style={styles.deleteConfirmText}>Delete</Text></TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-        <ScrollView ref={scrollViewRef} style={styles.mainScrollView} contentContainerStyle={styles.mainScrollContent}>
+        
+        <ScrollView 
+            ref={scrollViewRef} 
+            style={styles.mainScrollView} 
+            contentContainerStyle={styles.mainScrollContent}
+        >
           <View style={[styles.createPostContainer, styles.shadow, editingPostId && { borderColor: '#3D5A80', borderWidth: 2 }]}>
             {editingPostId && <Text style={styles.editModeLabel}>Editing Post...</Text>}
             <View style={styles.createPostTopRow}>
@@ -670,7 +644,7 @@ export default function CommunityScreen({ navigation }) {
             data={communityPosts}
             renderItem={renderCard}
             keyExtractor={item => item._id}
-            extraData={[currentUserInfo, editingCommentId]} 
+            extraData={[currentUserInfo, activeCommentId]} 
             horizontal
             showsHorizontalScrollIndicator={false}
             snapToInterval={CARD_WIDTH + 20} 
@@ -678,11 +652,157 @@ export default function CommunityScreen({ navigation }) {
             contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 10 }}
             ListEmptyComponent={<Text style={styles.emptyFeedText}>No posts yet. Be the first!</Text>}
           />
-          <View style={{ height: 100 }} />
+          <View style={{ height: 200 }} /> 
         </ScrollView>
 
-        <BottomNavBar navigation={navigation} activeTab="Community" />
-        <FloatingChatbot />
+        {/* FOOTER & OVERLAYS */}
+        {!isKeyboardVisible && (
+          <>
+              <BottomNavBar navigation={navigation} activeTab="Community" />
+              <FloatingChatbot />
+          </>
+        )}
+
+        <Sidebar visible={sidebarVisible} onClose={() => setSidebarVisible(false)} user={currentUser} navigation={navigation} />
+
+        {toastVisible && (
+          <Animated.View style={[styles.toastContainer, { transform: [{ translateY: toastAnim }] }]}>
+            <View style={[styles.toastBar, toastMessage.type === 'error' ? styles.toastWarning : toastMessage.type === 'success' ? styles.toastSuccess : styles.toastInfo]}>
+              <Ionicons name={toastMessage.type === 'error' ? "alert-circle" : toastMessage.type === 'success' ? "checkmark-circle" : "information-circle"} size={20} color="#FFF" />
+              <Text style={styles.toastText} numberOfLines={1}>{toastMessage.title}: {toastMessage.body}</Text>
+            </View>
+          </Animated.View>
+        )}
+
+        {/* --- 1. NEW COMMENT MODAL --- */}
+        <Modal visible={commentModalVisible} transparent animationType="slide" onRequestClose={closeCommentModal}>
+          <TouchableWithoutFeedback onPress={closeCommentModal}>
+              <View style={styles.modalOverlay}>
+                  <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardAvoidModal}>
+                      <TouchableWithoutFeedback>
+                          <View style={styles.modalCommentContainer}>
+                              <View style={styles.modalCommentHeader}>
+                                  <Text style={styles.modalCommentTitle}>Add Comment</Text>
+                                  <TouchableOpacity onPress={closeCommentModal}>
+                                      <Ionicons name="close" size={24} color="#BDC3C7" />
+                                  </TouchableOpacity>
+                              </View>
+                              <View style={styles.modalInputRow}>
+                                  <TextInput 
+                                      style={styles.modalTextInput}
+                                      placeholder="Type your comment..."
+                                      placeholderTextColor="#95A5A6"
+                                      multiline
+                                      autoFocus
+                                      value={commentDraft}
+                                      onChangeText={setCommentDraft}
+                                  />
+                                  <TouchableOpacity 
+                                      style={[styles.modalSendBtn, !commentDraft.trim() && {backgroundColor: '#BDC3C7'}]} 
+                                      onPress={submitCommentFromModal}
+                                      disabled={!commentDraft.trim()}
+                                  >
+                                      <Ionicons name="arrow-up" size={20} color="#FFF" />
+                                  </TouchableOpacity>
+                              </View>
+                          </View>
+                      </TouchableWithoutFeedback>
+                  </KeyboardAvoidingView>
+              </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        {/* --- 2. EDIT COMMENT MODAL (NEW) --- */}
+        <Modal visible={editCommentModalVisible} transparent animationType="slide" onRequestClose={closeEditCommentModal}>
+          <TouchableWithoutFeedback onPress={closeEditCommentModal}>
+              <View style={styles.modalOverlay}>
+                  <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardAvoidModal}>
+                      <TouchableWithoutFeedback>
+                          <View style={styles.modalCommentContainer}>
+                              <View style={styles.modalCommentHeader}>
+                                  <Text style={styles.modalCommentTitle}>Edit Comment</Text>
+                                  <TouchableOpacity onPress={closeEditCommentModal}>
+                                      <Ionicons name="close" size={24} color="#BDC3C7" />
+                                  </TouchableOpacity>
+                              </View>
+                              <View style={styles.modalInputRow}>
+                                  <TextInput 
+                                      style={styles.modalTextInput}
+                                      placeholder="Update your comment..."
+                                      placeholderTextColor="#95A5A6"
+                                      multiline
+                                      autoFocus
+                                      value={editCommentDraft}
+                                      onChangeText={setEditCommentDraft}
+                                  />
+                                  <TouchableOpacity 
+                                      style={[styles.modalSendBtn, !editCommentDraft.trim() && {backgroundColor: '#BDC3C7'}]} 
+                                      onPress={submitEditCommentFromModal}
+                                      disabled={!editCommentDraft.trim()}
+                                  >
+                                      <Ionicons name="checkmark" size={20} color="#FFF" />
+                                  </TouchableOpacity>
+                              </View>
+                          </View>
+                      </TouchableWithoutFeedback>
+                  </KeyboardAvoidingView>
+              </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        {/* --- 3. DELETE COMMENT CONFIRMATION MODAL (NEW) --- */}
+        <Modal animationType="fade" transparent={true} visible={deleteCommentModalVisible} onRequestClose={cancelDeleteComment}>
+          <View style={styles.deleteModalOverlay}>
+            <View style={styles.deleteModalContent}>
+              <View style={styles.deleteIconCircle}><Ionicons name="trash" size={28} color="#E74C3C" /></View>
+              <Text style={styles.deleteTitle}>Delete Comment?</Text>
+              <Text style={styles.deleteSubText}>Are you sure you want to remove this comment? This action cannot be undone.</Text>
+              <View style={styles.deleteActions}>
+                <TouchableOpacity style={styles.deleteCancelBtn} onPress={cancelDeleteComment}><Text style={styles.deleteCancelText}>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.deleteConfirmBtn} onPress={confirmDeleteComment}><Text style={styles.deleteConfirmText}>Delete</Text></TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* MANAGE POST MODAL */}
+        <Modal animationType="fade" transparent={true} visible={optionsVisible} onRequestClose={closePostOptions}>
+          <TouchableWithoutFeedback onPress={closePostOptions}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.modalContent}>
+                  <View style={styles.modalHandle} />
+                  <Text style={styles.modalTitle}>Manage Post</Text>
+                  <TouchableOpacity style={styles.modalOption} onPress={handleOptionEdit}>
+                    <View style={[styles.modalIconBox, { backgroundColor: '#EBF5FB' }]}><Ionicons name="pencil" size={20} color="#3D5A80" /></View>
+                    <Text style={styles.modalOptionText}>Edit Post</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalOption} onPress={handleOptionDelete}>
+                    <View style={[styles.modalIconBox, { backgroundColor: '#FDEDEC' }]}><Ionicons name="trash-outline" size={20} color="#E74C3C" /></View>
+                    <Text style={[styles.modalOptionText, { color: '#E74C3C' }]}>Delete Post</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalCancelBtn} onPress={closePostOptions}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        {/* DELETE POST CONFIRM MODAL */}
+        <Modal animationType="fade" transparent={true} visible={deleteModalVisible} onRequestClose={cancelDeletePost}>
+          <View style={styles.deleteModalOverlay}>
+            <View style={styles.deleteModalContent}>
+              <View style={styles.deleteIconCircle}><Ionicons name="trash" size={28} color="#E74C3C" /></View>
+              <Text style={styles.deleteTitle}>Delete Post?</Text>
+              <Text style={styles.deleteSubText}>Are you sure you want to remove this post? This action cannot be undone.</Text>
+              <View style={styles.deleteActions}>
+                <TouchableOpacity style={styles.deleteCancelBtn} onPress={cancelDeletePost}><Text style={styles.deleteCancelText}>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.deleteConfirmBtn} onPress={confirmDeletePost}><Text style={styles.deleteConfirmText}>Delete</Text></TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
       </View>
     </KeyboardAvoidingView>
   );
@@ -691,7 +811,7 @@ export default function CommunityScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7F9' },
   
-  // --- UPDATED TOAST STYLES (PILL DESIGN) ---
+  // --- UPDATED TOAST STYLES ---
   toastContainer: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 20, left: 20, right: 20, zIndex: 9999, alignItems: 'center' },
   toastBar: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 },
   toastWarning: { backgroundColor: '#E76F51' }, 
@@ -701,6 +821,19 @@ const styles = StyleSheet.create({
 
   mainScrollView: { flex: 1 },
   mainScrollContent: { paddingBottom: 20 },
+  
+  // --- MODAL COMMENT STYLES ---
+  keyboardAvoidModal: { flex: 1, justifyContent: 'flex-end' },
+  modalCommentContainer: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 15, paddingBottom: 30 },
+  modalCommentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  modalCommentTitle: { fontWeight: '700', color: '#2C3E50', fontSize: 16 },
+  modalInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F4F6F7', borderRadius: 25, paddingHorizontal: 5, paddingVertical: 5 },
+  modalTextInput: { flex: 1, maxHeight: 100, paddingHorizontal: 15, paddingVertical: 10, fontSize: 15, color: '#2C3E50' },
+  modalSendBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#3D5A80', justifyContent: 'center', alignItems: 'center' },
+
+  // --- POST CARD STYLES ---
+  fakeCommentInput: { flex: 1, height: 36, justifyContent: 'center' },
+
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 25, paddingBottom: 40 },
   modalHandle: { width: 40, height: 5, backgroundColor: '#E0E7ED', borderRadius: 3, alignSelf: 'center', marginBottom: 20 },
@@ -710,6 +843,7 @@ const styles = StyleSheet.create({
   modalOptionText: { fontSize: 16, fontWeight: '600', color: '#34495E' },
   modalCancelBtn: { marginTop: 20, paddingVertical: 12, alignItems: 'center', backgroundColor: '#F8F9F9', borderRadius: 12 },
   modalCancelText: { fontSize: 15, fontWeight: '700', color: '#7F8C8D' },
+  
   deleteModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   deleteModalContent: { width: '85%', backgroundColor: '#FFF', borderRadius: 25, padding: 25, alignItems: 'center', elevation: 10 },
   deleteIconCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#FDEDEC', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
@@ -730,7 +864,6 @@ const styles = StyleSheet.create({
   largePreviewWrapper: { marginRight: 10, position: 'relative' },
   largePreviewImage: { width: 90, height: 90, borderRadius: 10, borderWidth: 1, borderColor: '#ECF0F1' },
   removeBtnLarge: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.6)', width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  videoOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 10 },
   sendRow: { marginTop: 10, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
   sendButtonFull: { flexDirection: 'row', backgroundColor: '#3D5A80', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, alignItems: 'center', gap: 5 },
   sendButtonText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
