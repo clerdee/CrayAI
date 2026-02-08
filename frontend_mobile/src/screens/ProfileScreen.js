@@ -1,113 +1,111 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, Image, FlatList, 
-  TouchableOpacity, Dimensions, StatusBar, ActivityIndicator, Alert
+  TouchableOpacity, Dimensions, StatusBar, ActivityIndicator, Alert 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 
 // API Import
 import client from '../api/client';
 
-// Use your existing BottomNavBar
+// Component Import
 import BottomNavBar from '../components/BottomNavBar';
 
 const { width } = Dimensions.get('window');
 const GRID_SIZE = width / 3;
 
 export default function ProfileScreen({ navigation, route }) {
-  // 1. DETERMINE IDENTITY
-  // If route.params.userId exists, we are viewing someone else.
-  // Otherwise, we are viewing ourselves.
+  // 1. IDENTIFY USER
   const targetUserId = route?.params?.userId;
   const isViewingSelf = !targetUserId;
   
-  // 2. STATE
+  // 2. STATE MANAGEMENT
   const [userData, setUserData] = useState(null);
+  const [userPosts, setUserPosts] = useState([]); 
   const [stats, setStats] = useState({ followers: 0, following: 0 });
   const [isFollowing, setIsFollowing] = useState(false); 
   const [loading, setLoading] = useState(true);
+  
   const [followLoading, setFollowLoading] = useState(false); 
-  const [currentUserData, setCurrentUserData] = useState(null);
+  const [messageLoading, setMessageLoading] = useState(false); // New loading state for starting chat
 
-  // 3. FETCH DATA (Combined Logic)
-  useEffect(() => {
-    const loadProfile = async () => {
-      setLoading(true);
-      try {
-        // A. Always get current user ID for context (to check if I follow them)
-        const meRes = await client.get('/auth/profile');
-        const myId = meRes.data?.user?._id || meRes.data?.user?.id;
-        setCurrentUserData(meRes.data?.user);
+  // 3. FETCH DATA
+  useFocusEffect(
+    useCallback(() => {
+      loadProfileAndPosts();
+    }, [targetUserId, isViewingSelf])
+  );
 
-        // B. Decide which profile to load
-        if (isViewingSelf) {
-          // --- VIEWING SELF ---
-          setUserData(meRes.data.user);
+  const loadProfileAndPosts = async () => {
+    setLoading(true);
+    try {
+      let profileId = targetUserId;
+      let profileData = null;
+
+      // A. FETCH PROFILE DATA
+      if (isViewingSelf) {
+        // View Own Profile
+        const res = await client.get('/auth/profile');
+        if (res.data.success) {
+          profileData = res.data.user;
+          profileId = res.data.user._id || res.data.user.id; 
+          
+          setUserData(profileData);
           setStats({ 
-            followers: meRes.data.user.followers?.length || 0, 
-            following: meRes.data.user.following?.length || 0 
+            followers: profileData.followers?.length || 0, 
+            following: profileData.following?.length || 0 
           });
-        } else {
-          // --- VIEWING OTHERS ---
-          // Need a public endpoint. 
-          // Assuming /posts/user/:id returns { user: {...}, isFollowing: bool }
-          // If you don't have this specific endpoint, you might need to use /auth/users/:id
-          // or derive isFollowing manually.
-          
-          // Strategy: Fetch user details
-          // Since we don't have a specific "get public user" route in your previous code,
-          // we will assume you might need to add one or use a workaround.
-          // WORKAROUND for now: We reuse the "getChatUsers" logic or assume an endpoint exists.
-          // Ideally: client.get(`/users/${targetUserId}`)
-          
-          // For now, let's try to fetch their info. 
-          // IF YOU DONT HAVE THIS ENDPOINT, YOU NEED TO ADD IT TO BACKEND:
-          // router.get('/:id', auth, userController.getUserProfile);
-          
-          const userRes = await client.get(`/auth/users/${targetUserId}`); 
-          // ^ Ensure this route exists on backend!
-          
-          if (userRes.data?.user) {
-            const u = userRes.data.user;
-            setUserData(u);
-            setStats({ 
-              followers: u.followers?.length || 0, 
-              following: u.following?.length || 0 
-            });
-            
-            // Check if *I* follow *Them*
-            // We check my "following" list from step A
-            const amIFollowing = meRes.data.user.following.includes(targetUserId);
-            setIsFollowing(amIFollowing);
-          }
         }
-      } catch (error) {
-        console.log('Error loading profile:', error);
-        // Fallback or Alert
-      } finally {
-        setLoading(false);
+      } else {
+        // View Others
+        const res = await client.get(`/auth/users/${targetUserId}`);
+        if (res.data.success) {
+          profileData = res.data.user;
+          setUserData(profileData);
+          setIsFollowing(res.data.isFollowing);
+          setStats({ 
+            followers: profileData.followers?.length || 0, 
+            following: profileData.following?.length || 0 
+          });
+        }
       }
-    };
 
-    loadProfile();
-  }, [targetUserId, isViewingSelf]);
+      // B. FETCH USER'S POSTS (SCANS)
+      const feedRes = await client.get('/posts/feed'); 
+      
+      if (feedRes.data.success) {
+        const allPosts = feedRes.data.posts;
+        
+        // Filter posts that belong to this profile
+        const myPosts = allPosts.filter(post => {
+          const posterId = post.userId?._id || post.userId; 
+          return posterId.toString() === profileId.toString();
+        });
 
-  // 4. FOLLOW TOGGLE
+        setUserPosts(myPosts);
+      }
+
+    } catch (error) {
+      console.log('Error loading profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 4. HANDLE FOLLOW / UNFOLLOW
   const handleFollowToggle = async () => {
     if (isViewingSelf) return;
     setFollowLoading(true);
 
     try {
-      // Call the endpoint we used in CommunityScreen
       const res = await client.post(`/auth/follow/${targetUserId}`);
       
-      if (res.data) {
-        const newStatus = res.data.isFollowing; // Backend should return true/false
+      if (res.data.success) {
+        const newStatus = res.data.isFollowing;
         setIsFollowing(newStatus);
         
-        // Update stats locally for immediate feedback
         setStats(prev => ({
           ...prev,
           followers: newStatus ? prev.followers + 1 : prev.followers - 1
@@ -121,25 +119,66 @@ export default function ProfileScreen({ navigation, route }) {
     }
   };
 
-  // Mock Scans (Placeholder for now)
-  const mockScans = [
-    { id: '1', image: 'https://images.unsplash.com/photo-1623996538604-a1a721612e6e?auto=format&fit=crop&q=80&w=400', date: 'Jan 15' },
-    { id: '2', image: 'https://images.unsplash.com/photo-1544552866-d3ed42536cfd?auto=format&fit=crop&q=80&w=400', date: 'Jan 10' },
-    { id: '3', image: 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?auto=format&fit=crop&q=80&w=400', date: 'Jan 05' },
-  ];
+  // 5. HANDLE MESSAGE BUTTON PRESS
+  const handleMessagePress = async () => {
+    if (isViewingSelf || !userData) return;
+    setMessageLoading(true);
 
-  const renderGridItem = ({ item }) => (
-    <TouchableOpacity style={styles.gridItem}>
-      <Image source={{ uri: item.image }} style={styles.gridImage} />
-      <View style={styles.dateBadge}>
-        <Text style={styles.dateText}>{item.date}</Text>
-      </View>
-    </TouchableOpacity>
-  );
+    try {
+      // We call startChat first to ensure the chat document exists in MongoDB
+      // This prevents "Chat not found" errors when sending the first message
+      await client.post('/chat/start', { 
+        targetUserId: userData._id || userData.id 
+      });
+
+      // Navigate to ChatScreen with the user details
+      navigation.navigate('Chat', {
+        targetUser: {
+          uid: userData._id || userData.id,
+          name: userData.fullName || `${userData.firstName} ${userData.lastName}`,
+          profilePic: userData.profilePic
+        }
+      });
+
+    } catch (error) {
+      console.error("Start chat error:", error);
+      Alert.alert("Error", "Could not start conversation.");
+    } finally {
+      setMessageLoading(false);
+    }
+  };
+
+  // Helper function to format date
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const renderGridItem = ({ item }) => {
+    const hasMedia = item.media && item.media.length > 0;
+    const imageSource = hasMedia ? { uri: item.media[0] } : require('../../assets/crayfish.png'); 
+
+    return (
+      <TouchableOpacity style={styles.gridItem}>
+        <Image source={imageSource} style={styles.gridImage} resizeMode="cover" />
+        {hasMedia && item.media.length > 1 && (
+          <View style={styles.multiIcon}>
+            <Ionicons name="layers" size={12} color="#FFF" />
+          </View>
+        )}
+        <View style={styles.dateBadge}>
+          <Text style={styles.dateText}>
+            {formatDate(item.createdAt)}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color="#3D5A80" />
       </View>
     );
@@ -149,11 +188,10 @@ export default function ProfileScreen({ navigation, route }) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* --- HEADER --- */}
+      {/* --- HEADER SECTION --- */}
       <LinearGradient colors={['#3D5A80', '#293241']} style={styles.header}>
         <View style={styles.navRow}>
-          {/* Back Button Logic */}
-          {!isViewingSelf || navigation.canGoBack() ? (
+          {!isViewingSelf ? (
             <TouchableOpacity onPress={() => navigation.goBack()}>
               <Ionicons name="arrow-back" size={24} color="#FFF" />
             </TouchableOpacity>
@@ -165,7 +203,13 @@ export default function ProfileScreen({ navigation, route }) {
             {isViewingSelf ? "MY PROFILE" : "RESEARCHER"}
           </Text>
           
-          <View style={{ width: 24 }} />
+          {isViewingSelf ? (
+            <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+              <Ionicons name="settings-outline" size={24} color="#FFF" />
+            </TouchableOpacity>
+          ) : (
+             <View style={{ width: 24 }} />
+          )}
         </View>
 
         <View style={styles.profileInfo}>
@@ -174,50 +218,69 @@ export default function ProfileScreen({ navigation, route }) {
               source={userData?.profilePic ? { uri: userData.profilePic } : require('../../assets/profile-icon.png')} 
               style={styles.avatar} 
             />
-            {/* Show badge if verified (example role) */}
             {userData?.role === 'Verified' && (
               <View style={styles.verifiedBadge}>
-                <Ionicons name="checkmark-sharp" size={14} color="#FFF" />
+                <Ionicons name="checkmark-sharp" size={12} color="#FFF" />
               </View>
             )}
           </View>
           
           <Text style={styles.userName}>
-            {userData?.fullName || userData?.firstName || 'Researcher'}
+            {userData?.fullName || `${userData?.firstName || ''} ${userData?.lastName || ''}`.trim() || 'Researcher'}
           </Text>
           
           <View style={styles.locationRow}>
             <Ionicons name="location" size={14} color="#98C1D9" />
-            <Text style={styles.userLocation}>{userData?.city || 'Location Unknown'}</Text>
+            <Text style={styles.userLocation}>{userData?.city || 'Unknown Location'}</Text>
           </View>
           
-          {/* ACTION BUTTON SWITCH */}
+          {/* --- ACTION BUTTONS (Message & Follow) --- */}
           {!isViewingSelf ? (
-            <TouchableOpacity 
-              style={[styles.followBtn, isFollowing ? styles.followingBtn : styles.notFollowingBtn]}
-              onPress={handleFollowToggle}
-              disabled={followLoading}
-            >
-              {followLoading ? (
-                <ActivityIndicator size="small" color={isFollowing ? "#FFF" : "#3D5A80"} />
-              ) : (
-                <Text style={[styles.followText, isFollowing && { color: '#FFF' }]}>
-                  {isFollowing ? "Following" : "Follow"}
-                </Text>
-              )}
-            </TouchableOpacity>
+            <View style={styles.actionRow}>
+              {/* Message Button */}
+              <TouchableOpacity 
+                style={[styles.actionBtn, styles.messageBtn]}
+                onPress={handleMessagePress}
+                disabled={messageLoading}
+              >
+                {messageLoading ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Ionicons name="chatbubble-ellipses-outline" size={20} color="#FFF" />
+                )}
+              </TouchableOpacity>
+
+              {/* Follow Button */}
+              <TouchableOpacity 
+                style={[
+                  styles.actionBtn, 
+                  isFollowing ? styles.followingBtn : styles.followBtn
+                ]}
+                onPress={handleFollowToggle}
+                disabled={followLoading}
+              >
+                {followLoading ? (
+                  <ActivityIndicator size="small" color={isFollowing ? "#FFF" : "#3D5A80"} />
+                ) : (
+                  <Text style={[styles.btnText, isFollowing && styles.followingBtnText]}>
+                    {isFollowing ? "Following" : "Follow"}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
           ) : (
+            // Edit Profile Button (If viewing self)
             <TouchableOpacity 
-              style={styles.editProfileBtn}
+              style={[styles.actionBtn, styles.editBtn]}
               onPress={() => navigation.navigate('EditProfile')}
             >
-              <Text style={styles.editProfileText}>Edit Profile</Text>
+              <Text style={styles.editBtnText}>Edit Profile</Text>
             </TouchableOpacity>
           )}
         </View>
       </LinearGradient>
 
-      {/* --- STATS --- */}
+      {/* --- STATS CARD --- */}
       <View style={styles.statsCard}>
         <TouchableOpacity style={styles.statItem}>
           <Text style={styles.statValue}>{stats.followers}</Text>
@@ -230,29 +293,39 @@ export default function ProfileScreen({ navigation, route }) {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.bioText}>
+      {/* --- BIO --- */}
+      <Text style={styles.bioText} numberOfLines={3}>
         {userData?.bio || "This researcher hasn't added a bio yet."}
       </Text>
 
-      {/* --- GRID --- */}
+      {/* --- SCANS (POSTS) GRID --- */}
       <View style={styles.gridHeader}>
         <Text style={styles.gridTitle}>
-          {isViewingSelf ? "My Scans" : "Research Scans"}
+          {isViewingSelf ? "My Scans" : "Recent Contributions"}
         </Text>
+        <Text style={styles.scanCount}>{userPosts.length} Scans</Text>
       </View>
 
-      <FlatList
-        data={mockScans} // Replace with real scans eventually
-        renderItem={renderGridItem}
-        keyExtractor={item => item.id}
-        numColumns={3}
-        contentContainerStyle={styles.gridContainer}
-        showsVerticalScrollIndicator={false}
-      />
+      {userPosts.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>No scans uploaded yet.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={userPosts}
+          renderItem={renderGridItem}
+          keyExtractor={item => item._id}
+          numColumns={3}
+          contentContainerStyle={styles.gridContainer}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
 
-      {/* Hide Bottom Nav if we are viewing someone else (so we have more screen space) */}
+      {/* --- BOTTOM NAV --- */}
       {isViewingSelf && (
-        <BottomNavBar navigation={navigation} activeTab="Profile" />
+        <View style={styles.bottomNavWrapper}>
+          <BottomNavBar navigation={navigation} activeTab="Profile" />
+        </View>
       )}
     </View>
   );
@@ -260,38 +333,69 @@ export default function ProfileScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7F9' },
-  header: { paddingTop: 60, paddingBottom: 40, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
-  navRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 },
-  headerTitle: { color: '#FFF', fontSize: 16, fontWeight: '800', letterSpacing: 1 },
-  profileInfo: { alignItems: 'center' },
-  avatarContainer: { position: 'relative', marginBottom: 15 },
-  avatar: { width: 90, height: 90, borderRadius: 45, borderWidth: 3, borderColor: '#FFF' },
-  verifiedBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#1DA1F2', padding: 4, borderRadius: 12, borderWidth: 2, borderColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
-  userName: { color: '#FFF', fontSize: 22, fontWeight: '800', marginBottom: 5 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  userLocation: { color: '#98C1D9', fontSize: 13, fontWeight: '600', marginLeft: 5 },
+  centerContent: { justifyContent: 'center', alignItems: 'center' },
   
-  // Follow Button Styles
-  followBtn: { paddingHorizontal: 30, paddingVertical: 8, borderRadius: 20, borderWidth: 1, minWidth: 120, alignItems: 'center', borderColor: '#FFF' },
-  notFollowingBtn: { backgroundColor: '#FFF' }, 
-  followingBtn: { backgroundColor: 'transparent' }, 
-  followText: { fontSize: 14, fontWeight: '700', color: '#3D5A80' },
+  header: { paddingTop: 60, paddingBottom: 50, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
+  navRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 15 },
+  headerTitle: { color: '#FFF', fontSize: 16, fontWeight: '800', letterSpacing: 1 },
+  
+  profileInfo: { alignItems: 'center' },
+  avatarContainer: { position: 'relative', marginBottom: 10 },
+  avatar: { width: 90, height: 90, borderRadius: 45, borderWidth: 3, borderColor: '#FFF' },
+  verifiedBadge: { 
+    position: 'absolute', bottom: 0, right: 0, 
+    backgroundColor: '#1DA1F2', padding: 4, borderRadius: 12, 
+    borderWidth: 2, borderColor: '#FFF', justifyContent: 'center', alignItems: 'center' 
+  },
+  userName: { color: '#FFF', fontSize: 20, fontWeight: '800', marginBottom: 4 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
+  userLocation: { color: '#98C1D9', fontSize: 13, fontWeight: '600', marginLeft: 4 },
 
-  // Edit Button Styles
-  editProfileBtn: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
-  editProfileText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  // --- BUTTONS ---
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 },
+  actionBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 25, minWidth: 50, alignItems: 'center', justifyContent: 'center' },
+  
+  // Message Button
+  messageBtn: { backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)', width: 50, height: 42, paddingHorizontal: 0 },
+  
+  // Follow Button
+  followBtn: { backgroundColor: '#FFF', minWidth: 120 },
+  followingBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#FFF', minWidth: 120 },
+  
+  btnText: { fontSize: 14, fontWeight: '700', color: '#3D5A80' },
+  followingBtnText: { color: '#FFF' },
+  
+  // Edit Button
+  editBtn: { backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)', minWidth: 140 },
+  editBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 
-  statsCard: { flexDirection: 'row', backgroundColor: '#FFF', marginHorizontal: 20, marginTop: -25, borderRadius: 20, padding: 20, elevation: 5, shadowColor: '#3D5A80', shadowOpacity: 0.15, shadowRadius: 10 },
+  statsCard: { 
+    flexDirection: 'row', backgroundColor: '#FFF', 
+    marginHorizontal: 20, marginTop: -30, borderRadius: 20, 
+    paddingVertical: 15, elevation: 8, shadowColor: '#3D5A80', 
+    shadowOpacity: 0.15, shadowOffset: {width: 0, height: 4}, shadowRadius: 10 
+  },
   statItem: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: 20, fontWeight: '800', color: '#3D5A80' },
-  statLabel: { fontSize: 11, color: '#7F8C8D', fontWeight: '600', textTransform: 'uppercase', marginTop: 5 },
-  divider: { width: 1, backgroundColor: '#ECF0F1', height: '100%' },
-  bioText: { marginHorizontal: 25, marginTop: 25, marginBottom: 15, fontSize: 14, color: '#293241', lineHeight: 22, textAlign: 'center' },
-  gridHeader: { paddingHorizontal: 20, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#ECF0F1', marginBottom: 1 },
+  statValue: { fontSize: 18, fontWeight: '800', color: '#3D5A80' },
+  statLabel: { fontSize: 11, color: '#7F8C8D', fontWeight: '600', textTransform: 'uppercase', marginTop: 2 },
+  divider: { width: 1, backgroundColor: '#ECF0F1', height: '80%' },
+
+  bioText: { marginHorizontal: 30, marginTop: 20, marginBottom: 10, fontSize: 14, color: '#555', lineHeight: 20, textAlign: 'center' },
+  
+  gridHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#ECF0F1' },
   gridTitle: { fontSize: 14, fontWeight: '800', color: '#3D5A80', textTransform: 'uppercase' },
-  gridContainer: { paddingBottom: 100 }, 
+  scanCount: { fontSize: 12, color: '#98C1D9', fontWeight: '600' },
+  
+  gridContainer: { paddingBottom: 100 },
   gridItem: { width: GRID_SIZE, height: GRID_SIZE, padding: 1 },
-  gridImage: { width: '100%', height: '100%' },
-  dateBadge: { position: 'absolute', bottom: 5, left: 5, backgroundColor: 'rgba(41,50,65,0.7)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5 },
-  dateText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
+  gridImage: { width: '100%', height: '100%', backgroundColor: '#EEE' },
+  
+  dateBadge: { position: 'absolute', bottom: 5, left: 5, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  dateText: { color: '#FFF', fontSize: 9, fontWeight: '700' },
+  multiIcon: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 4, padding: 2 },
+
+  emptyState: { padding: 40, alignItems: 'center' },
+  emptyStateText: { color: '#999', fontSize: 14, fontStyle: 'italic' },
+
+  bottomNavWrapper: { position: 'absolute', bottom: 0, width: '100%' }
 });

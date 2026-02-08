@@ -1,7 +1,7 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-
+const mongoose = require('mongoose');
 dotenv.config(); 
 
 const connectDB = require('./config/db'); 
@@ -15,8 +15,14 @@ const chatbotProxy = require('./routes/chatbotProxy');
 
 const app = express();
 
-connectDB();
-
+connectDB().then(async () => {
+  try {
+    await mongoose.connection.collection('chats').dropIndex('chatId_1');
+    console.log("✅ SUCCESS: 'chatId_1' index dropped!");
+  } catch (err) {
+    console.log("ℹ️ Index info:", err.message);
+  }
+});
 app.use(express.json());
 app.use(cors());
 

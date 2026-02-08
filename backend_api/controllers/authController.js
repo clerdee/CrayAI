@@ -242,7 +242,9 @@ exports.getMe = async (req, res) => {
         bio: user.bio,
         role: user.role,
         accountStatus: user.accountStatus,
-        isVerified: user.isVerified
+        isVerified: user.isVerified,
+        followers: user.followers || [],
+        following: user.following || []
       }
     });
   } catch (error) {
@@ -407,7 +409,7 @@ exports.updateEmail = async (req, res) => {
 exports.getUserPublicProfile = async (req, res) => {
   try {
     const { id } = req.params;
-    const currentUserId = req.user.userId; // From JWT
+    const currentUserId = req.user.userId; 
 
     const user = await User.findById(id)
       .select('firstName lastName profilePic bio role city country following followers');

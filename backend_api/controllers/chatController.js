@@ -8,6 +8,16 @@ exports.startChat = async (req, res) => {
     const senderId = req.user.userId;
     const { targetUserId } = req.body;
 
+    // VALIDATION: Ensure target ID is provided
+    if (!targetUserId) {
+      return res.status(400).json({ message: 'Target user ID is required' });
+    }
+
+    // VALIDATION: Prevent chatting with self (optional but good practice)
+    if (senderId === targetUserId) {
+      return res.status(400).json({ message: 'Cannot start a chat with yourself' });
+    }
+
     // 1. Check if chat already exists
     let chat = await Chat.findOne({
       participants: { $all: [senderId, targetUserId] }
@@ -23,17 +33,26 @@ exports.startChat = async (req, res) => {
       User.findById(targetUserId)
     ]);
 
-    // 3. Determine Relationship Logic
-    const iFollowThem = me.following.includes(targetUserId);
-    const theyFollowMe = them.following.includes(senderId);
+    // Safety Check: If either user is missing, stop here
+    if (!me || !them) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
-    let status = 'pending'; // Default: One-way or strangers
+    // 3. Determine Relationship Logic (ULTRA-SAFE VERSION)
+    // We filter(id => id) to remove any 'null' or 'undefined' values that might crash the app
+    const myFollowing = (me.following || []).filter(id => id);
+    const theirFollowing = (them.following || []).filter(id => id);
+
+    // Convert IDs to strings for reliable comparison
+    const iFollowThem = myFollowing.some(id => id.toString() === targetUserId.toString());
+    const theyFollowMe = theirFollowing.some(id => id.toString() === senderId.toString());
+
+    let status = 'pending'; 
     
+    // If we follow each other, it's an accepted chat
     if (iFollowThem && theyFollowMe) {
-      status = 'accepted'; // Mutuals -> "Chats"
+      status = 'accepted'; 
     } 
-    // Note: If I follow them but they don't follow me, 
-    // it stays 'pending' (My "Pending", Their "Request")
 
     chat = new Chat({
       participants: [senderId, targetUserId],
@@ -45,8 +64,10 @@ exports.startChat = async (req, res) => {
     await chat.save();
 
     res.status(201).json({ success: true, chat });
+
   } catch (error) {
-    res.status(500).json({ message: 'Server Error' });
+    console.error("Start Chat Error:", error); // Check your VS Code terminal for the specific error details!
+    res.status(500).json({ message: 'Server Error: ' + error.message });
   }
 };
 
