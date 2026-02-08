@@ -159,6 +159,13 @@ export default function CommunityScreen({ navigation }) {
     return false; 
   };
 
+  const handleLogout = async () => {
+  await AsyncStorage.multiRemove(['userToken', 'userInfo', 'alertsCount']);
+  setCurrentUser(null);
+  setSidebarVisible(false);
+  navigation.navigate('Login'); 
+};
+
   // --- POST OPTIONS ---
   const openPostOptions = (post) => {
     setSelectedPostForOptions(post);
@@ -663,7 +670,13 @@ export default function CommunityScreen({ navigation }) {
           </>
         )}
 
-        <Sidebar visible={sidebarVisible} onClose={() => setSidebarVisible(false)} user={currentUser} navigation={navigation} />
+        <Sidebar 
+        visible={sidebarVisible} 
+        onClose={() => setSidebarVisible(false)} 
+        user={currentUser} 
+        navigation={navigation} 
+        onLogout={handleLogout}
+        />
 
         {toastVisible && (
           <Animated.View style={[styles.toastContainer, { transform: [{ translateY: toastAnim }] }]}>

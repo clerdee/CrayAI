@@ -187,6 +187,13 @@ export default function ChatScreen({ navigation, route }) {
     
   }, [activeChatUser, currentUser]);
 
+  const handleLogout = async () => {
+  await AsyncStorage.multiRemove(['userToken', 'userInfo', 'alertsCount']);
+  setCurrentUser(null);
+  setSidebarVisible(false);
+  navigation.navigate('Login');
+  };
+
   const handleSendMessage = async () => {
     if (!message.trim() && !stagedImage) return;
     const currentMsg = message;
@@ -244,7 +251,15 @@ export default function ChatScreen({ navigation, route }) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      <Sidebar visible={sidebarVisible} onClose={() => setSidebarVisible(false)} navigation={navigation} user={currentUser} />
+
+            <Sidebar 
+              visible={sidebarVisible} 
+              onClose={() => setSidebarVisible(false)} 
+              navigation={navigation}
+              user={currentUser}
+              onLogout={handleLogout}
+            />
+            
       <Header title="CRAYCHAT" context="Chat" onProfilePress={() => setSidebarVisible(true)} />
 
       {toastVisible && (
