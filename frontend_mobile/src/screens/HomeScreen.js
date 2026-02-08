@@ -1,9 +1,14 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Platform, StatusBar, ActivityIndicator, Animated, Dimensions } from 'react-native';
-import { FontAwesome5, Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { 
+  View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, 
+  Platform, StatusBar, ActivityIndicator, Animated, Dimensions, RefreshControl 
+} from 'react-native';
+import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+import { LineChart, PieChart, ProgressChart } from "react-native-chart-kit";
 
 // API Import
 import client from '../api/client'; 
@@ -23,6 +28,15 @@ export default function HomeScreen({ navigation }) {
   const [alertsCount, setAlertsCount] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // REAL DATA STATES
+  const [recentScans, setRecentScans] = useState([]); 
+  const [stats, setStats] = useState({ total: 0, warnings: 0, berried: 0 });
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  // MARKET PREDICTION STATE
+  const [marketMonthIndex, setMarketMonthIndex] = useState(0); // 0 = Jan
 
   // --- NOTIFICATION ---
   const [notification, setNotification] = useState({ visible: false, message: '', type: 'info' });
@@ -38,19 +52,25 @@ export default function HomeScreen({ navigation }) {
     }, 3000);
   };
 
-  // --- LOAD DATA ---
+  // --- LOAD DATA & TIMERS ---
   useEffect(() => {
     const loadAlertBadge = async () => {
       const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        setAlertsCount(0);
-      } else {
+      if (!token) setAlertsCount(0);
+      else {
         const value = await AsyncStorage.getItem('alertsCount');
         setAlertsCount(Number(value || 0));
       }
     };
     const unsubscribe = navigation.addListener('focus', loadAlertBadge);
-    return unsubscribe;
+    
+    // Auto-update date
+    const timer = setInterval(() => setCurrentDate(new Date()), 60000);
+
+    return () => {
+        unsubscribe();
+        clearInterval(timer);
+    };
   }, [navigation]);
 
   useFocusEffect(
@@ -64,16 +84,8 @@ export default function HomeScreen({ navigation }) {
     try {
       const token = await AsyncStorage.getItem('userToken');
       if (token) {
-        try {
-          const res = await client.get('/auth/profile');
-          if (res.data && res.data.success && res.data.user) {
-             setCurrentUser(res.data.user);
-          } else {
-             setCurrentUser(null);
-          }
-        } catch (apiError) {
-          setCurrentUser(null);
-        }
+        const res = await client.get('/auth/profile');
+        if (res.data?.success) setCurrentUser(res.data.user);
       } else {
         setCurrentUser(null);
       }
@@ -84,72 +96,105 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    checkLoginStatus().then(() => setRefreshing(false));
+  }, []);
+
+  // --- ACTIONS ---
   const handleCameraPress = () => {
-    if (currentUser) {
-      navigation.navigate('Camera');
-    } else {
-      showNotification("Login required to access AI Scanner.", "warning");
+    if (currentUser) navigation.navigate('Camera');
+    else showNotification("Login required for AI Scanner.", "warning");
+  };
+
+  const handleUploadPress = async () => {
+    if (!currentUser) {
+        showNotification("Login required to upload.", "warning");
+        return;
+    }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+        showNotification("Gallery permission is needed.", "warning");
+        return;
+    }
+    let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 1,
+    });
+    if (!result.canceled) {
+        showNotification("Image selected! Analyzing...", "success");
+        // TODO: Handle image upload to API
     }
   };
 
   const handleLogout = async () => {
-    try {
-      await AsyncStorage.removeItem('userToken');
-      await AsyncStorage.removeItem('userInfo');
-      await AsyncStorage.removeItem('alertsCount'); 
-      setCurrentUser(null); 
-      setAlertsCount(0); 
-      setSidebarVisible(false);
-      navigation.navigate('Login');
-    } catch (error) {
-      console.log(error);
-    }
+    await AsyncStorage.multiRemove(['userToken', 'userInfo', 'alertsCount']);
+    setCurrentUser(null);
+    setSidebarVisible(false);
+    navigation.navigate('Login');
   };
 
-  // --- DATA MOCKUPS ---
+  // --- ANALYTICS DATA LOGIC (EMPTY/NO MOCK) ---
   const categories = ['Gender', 'Size', 'Age'];
   
-  const recentScans = [
-    { id: 1, time: '10:45 AM', date: 'Today', result: 'Male (Adult)', image: 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?q=80&w=300', status: 'Healthy' },
-    { id: 2, time: 'Yesterday', date: 'Jan 29', result: 'Female (Berried)', image: 'https://images.unsplash.com/photo-1559563362-c667ba5f5480?q=80&w=300', status: 'Attention' },
-    { id: 3, time: 'Jan 28', date: 'Jan 28', result: 'Male (Juv)', image: 'https://images.unsplash.com/photo-1570535386008-0131481014e3?q=80&w=300', status: 'Healthy' }
-  ];
-
-  // CHANGED: Data structure for horizontal bars
   const getAnalyticsData = () => {
-    switch(activeTab) {
-      case 'Gender': return {
-        total: 250,
+    return { 
+        total: 0, 
         items: [
-          { label: 'Male', value: 120, pct: '48%', color: '#3D5A80', icon: 'male-outline' },
-          { label: 'Female', value: 90, pct: '36%', color: '#E76F51', icon: 'female-outline' },
-          { label: 'Berried', value: 40, pct: '16%', color: '#F4A261', icon: 'egg-outline' }
-        ]
-      };
-      case 'Size': return {
-        total: 250,
-        items: [
-          { label: 'Small (<8cm)', value: 60, pct: '24%', color: '#98C1D9', icon: 'resize-outline' },
-          { label: 'Medium (8-12)', value: 130, pct: '52%', color: '#3D5A80', icon: 'resize-outline' },
-          { label: 'Large (>12cm)', value: 60, pct: '24%', color: '#293241', icon: 'resize-outline' }
-        ]
-      };
-      case 'Age': return {
-        total: 250,
-        items: [
-          { label: 'Juvenile', value: 60, pct: '24%', color: '#2A9D8F', icon: 'leaf-outline' },
-          { label: 'Sub-Adult', value: 100, pct: '40%', color: '#2A9D8F', icon: 'rose-outline' },
-          { label: 'Adult', value: 90, pct: '36%', color: '#2A9D8F', icon: 'medal-outline' }
-        ]
-      };
-      default: return { total: 0, items: [] };
-    }
+            { label: activeTab === 'Gender' ? 'Male' : activeTab === 'Size' ? 'Small' : 'Juvenile', value: 0, pct: '0%', color: '#3D5A80', icon: 'remove-outline' },
+            { label: activeTab === 'Gender' ? 'Female' : activeTab === 'Size' ? 'Medium' : 'Sub-Adult', value: 0, pct: '0%', color: '#E76F51', icon: 'remove-outline' },
+            { label: activeTab === 'Gender' ? 'Berried' : activeTab === 'Size' ? 'Large' : 'Adult', value: 0, pct: '0%', color: '#2A9D8F', icon: 'remove-outline' }
+        ] 
+    }; 
   };
-
   const analyticsData = getAnalyticsData();
 
+  // --- MARKET FORECAST LOGIC ---
+  const marketProjections = [
+    { month: 'Jan', price: 350 }, { month: 'Feb', price: 380 }, { month: 'Mar', price: 410 },
+    { month: 'Apr', price: 400 }, { month: 'May', price: 450 }, { month: 'Jun', price: 480 },
+    { month: 'Jul', price: 510 }, { month: 'Aug', price: 530 }, { month: 'Sep', price: 550 },
+    { month: 'Oct', price: 600 }, { month: 'Nov', price: 650 }, { month: 'Dec', price: 720 },
+  ];
+
+  const handleNextMonth = () => {
+    setMarketMonthIndex((prev) => (prev + 1) % 12);
+  };
+
+  const handlePrevMonth = () => {
+    setMarketMonthIndex((prev) => (prev - 1 + 12) % 12);
+  };
+
+  // --- CHART CONFIG ---
+  const chartConfig = {
+    backgroundGradientFrom: "#ffffff",
+    backgroundGradientTo: "#ffffff",
+    color: (opacity = 1) => `rgba(61, 90, 128, ${opacity})`,
+    strokeWidth: 2,
+    barPercentage: 0.5,
+    decimalPlaces: 0,
+  };
+
+  // --- ALGAE DATA (GRAYED OUT STATE) ---
+  // Using a single gray slice to represent "No Data" visually
+  const algaeData = [
+    { 
+      name: "No Data", 
+      population: 100, 
+      color: "#F3F4F6", // Light Gray (Tailwind Gray-100)
+      legendFontColor: "#9CA3AF", // Gray-400
+      legendFontSize: 10 
+    }
+  ];
+
+  // Turbidity Data (Placeholder for now)
+  const turbidityData = { labels: ["Turbidity"], data: [0] };
+
+
   // ==========================================
-  // VIEW: GUEST MODE
+  // RENDER: GUEST MODE
   // ==========================================
   const renderGuestGuide = () => (
     <View style={styles.guestContainer}>
@@ -189,25 +234,6 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Everything you need</Text></View>
-      <View style={styles.featureGrid}>
-         <View style={[styles.gridItem, styles.shadow]}>
-            <View style={[styles.gridIcon, {backgroundColor: '#E0FBFC'}]}><Ionicons name="scan" size={24} color="#3D5A80" /></View>
-            <Text style={styles.gridTitle}>Instant ID</Text>
-            <Text style={styles.gridSub}>Gender & Age</Text>
-         </View>
-         <View style={[styles.gridItem, styles.shadow]}>
-            <View style={[styles.gridIcon, {backgroundColor: '#FFDDD2'}]}><Ionicons name="stats-chart" size={24} color="#E76F51" /></View>
-            <Text style={styles.gridTitle}>Analytics</Text>
-            <Text style={styles.gridSub}>Growth Data</Text>
-         </View>
-         <View style={[styles.gridItem, styles.shadow]}>
-            <View style={[styles.gridIcon, {backgroundColor: '#D8F3DC'}]}><Ionicons name="people" size={24} color="#2A9D8F" /></View>
-            <Text style={styles.gridTitle}>Community</Text>
-            <Text style={styles.gridSub}>Global Feed</Text>
-         </View>
-      </View>
-
       <View style={styles.modernCta}>
         <View>
           <Text style={styles.ctaHeading}>Join CrayAI</Text>
@@ -222,7 +248,7 @@ export default function HomeScreen({ navigation }) {
   );
 
   // ==========================================
-  // VIEW: LOGGED IN USER (Improved Analytics)
+  // RENDER: USER DASHBOARD
   // ==========================================
   const renderUserDashboard = () => (
     <View style={styles.dashboardContainer}>
@@ -233,86 +259,87 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.userGreeting}>Welcome Back,</Text>
           <Text style={styles.userName}>{currentUser?.firstName || 'Researcher'}</Text>
         </View>
-        <TouchableOpacity style={styles.dateBadge}>
-          <Ionicons name="calendar-outline" size={14} color="#3D5A80" />
-          <Text style={styles.dateText}>Feb 02</Text>
-        </TouchableOpacity>
+        <View style={styles.dateBadge}>
+          <Feather name="calendar" size={14} color="#3D5A80" />
+          <Text style={styles.dateText}>
+            {currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </Text>
+        </View>
       </View>
 
       {/* 2. STATS TICKER */}
       <View style={styles.statsTicker}>
          <View style={styles.tickerItem}>
-            <Text style={styles.tickerValue}>142</Text>
+            <Text style={styles.tickerValue}>{stats.total}</Text>
             <Text style={styles.tickerLabel}>Total Scans</Text>
          </View>
          <View style={styles.tickerDivider} />
          <View style={styles.tickerItem}>
-            <Text style={[styles.tickerValue, {color: '#E76F51'}]}>3</Text>
+            <Text style={[styles.tickerValue, {color: '#E76F51'}]}>{stats.warnings}</Text>
             <Text style={styles.tickerLabel}>Warnings</Text>
          </View>
          <View style={styles.tickerDivider} />
          <View style={styles.tickerItem}>
-            <Text style={[styles.tickerValue, {color: '#2A9D8F'}]}>18</Text>
+            <Text style={[styles.tickerValue, {color: '#2A9D8F'}]}>{stats.berried}</Text>
             <Text style={styles.tickerLabel}>Berried</Text>
          </View>
       </View>
 
-      {/* 3. MAIN ACTIONS (Split) */}
+      {/* 3. MAIN ACTIONS */}
       <View style={styles.actionRow}>
          <TouchableOpacity style={[styles.actionCard, styles.shadow, {backgroundColor: '#293241'}]} onPress={handleCameraPress}>
-             <View style={styles.actionIconCircle}>
-                <Ionicons name="camera" size={24} color="#293241" />
-             </View>
-             <Text style={styles.actionCardTitle}>New Scan</Text>
-             <Text style={styles.actionCardSub}>Identify species</Text>
+             <LinearGradient colors={['#3D5A80', '#293241']} style={styles.actionGradient}>
+                <Ionicons name="camera" size={28} color="#E0FBFC" />
+                <View>
+                    <Text style={styles.actionCardTitle}>New Scan</Text>
+                    <Text style={styles.actionCardSub}>Identify Species</Text>
+                </View>
+             </LinearGradient>
          </TouchableOpacity>
 
-         <TouchableOpacity style={[styles.actionCard, styles.shadow, {backgroundColor: '#FFF'}]}>
-             <View style={[styles.actionIconCircle, {backgroundColor: '#F0F4F8'}]}>
-                <Ionicons name="images" size={24} color="#3D5A80" />
+         <TouchableOpacity style={[styles.actionCard, styles.shadow, {backgroundColor: '#FFF'}]} onPress={handleUploadPress}>
+             <View style={styles.actionContentLight}>
+                <Ionicons name="images" size={28} color="#3D5A80" />
+                <View>
+                    <Text style={[styles.actionCardTitle, {color: '#293241'}]}>Upload</Text>
+                    <Text style={[styles.actionCardSub, {color: '#7F8C8D'}]}>From Gallery</Text>
+                </View>
              </View>
-             <Text style={[styles.actionCardTitle, {color: '#293241'}]}>Upload</Text>
-             <Text style={[styles.actionCardSub, {color: '#7F8C8D'}]}>From gallery</Text>
          </TouchableOpacity>
       </View>
 
-      {/* 4. MY SCANS */}
+      {/* 4. RECENT SCANS (Below Actions) */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>My Scans</Text>
-        <TouchableOpacity><Text style={styles.viewLink}>History</Text></TouchableOpacity>
+        <Text style={styles.sectionTitle}>Recent Scans</Text>
+        {recentScans.length > 0 && <TouchableOpacity><Text style={styles.viewLink}>History</Text></TouchableOpacity>}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll} contentContainerStyle={{paddingRight: 20}}>
-        {recentScans.map((scan) => (
-          <View key={scan.id} style={[styles.scanCard, styles.shadow]}>
-            <Image source={{ uri: scan.image }} style={styles.scanImage} />
-            <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.scanOverlay} />
-            
-            <View style={styles.scanContent}>
-               <View style={styles.scanTopRow}>
-                  <View style={[styles.statusDot, {backgroundColor: scan.status === 'Healthy' ? '#2A9D8F' : '#E76F51'}]} />
-                  <Text style={styles.scanDate}>{scan.date}</Text>
-               </View>
-               <Text style={styles.scanResult}>{scan.result}</Text>
+      {recentScans.length === 0 ? (
+        <View style={styles.emptyStateContainer}>
+            <View style={styles.emptyIconBg}>
+                <Ionicons name="scan-outline" size={32} color="#95A5A6" />
             </View>
-          </View>
-        ))}
-      </ScrollView>
+            <Text style={styles.emptyTitle}>No recent scans</Text>
+            <Text style={styles.emptySub}>Tap "New Scan" to start analyzing.</Text>
+        </View>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20, paddingHorizontal: 20 }}>
+            {recentScans.map((scan) => (
+                <View key={scan.id} style={styles.scanCard}><Text>Scan Item</Text></View>
+            ))}
+        </ScrollView>
+      )}
 
-      {/* 5. NEW ANALYTICS DESIGN (HORIZONTAL BARS) */}
+      {/* 5. DEMOGRAPHICS (Below Recent Scans) */}
       <View style={styles.sectionHeader}>
-         <Text style={styles.sectionTitle}>Population Insights</Text>
+         <Text style={styles.sectionTitle}>Demographics</Text>
       </View>
-
       <View style={[styles.statCard, styles.shadow]}>
-         {/* Card Header with Total & Tab Switcher */}
          <View style={styles.statCardHeader}>
             <View>
                <Text style={styles.statTotalLabel}>Total Sample</Text>
                <Text style={styles.statTotalValue}>{analyticsData.total}</Text>
             </View>
-            
-            {/* Tab Switcher - Compact */}
             <View style={styles.compactTabRow}>
                {categories.map((cat) => (
                   <TouchableOpacity 
@@ -320,39 +347,128 @@ export default function HomeScreen({ navigation }) {
                     onPress={() => setActiveTab(cat)} 
                     style={[styles.compactTab, activeTab === cat && styles.compactTabActive]}
                   >
-                     <Text style={[styles.compactTabText, activeTab === cat && styles.compactTabTextActive]}>{cat}</Text>
+                      <Text style={[styles.compactTabText, activeTab === cat && styles.compactTabTextActive]}>{cat}</Text>
                   </TouchableOpacity>
                ))}
             </View>
          </View>
-
          <View style={styles.divider} />
-
-         {/* Horizontal Bars List */}
          <View style={styles.statList}>
             {analyticsData.items.map((item, index) => (
                <View key={index} style={styles.statRow}>
-                  {/* Icon & Label */}
                   <View style={styles.statRowLabel}>
-                     <View style={[styles.statRowIcon, {backgroundColor: `${item.color}15`}]}>
-                        <Ionicons name={item.icon} size={14} color={item.color} />
-                     </View>
-                     <Text style={styles.statRowTitle}>{item.label}</Text>
+                      <View style={[styles.statRowIcon, {backgroundColor: `${item.color}15`}]}>
+                         <Ionicons name={item.icon} size={14} color={item.color} />
+                      </View>
+                      <Text style={styles.statRowTitle}>{item.label}</Text>
                   </View>
-
-                  {/* Progress Bar & Value */}
                   <View style={styles.statRowData}>
-                     <View style={styles.progressBarBg}>
-                        <View style={[styles.progressBarFill, {width: item.pct, backgroundColor: item.color}]} />
-                     </View>
-                     <Text style={styles.statRowValue}>{item.value}</Text>
+                      <View style={styles.progressBarBg}>
+                         <View style={[styles.progressBarFill, {width: item.pct, backgroundColor: item.color}]} />
+                      </View>
+                      <Text style={styles.statRowValue}>{item.value}</Text>
                   </View>
                </View>
             ))}
          </View>
-         
       </View>
-      
+
+      {/* 6. MARKET FORECAST (Month Navigation) */}
+      <View style={[styles.statCard, styles.shadow, {padding: 15}]}>
+        <View style={styles.cardHeaderWithNav}>
+            <View>
+                <Text style={styles.sectionTitle}>Market Value Forecast</Text>
+                <Text style={styles.cardSubTitle}>Random Forest Projection</Text>
+            </View>
+            <MaterialCommunityIcons name="finance" size={24} color="#2A9D8F" />
+        </View>
+
+        <LineChart
+            data={{
+                labels: ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"],
+                datasets: [{ 
+                    data: marketProjections.map(m => m.price),
+                    color: (opacity = 1) => `rgba(42, 157, 143, ${opacity})`,
+                    strokeWidth: 2
+                }]
+            }}
+            width={width - 60} 
+            height={180}
+            chartConfig={{
+                ...chartConfig,
+                fillShadowGradient: '#2A9D8F',
+                fillShadowGradientOpacity: 0.1,
+                decimalPlaces: 0,
+            }}
+            withDots={false}
+            bezier
+            style={{ marginVertical: 10, borderRadius: 16 }}
+        />
+
+        {/* Month Navigation Control */}
+        <View style={styles.monthNavRow}>
+            <TouchableOpacity onPress={handlePrevMonth} style={styles.navBtn}>
+                <Feather name="chevron-left" size={20} color="#3D5A80" />
+            </TouchableOpacity>
+            
+            <View style={{alignItems:'center'}}>
+                <Text style={styles.monthNavLabel}>{marketProjections[marketMonthIndex].month} Projection</Text>
+                <Text style={styles.monthNavValue}>₱ {marketProjections[marketMonthIndex].price} / kg</Text>
+            </View>
+
+            <TouchableOpacity onPress={handleNextMonth} style={styles.navBtn}>
+                <Feather name="chevron-right" size={20} color="#3D5A80" />
+            </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 7. ENVIRONMENTAL ROW (Uneven Cards + Grayed Algae) */}
+      <View style={styles.envRow}>
+          
+          {/* Algae Card - WIDER (Flex 1.5) with Gray Graph */}
+          <View style={[styles.unevenCardWide, styles.shadow]}>
+              <View style={{flexDirection:'row', justifyContent:'space-between', width:'100%'}}>
+                  <Text style={styles.smallCardTitle}>Algae</Text>
+                  <Ionicons name="water" size={16} color={algaeData[0].name === 'No Data' ? "#BDC3C7" : "#2A9D8F"} />
+              </View>
+              <PieChart
+                data={algaeData}
+                width={width * 0.45}
+                height={100}
+                chartConfig={chartConfig}
+                accessor={"population"}
+                backgroundColor={"transparent"}
+                paddingLeft={"0"}
+                center={[0, 0]}
+                absolute={false}
+                hasLegend={true}
+              />
+          </View>
+
+          {/* Turbidity Card - NARROWER (Flex 1) */}
+          <View style={[styles.unevenCardNarrow, styles.shadow]}>
+              <Text style={styles.smallCardTitle}>Turbidity</Text>
+              <View style={{alignItems:'center', justifyContent:'center', height: 100}}>
+                <ProgressChart
+                    data={turbidityData}
+                    width={width * 0.28}
+                    height={100}
+                    strokeWidth={8}
+                    radius={28}
+                    chartConfig={{
+                        ...chartConfig,
+                        color: (opacity = 1) => `rgba(231, 111, 81, ${opacity})`,
+                    }}
+                    hideLegend={true}
+                />
+                <View style={{position:'absolute'}}>
+                    <Text style={{fontWeight:'800', color:'#2C3E50', fontSize: 12}}>0%</Text>
+                </View>
+              </View>
+              <Text style={{fontSize:10, color:'#95A5A6', fontWeight:'700'}}>Low</Text>
+          </View>
+      </View>
+
     </View>
   );
 
@@ -372,13 +488,17 @@ export default function HomeScreen({ navigation }) {
       <Sidebar navigation={navigation} visible={sidebarVisible} onClose={() => setSidebarVisible(false)} user={currentUser} onLogout={handleLogout} />
       <Header onProfilePress={() => setSidebarVisible(true)} profileImage={currentUser?.profilePic} />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#3D5A80']} />}
+      >
         {isLoadingUser ? (
            <ActivityIndicator size="small" color="#3D5A80" style={{marginTop: 50}} />
         ) : (
            currentUser ? renderUserDashboard() : renderGuestGuide()
         )}
-        <View style={{height: 120}} /> 
+        <View style={{height: 100}} /> 
       </ScrollView>
 
       <BottomNavBar navigation={navigation} activeTab="Home" alertsCount={alertsCount} user={currentUser} />
@@ -389,85 +509,90 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 20 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 10 },
   shadow: {
-    ...Platform.select({
-      ios: { shadowColor: '#3D5A80', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 8 },
-      android: { elevation: 4 },
-    }),
+    shadowColor: '#3D5A80', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3
   },
   
   // TOAST
-  toastContainer: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 20, left: 20, right: 20, zIndex: 9999, alignItems: 'center' },
+  toastContainer: { position: 'absolute', top: 60, left: 20, right: 20, zIndex: 99, alignItems: 'center' },
   toastBar: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, elevation: 5 },
   toastWarning: { backgroundColor: '#E76F51' }, 
   toastInfo: { backgroundColor: '#2A9D8F' },    
   toastText: { color: '#FFF', fontWeight: '700', fontSize: 13, marginLeft: 10 },
 
-  // --- LOGGED IN DASHBOARD STYLES ---
-  dashboardContainer: { gap: 25 },
-  
-  // 1. Header & Stats
-  userHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  userGreeting: { fontSize: 14, color: '#7F8C8D', fontWeight: '500' },
-  userName: { fontSize: 24, color: '#2C3E50', fontWeight: '800' },
-  dateBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E0E7ED', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, gap: 5 },
+  // DASHBOARD
+  dashboardContainer: { gap: 20 },
+  userHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  userGreeting: { fontSize: 12, color: '#7F8C8D', fontWeight: '600', textTransform: 'uppercase' },
+  userName: { fontSize: 22, color: '#293241', fontWeight: '800' },
+  dateBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E0E7ED', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 6 },
   dateText: { fontSize: 12, fontWeight: '700', color: '#3D5A80' },
-  
+
+  // Stats Ticker
   statsTicker: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#FFF', padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#F0F0F0' },
   tickerItem: { alignItems: 'center', flex: 1 },
   tickerValue: { fontSize: 18, fontWeight: '800', color: '#3D5A80' },
   tickerLabel: { fontSize: 11, color: '#95A5A6', marginTop: 2 },
   tickerDivider: { width: 1, height: '80%', backgroundColor: '#F0F0F0', alignSelf: 'center' },
 
-  // 2. Main Actions
-  actionRow: { flexDirection: 'row', gap: 15 },
-  actionCard: { flex: 1, padding: 16, borderRadius: 20, justifyContent: 'center' },
-  actionIconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  actionCardTitle: { fontSize: 16, fontWeight: '800', color: '#FFF', marginBottom: 2 },
-  actionCardSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
+  // ACTIONS
+  actionRow: { flexDirection: 'row', gap: 15, height: 110 },
+  actionCard: { flex: 1, borderRadius: 24, overflow: 'hidden' },
+  actionGradient: { flex: 1, padding: 16, justifyContent: 'space-between' },
+  actionContentLight: { flex: 1, padding: 16, justifyContent: 'space-between' },
+  actionCardTitle: { fontSize: 16, fontWeight: '800', color: '#FFF' },
+  actionCardSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '500' },
 
-  // 3. Horizontal Scans
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#2C3E50' },
-  viewLink: { fontSize: 12, color: '#3D5A80', fontWeight: 'bold' },
-  horizontalScroll: { marginHorizontal: -20, paddingHorizontal: 20 },
-  scanCard: { width: 150, height: 200, borderRadius: 20, marginRight: 15, overflow: 'hidden', backgroundColor: '#FFF' },
-  scanImage: { width: '100%', height: '100%' },
-  scanOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%' },
-  scanContent: { position: 'absolute', bottom: 12, left: 12, right: 12 },
-  scanTopRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  scanDate: { color: '#DDD', fontSize: 10, fontWeight: '600' },
-  scanResult: { color: '#FFF', fontSize: 14, fontWeight: '800' },
-
-  // 5. NEW STAT CARD (HORIZONTAL BARS)
-  statCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 20 },
+  // CARDS & CHARTS
+  statCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 20 },
   statCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardHeaderWithNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   statTotalLabel: { fontSize: 11, color: '#95A5A6', fontWeight: '600', textTransform: 'uppercase' },
   statTotalValue: { fontSize: 22, fontWeight: '900', color: '#2C3E50' },
-  
+  cardSubTitle: { fontSize: 11, color: '#95A5A6', fontWeight: '600' },
+
+  // Month Navigation
+  monthNavRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
+  navBtn: { padding: 8, backgroundColor: '#F4F6F7', borderRadius: 10 },
+  monthNavLabel: { fontSize: 10, color: '#95A5A6', fontWeight: '600', textTransform: 'uppercase' },
+  monthNavValue: { fontSize: 16, color: '#2C3E50', fontWeight: '800' },
+
+  // DEMOGRAPHICS TABS
   compactTabRow: { flexDirection: 'row', backgroundColor: '#F4F6F7', borderRadius: 10, padding: 3 },
   compactTab: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
   compactTabActive: { backgroundColor: '#FFF', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
   compactTabText: { fontSize: 10, fontWeight: '600', color: '#95A5A6' },
   compactTabTextActive: { color: '#3D5A80', fontWeight: '700' },
-  
   divider: { height: 1, backgroundColor: '#F0F0F0', marginVertical: 15 },
-  
   statList: { gap: 15 },
   statRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   statRowLabel: { flexDirection: 'row', alignItems: 'center', width: '35%' },
   statRowIcon: { width: 24, height: 24, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   statRowTitle: { fontSize: 12, fontWeight: '600', color: '#555' },
-  
   statRowData: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   progressBarBg: { flex: 1, height: 6, backgroundColor: '#F0F0F0', borderRadius: 3 },
   progressBarFill: { height: '100%', borderRadius: 3 },
   statRowValue: { width: 30, fontSize: 12, fontWeight: '700', color: '#2C3E50', textAlign: 'right' },
 
+  // ENV ROW (Uneven)
+  envRow: { flexDirection: 'row', gap: 15 },
+  unevenCardWide: { flex: 1.5, backgroundColor: '#FFF', borderRadius: 24, padding: 15, alignItems: 'center', justifyContent: 'center' },
+  unevenCardNarrow: { flex: 1, backgroundColor: '#FFF', borderRadius: 24, padding: 15, alignItems: 'center', justifyContent: 'center' },
+  smallCardTitle: { fontSize: 13, fontWeight: '700', color: '#2C3E50', marginBottom: 5, alignSelf: 'flex-start' },
 
-  // --- GUEST MODE STYLES (PRESERVED) ---
+  // EMPTY STATE
+  emptyStateContainer: {
+    backgroundColor: '#FFF', borderRadius: 24, padding: 30, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F0F0F0', marginBottom: 10
+  },
+  emptyIconBg: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#F4F6F7', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#2C3E50', marginBottom: 4 },
+  emptySub: { fontSize: 12, color: '#95A5A6', textAlign: 'center' },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#2C3E50' },
+  viewLink: { fontSize: 12, color: '#3D5A80', fontWeight: '700' },
+
+  // GUEST MODE STYLES
   guestContainer: { marginTop: 5, paddingBottom: 20 },
   heroCard: { height: 220, borderRadius: 24, marginBottom: 25, overflow: 'hidden', backgroundColor: '#293241' },
   heroImage: { width: '100%', height: '100%', opacity: 0.9 },
