@@ -10,23 +10,29 @@ import {
   PanResponder,
   Dimensions,
   Platform,
-  Keyboard
+  Keyboard,
+  ActivityIndicator
 } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import client from '../api/client'; // Uses your configured Axios client
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const BUBBLE_SIZE = 60; 
 const MARGIN = 15;
 const INITIAL_BOTTOM = 100;
 
-// 1. ACCEPT THE USER PROP
 const FloatingChatbot = ({ user }) => {
   
-  const initialMessage = { id: 1, type: 'bot', text: '👋 Hi! I\'m CrayBot. Ask me about crayfish care, breeding, or gender ID!' };
+  const initialMessage = { 
+    id: 'init', 
+    type: 'bot', 
+    text: `👋 Hi ${user?.firstName || 'there'}! I'm CrayBot. Ask me about crayfish care, breeding, or gender ID!` 
+  };
 
   const [messages, setMessages] = useState([initialMessage]);
   const [inputText, setInputText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
   
   const scrollViewRef = useRef();
   
@@ -35,8 +41,7 @@ const FloatingChatbot = ({ user }) => {
   const baseBottom = useRef(new Animated.Value(INITIAL_BOTTOM)).current; 
   const opacityAnim = useRef(new Animated.Value(0)).current; 
 
-  // 2. RESET CHAT ON LOGOUT / HIDE LOGIC
-  // If the user logs out, we reset the messages so the next user doesn't see them.
+  // RESET CHAT ON LOGOUT / HIDE LOGIC
   useEffect(() => {
     if (!user) {
       setMessages([initialMessage]);
@@ -46,7 +51,6 @@ const FloatingChatbot = ({ user }) => {
 
   // KEYBOARD LISTENERS
   useEffect(() => {
-    // Optimization: If no user, don't attach listeners
     if (!user) return; 
 
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -90,8 +94,9 @@ const FloatingChatbot = ({ user }) => {
       showListener.remove();
       hideListener.remove();
     };
-  }, [user]); // Add user dependency
+  }, [user]);
 
+  // DRAGGABLE BUBBLE LOGIC
   const [position, setPosition] = useState({ 
     x: screenWidth - BUBBLE_SIZE - MARGIN, 
     y: screenHeight - 150 
@@ -113,10 +118,12 @@ const FloatingChatbot = ({ user }) => {
         const currentX = pan.x._value;
         const currentY = pan.y._value;
 
+        // Snap to left or right
         const centerOfBubble = currentX + (BUBBLE_SIZE / 2);
         const centerOfScreen = screenWidth / 2;
         let finalX = centerOfBubble < centerOfScreen ? MARGIN : screenWidth - BUBBLE_SIZE - MARGIN;
 
+        // Keep within vertical bounds
         let finalY = currentY;
         const topLimit = 100; 
         const bottomLimit = screenHeight - 150; 
@@ -133,31 +140,51 @@ const FloatingChatbot = ({ user }) => {
     })
   ).current;
 
-  // 3. CRITICAL CHECK: RENDER NULL IF NO USER
-  // We place this AFTER hooks are declared (Rules of Hooks) but BEFORE rendering UI.
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
-  const handleSendMessage = () => {
+  // --- API CONNECTION LOGIC (FIXED) ---
+  const handleSendMessage = async () => {
     if (!inputText.trim()) return;
-    const userMsg = { id: messages.length + 1, type: 'user', text: inputText };
-    setMessages([...messages, userMsg]);
+
+    // 1. Display User Message immediately
+    const userMsg = { id: Date.now().toString(), type: 'user', text: inputText };
+    setMessages(prev => [...prev, userMsg]);
+    
+    const questionToSend = inputText; // Capture text before clearing
     setInputText('');
+    setLoading(true);
     
     setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
 
-    setTimeout(() => {
-      const botResponses = [
-        '🦐 Interesting! Tell me more.',
-        '🦐 I can help identify species from photos.',
-        '🦐 Have you checked the water turbidity lately?',
-        '🦐 Make sure to isolate berried females!',
-      ];
-      const randomResponse = botResponses[Math.floor(Math.random() * botResponses.length)];
-      const botMsg = { id: messages.length + 2, type: 'bot', text: randomResponse };
+    try {
+      // 2. Call Node.js Proxy -> Calls Python
+      const response = await client.post('/chatbot/ask', { 
+        question: questionToSend 
+      });
+
+      // ✅ FIX: Python returns 'response', Proxy error returns 'answer'
+      // We check for both to cover success and error cases safely.
+      const botReply = response.data?.response || response.data?.answer || "I'm connected, but I received an empty response.";
+
+      const botMsg = { id: (Date.now() + 1).toString(), type: 'bot', text: botReply };
       setMessages(prev => [...prev, botMsg]);
-    }, 800);
+
+    } catch (error) {
+      console.error('Chatbot Error:', error);
+      
+      // Handle network errors (e.g., Node server down)
+      const errorText = error.response?.data?.answer || "Sorry, I can't reach the server right now. Please try again later.";
+      
+      const errorMsg = { 
+        id: (Date.now() + 1).toString(), 
+        type: 'bot', 
+        text: errorText
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setLoading(false);
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    }
   };
 
   const toggleExpand = () => {
@@ -189,6 +216,7 @@ const FloatingChatbot = ({ user }) => {
 
   return (
     <>
+      {/* FLOATING BUBBLE */}
       {!isExpanded && (
         <Animated.View
           style={[
@@ -205,6 +233,7 @@ const FloatingChatbot = ({ user }) => {
         </Animated.View>
       )}
 
+      {/* EXPANDED CHAT WINDOW */}
       {isExpanded && (
         <Animated.View style={[styles.chatWindow, chatWindowStyle]}>
           <View style={styles.header}>
@@ -234,6 +263,15 @@ const FloatingChatbot = ({ user }) => {
                 </View>
               </View>
             ))}
+            {/* Typing Indicator */}
+            {loading && (
+               <View style={[styles.messageWrapper, styles.botWrapper]}>
+                  <View style={styles.botAvatar}><Text>🦐</Text></View>
+                  <View style={[styles.messageBubble, styles.botBubble, {paddingVertical: 8}]}>
+                     <ActivityIndicator size="small" color="#3D5A80" />
+                  </View>
+               </View>
+            )}
           </ScrollView>
 
           <View style={styles.inputContainer}>
@@ -246,9 +284,9 @@ const FloatingChatbot = ({ user }) => {
               multiline
             />
             <TouchableOpacity 
-              style={[styles.sendButton, !inputText.trim() && {backgroundColor:'#BDC3C7'}]} 
+              style={[styles.sendButton, (!inputText.trim() || loading) && {backgroundColor:'#BDC3C7'}]} 
               onPress={handleSendMessage} 
-              disabled={!inputText.trim()}
+              disabled={!inputText.trim() || loading}
             >
               <Ionicons name="arrow-up" size={20} color="#FFF" />
             </TouchableOpacity>
