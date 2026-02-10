@@ -412,11 +412,10 @@ exports.getUserPublicProfile = async (req, res) => {
     const currentUserId = req.user.userId; 
 
     const user = await User.findById(id)
-      .select('firstName lastName profilePic bio role city country following followers');
+      .select('firstName lastName profilePic bio role street city country following followers');
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Check if I am already following this person
     const isFollowing = user.followers.includes(currentUserId);
 
     res.status(200).json({ 
@@ -428,11 +427,12 @@ exports.getUserPublicProfile = async (req, res) => {
         profilePic: user.profilePic,
         bio: user.bio,
         role: user.role,
+        street: user.street,
         city: user.city,
         following: user.following || [],
         followers: user.followers || []
       },
-      isFollowing // <--- Sending this boolean is crucial for the UI
+      isFollowing
     });
   } catch (error) {
     console.error(error);

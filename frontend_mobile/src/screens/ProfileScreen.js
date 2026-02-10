@@ -12,7 +12,7 @@ import client from '../api/client';
 
 // Component Imports
 import BottomNavBar from '../components/BottomNavBar';
-import PostDetailModal from '../components/PostDetailModal'; // <--- NEW IMPORT
+import PostDetailModal from '../components/PostDetailModal'; 
 
 const { width } = Dimensions.get('window');
 const GRID_SIZE = width / 3;
@@ -247,9 +247,12 @@ export default function ProfileScreen({ navigation, route }) {
             {userData?.fullName || `${userData?.firstName || ''} ${userData?.lastName || ''}`.trim() || 'Researcher'}
           </Text>
           
+          {/* --- UPDATED LOCATION ROW WITH STREET --- */}
           <View style={styles.locationRow}>
             <Ionicons name="location" size={14} color="#98C1D9" />
-            <Text style={styles.userLocation}>{userData?.city || 'Unknown Location'}</Text>
+            <Text style={styles.userLocation} numberOfLines={1} ellipsizeMode="tail">
+              {userData?.street ? `${userData.street}, ` : ''}{userData?.city || 'Unknown Location'}
+            </Text>
           </View>
           
           {/* --- ACTION BUTTONS --- */}
@@ -370,8 +373,8 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: '#FFF', justifyContent: 'center', alignItems: 'center' 
   },
   userName: { color: '#FFF', fontSize: 20, fontWeight: '800', marginBottom: 4 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  userLocation: { color: '#98C1D9', fontSize: 13, fontWeight: '600', marginLeft: 4 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, maxWidth: '80%' },
+  userLocation: { color: '#98C1D9', fontSize: 13, fontWeight: '600', marginLeft: 4, textAlign: 'center' },
 
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 },
   actionBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 25, minWidth: 50, alignItems: 'center', justifyContent: 'center' },
