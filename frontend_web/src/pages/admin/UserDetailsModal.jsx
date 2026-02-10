@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   X, BadgeCheck, Phone, MapPin, User, Hash, 
   Ban, CheckCircle, AlertTriangle, Shield, Clock
@@ -7,7 +7,7 @@ import {
 const UserDetailsModal = ({ user, onClose, onDeactivate, onReactivate }) => {
   if (!user) return null;
 
-  // Helper: Format Date (e.g., "Jan 28, 2026")
+  // Helper: Format Date
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -27,6 +27,18 @@ const UserDetailsModal = ({ user, onClose, onDeactivate, onReactivate }) => {
   const fullName = `${user.firstName} ${user.lastName}`;
   const fullAddress = [user.street, user.city, user.country].filter(Boolean).join(', ');
 
+  // Local state for deactivation reason input
+  const [reason, setReason] = useState('');
+  const [showDeactivateInput, setShowDeactivateInput] = useState(false);
+
+  const handleDeactivateSubmit = () => {
+    if (onDeactivate) {
+      onDeactivate(user._id, reason);
+      setShowDeactivateInput(false);
+      setReason('');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
         <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
@@ -40,7 +52,7 @@ const UserDetailsModal = ({ user, onClose, onDeactivate, onReactivate }) => {
             </div>
 
             {/* 2. Body (Scrollable) */}
-            <div className="p-8 pt-2 overflow-y-auto space-y-8">
+            <div className="p-8 pt-2 overflow-y-auto space-y-8 scrollbar-hide">
                 
                 {/* --- Identity Section --- */}
                 <div className="flex items-center gap-6">
@@ -76,16 +88,16 @@ const UserDetailsModal = ({ user, onClose, onDeactivate, onReactivate }) => {
                     </div>
                 </div>
 
-                {/* --- Suspension Reason Alert --- */}
-                {user.accountStatus === 'Inactive' && (
+                {/* --- SUSPENSION ALERT (Shows Reason) --- */}
+                {(user.accountStatus === 'Inactive' || user.accountStatus === 'Deactivated') && (
                     <div className="bg-orange-50 border border-orange-100 rounded-2xl p-5 flex gap-4 items-start animate-in slide-in-from-top-2 duration-300">
-                        <div className="p-2 bg-white rounded-xl shadow-sm">
+                        <div className="p-2 bg-white rounded-xl shadow-sm flex-shrink-0">
                             <AlertTriangle className="w-5 h-5 text-orange-600" />
                         </div>
                         <div>
                             <h4 className="text-xs font-bold text-orange-800 uppercase tracking-widest mb-1">Account Suspended</h4>
                             <p className="text-sm text-orange-900 font-medium leading-relaxed">
-                                Reason: <span className="font-bold underline decoration-orange-300">{user.deactivationReason || 'No specific reason provided.'}</span>
+                                Reason: <span className="font-bold underline decoration-orange-300">{user.deactivationReason || 'Violation of terms.'}</span>
                             </p>
                         </div>
                     </div>
@@ -102,7 +114,7 @@ const UserDetailsModal = ({ user, onClose, onDeactivate, onReactivate }) => {
                         <p className="text-xl font-bold text-slate-800">{user.following?.length || 0}</p>
                     </div>
                     <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 text-center">
-                        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-tighter">Member Since</p>
+                        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-tighter">Joined</p>
                         <p className="text-xs font-bold text-slate-800 mt-1.5">{formatDate(user.createdAt)}</p>
                     </div>
                 </div>
@@ -114,30 +126,53 @@ const UserDetailsModal = ({ user, onClose, onDeactivate, onReactivate }) => {
                     <InfoRow icon={<User />} label="Bio" value={user.bio} italic />
                     <InfoRow icon={<Hash />} label="System ID" value={user._id} mono small />
                 </div>
-            </div>
 
-            {/* 3. Footer Actions (Synced with Parent Logic) */}
-            {/* <div className="p-8 pt-4 bg-slate-50/50 border-t border-slate-100 flex gap-4">
-                <button onClick={onClose} className="flex-1 py-4 font-bold text-slate-500 hover:text-slate-800 transition-colors bg-white rounded-2xl border border-slate-200">
-                    Close Details
-                </button>
-                
-                {user.accountStatus === 'Active' ? (
-                     <button 
-                        onClick={() => { onDeactivate(user); onClose(); }} 
-                        className="flex-1 py-4 bg-orange-500 text-white rounded-2xl font-bold hover:bg-orange-600 transition-all shadow-lg shadow-orange-200 flex items-center justify-center gap-2"
-                    >
-                        <Ban className="w-4 h-4" /> Deactivate
-                    </button>
-                ) : (
-                    <button 
-                        onClick={() => { onReactivate(user); onClose(); }} 
-                        className="flex-1 py-4 bg-green-600 text-white rounded-2xl font-bold hover:bg-green-700 transition-all shadow-lg shadow-green-200 flex items-center justify-center gap-2"
-                    >
-                        <CheckCircle className="w-4 h-4" /> Reactivate
-                    </button>
-                )}
-            </div> */}
+                {/* --- Action Buttons (Admin Only) --- */}
+                <div className="pt-4 border-t border-slate-100">
+                    {user.accountStatus === 'Active' ? (
+                        !showDeactivateInput ? (
+                            <button 
+                                onClick={() => setShowDeactivateInput(true)}
+                                className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Ban className="w-4 h-4" /> Deactivate Account
+                            </button>
+                        ) : (
+                            <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
+                                <textarea 
+                                    className="w-full p-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                                    placeholder="Reason for deactivation..."
+                                    rows="2"
+                                    value={reason}
+                                    onChange={(e) => setReason(e.target.value)}
+                                />
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => setShowDeactivateInput(false)}
+                                        className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-lg text-sm"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button 
+                                        onClick={handleDeactivateSubmit}
+                                        className="flex-1 py-2 bg-red-600 text-white font-bold rounded-lg text-sm hover:bg-red-700"
+                                    >
+                                        Confirm Deactivation
+                                    </button>
+                                </div>
+                            </div>
+                        )
+                    ) : (
+                        <button 
+                            onClick={() => onReactivate && onReactivate(user._id)}
+                            className="w-full py-3 bg-green-50 hover:bg-green-100 text-green-600 font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                        >
+                            <CheckCircle className="w-4 h-4" /> Reactivate Account
+                        </button>
+                    )}
+                </div>
+
+            </div>
         </div>
     </div>
   );
@@ -149,7 +184,7 @@ const InfoRow = ({ icon, label, value, mono, italic, small }) => (
         <div className="text-slate-400 group-hover:text-teal-600 transition-colors">
             {React.cloneElement(icon, { size: 18 })}
         </div>
-        <div className="overflow-hidden">
+        <div className="overflow-hidden w-full">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</p>
             <p className={`text-sm font-semibold truncate ${
                 mono ? 'font-mono text-slate-600' : 'text-slate-800'

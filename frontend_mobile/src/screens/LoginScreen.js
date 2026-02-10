@@ -7,8 +7,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// REPLACE FIREBASE WITH YOUR API CLIENT
 import client from '../api/client';
 
 export default function LoginScreen({ navigation }) {
@@ -16,13 +14,12 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  
-  // Notification State
+
   const [message, setMessage] = useState({ text: '', type: '' });
 
   const showNotification = (text, type) => {
     setMessage({ text, type });
-    setTimeout(() => setMessage({ text: '', type: '' }), 4000);
+    setTimeout(() => setMessage({ text: '', type: '' }), type === 'error' ? 5000 : 3000);
   };
 
   const handleLogin = async () => {
@@ -34,33 +31,37 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
 
     try {
-      // 1. Call your Node.js Backend
       const response = await client.post('/auth/login', {
         email: email,
         password: password
       });
 
-      console.log('[LoginScreen] Login response:', {
-        status: response.status,
-        hasToken: !!response.data.token,
-        hasUser: !!response.data.user,
-        success: response.data.success
-      });
+      console.log('[LoginScreen] Login response status:', response.status);
 
-      // 2. Success!
-      if (response.status === 200 && response.data.success && response.data.token) {
-        // Save token and user data to AsyncStorage
-        console.log('[LoginScreen] Saving token to AsyncStorage...');
+      if (response.status === 200 && response.data.success) {
+        const userData = response.data.user;
+
+        // --- CHECK 1: ROLE VALIDATION ---
+        if (userData.role === 'admin') {
+          showNotification("Admin End Mobile Coming Soon", "info");
+          setLoading(false);
+          return; 
+        }
+
+        // --- CHECK 2: ACCOUNT STATUS VALIDATION ---
+        if (userData.accountStatus === 'Inactive' || userData.accountStatus === 'Deactivated') {
+          const reason = userData.deactivationReason || "No specific reason provided.";
+          showNotification(`Account Deactivated: ${reason}`, "error");
+          setLoading(false);
+          return; 
+        }
+
+        // --- SUCCESS FLOW ---
         await AsyncStorage.setItem('userToken', response.data.token);
-        await AsyncStorage.setItem('userInfo', JSON.stringify(response.data.user));
+        await AsyncStorage.setItem('userInfo', JSON.stringify(userData));
         
-        // Verify it was saved
-        const savedToken = await AsyncStorage.getItem('userToken');
-        console.log('[LoginScreen] Token saved verification:', savedToken ? 'SUCCESS' : 'FAILED');
+        showNotification(`Welcome back, ${userData.firstName}!`, "success");
         
-        showNotification(`Welcome back, ${response.data.user.firstName}!`, "success");
-        
-        // Wait a moment so they see the success message
         setTimeout(() => {
           setLoading(false);
           navigation.replace('Home');
@@ -71,17 +72,12 @@ export default function LoginScreen({ navigation }) {
       setLoading(false);
       console.log('[LoginScreen] Login error:', error);
       
-      // Handle Errors from Backend
       if (error.response) {
-        // The server responded with a status code other than 2xx (e.g., 400, 404)
-        console.log('[LoginScreen] Response error:', error.response.data);
-        showNotification(error.response.data.message, "error");
+        const errorMsg = error.response.data.message || "Login failed.";
+        showNotification(errorMsg, "error");
       } else if (error.request) {
-        // The request was made but no response was received (Network Error)
-        console.log('[LoginScreen] Request error - no response');
         showNotification("Could not connect to server. Check your internet.", "error");
       } else {
-        console.log('[LoginScreen] Error:', error.message);
         showNotification("An unexpected error occurred.", "error");
       }
     }
@@ -93,10 +89,10 @@ export default function LoginScreen({ navigation }) {
       
       {/* --- FLOATING NOTIFICATION --- */}
       {message.text !== '' && (
-        <View style={[styles.notification, message.type === 'error' ? styles.errorBg : styles.successBg]}>
+        <View style={[styles.notification, message.type === 'error' ? styles.errorBg : message.type === 'info' ? styles.infoBg : styles.successBg]}>
           <Ionicons 
             name={message.type === 'error' ? "alert-circle" : "checkmark-circle"} 
-            size={20} color="#FFF" 
+            size={24} color="#FFF" 
           />
           <Text style={styles.notificationText}>{message.text}</Text>
         </View>
@@ -200,7 +196,8 @@ const styles = StyleSheet.create({
   },
   successBg: { backgroundColor: '#2ECC71' },
   errorBg: { backgroundColor: '#E74C3C' },
-  notificationText: { color: '#FFF', fontWeight: '700', marginLeft: 10, fontSize: 13 },
+  infoBg: { backgroundColor: '#3498DB' },
+  notificationText: { color: '#FFF', fontWeight: '700', marginLeft: 10, fontSize: 13, flex: 1 },
 
   closeButton: { position: 'absolute', top: Platform.OS === 'ios' ? 50 : 20, left: 20, zIndex: 10, padding: 10 },
   headerSection: { height: 320, justifyContent: 'center', alignItems: 'center', borderBottomLeftRadius: 50, borderBottomRightRadius: 50 },
