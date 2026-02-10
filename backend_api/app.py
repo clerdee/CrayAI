@@ -1,10 +1,11 @@
-from flask import Flask
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from config.db import mongo
 import os
 
 # Import Controllers
 from controllers.chatbot_controller import chatbot_bp
+from controllers.measurement_controller import process_measurement
 
 app = Flask(__name__)
 
@@ -20,9 +21,24 @@ mongo.init_app(app)
 # 4. Register Blueprints (Routes)
 app.register_blueprint(chatbot_bp, url_prefix='/api/training/chatbot')
 
+@app.route('/api/measure', methods=['POST'])
+def measure_object():
+    if 'photo' not in request.files:
+        return jsonify({"error": "No photo uploaded"}), 400
+    
+    file = request.files['photo']
+    
+    try:
+        # Pass the photo to the Vision Brain
+        result = process_measurement(file)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/')
 def home():
-    return "CrayAI API is Running 🦞"
+    return "CrayAI API (Chatbot + Vision) is Running 🦞"
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(host='0.0.0.0', debug=True, port=5001)
