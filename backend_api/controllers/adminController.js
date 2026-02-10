@@ -148,3 +148,30 @@ exports.getDashboardAnalytics = async (req, res) => {
     res.status(500).json({ message: 'Server Error' });
   }
 };
+
+// 4. PROMOTE USER TO ADMIN (This was missing!)
+exports.promoteUser = async (req, res) => {
+  try {
+    const { id } = req.params; 
+
+    const user = await User.findByIdAndUpdate(
+      id, 
+      { role: 'admin' }, 
+      { new: true } 
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: `${user.firstName} has been promoted to Admin.`,
+      user 
+    });
+
+  } catch (error) {
+    console.error("Promote User Error:", error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};

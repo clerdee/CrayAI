@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import UserDetailsModal from './UserDetailsModal'; 
 
+// Ensure this points to your actual backend URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 const UserManagement = () => {
@@ -18,7 +19,7 @@ const UserManagement = () => {
   
   // --- PAGINATION STATE ---
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5; // Change this to show more/less users per page
+  const itemsPerPage = 5; 
 
   // --- NOTIFICATION STATE ---
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
@@ -63,15 +64,22 @@ const UserManagement = () => {
     fetchUsers();
   }, []);
 
-  // --- 2. PROMOTE TO ADMIN ACTION ---
+  // --- 2. PROMOTE TO ADMIN ACTION (UPDATED URL) ---
   const confirmPromotion = async () => {
     if (!promotingUser) return;
     try {
       const token = localStorage.getItem('token');
+      
+      // ✅ UPDATED: Matches your route '/admin/users/:id/promote'
+      await axios.put(`${API_BASE_URL}/auth/admin/users/${promotingUser._id}/promote`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
       // Optimistic Update
       setUsers(users.map(u => 
         u._id === promotingUser._id ? { ...u, role: 'admin' } : u
       ));
+      
       setPromotingUser(null); 
       showToast(`${promotingUser.firstName} is now an Admin!`, 'success');
     } catch (error) {
@@ -96,7 +104,7 @@ const UserManagement = () => {
       );
       
       setUsers(users.map(u => 
-        u._id === deactivatingUser._id ? { ...u, accountStatus: 'Inactive' } : u
+        u._id === deactivatingUser._id ? { ...u, accountStatus: 'Inactive', deactivationReason: deactivateReason } : u
       ));
 
       setDeactivatingUser(null); 
@@ -119,7 +127,7 @@ const UserManagement = () => {
       );
       
       setUsers(users.map(u => 
-        u._id === reactivatingUser._id ? { ...u, accountStatus: 'Active' } : u
+        u._id === reactivatingUser._id ? { ...u, accountStatus: 'Active', deactivationReason: null } : u
       ));
 
       setReactivatingUser(null); 
@@ -161,7 +169,7 @@ const UserManagement = () => {
   // --- FILTERING & PAGINATION LOGIC ---
   const filteredUsers = users.filter(user => {
     const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
-    const email = user.email.toLowerCase();
+    const email = user.email ? user.email.toLowerCase() : '';
     const search = searchTerm.toLowerCase();
     return fullName.includes(search) || email.includes(search);
   });
@@ -171,7 +179,6 @@ const UserManagement = () => {
   const currentUsers = filteredUsers.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
 
-  // Generate Page Numbers Array
   const pageNumbers = [];
   for (let i = 1; i <= totalPages; i++) {
     pageNumbers.push(i);
@@ -231,7 +238,7 @@ const UserManagement = () => {
                     placeholder="Search users..." 
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500"
                     value={searchTerm}
-                    onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} // Reset to page 1 on search
+                    onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} 
                 />
             </div>
         </div>
@@ -296,6 +303,7 @@ const UserManagement = () => {
 
                             <td className="p-6 pr-8 text-right">
                                 <div className="flex items-center justify-end gap-2">
+                                    {/* HIDE promote button if already admin */}
                                     {user.role !== 'admin' && (
                                         <button 
                                             onClick={() => setPromotingUser(user)}
