@@ -11,7 +11,8 @@ import {
   Dimensions,
   Platform,
   Keyboard,
-  ActivityIndicator
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import client from '../api/client'; // Uses your configured Axios client
@@ -142,7 +143,7 @@ const FloatingChatbot = ({ user }) => {
 
   if (!user) return null;
 
-  // --- API CONNECTION LOGIC (FIXED) ---
+  // --- API CONNECTION LOGIC ---
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
 
@@ -150,7 +151,7 @@ const FloatingChatbot = ({ user }) => {
     const userMsg = { id: Date.now().toString(), type: 'user', text: inputText };
     setMessages(prev => [...prev, userMsg]);
     
-    const questionToSend = inputText; // Capture text before clearing
+    const questionToSend = inputText; 
     setInputText('');
     setLoading(true);
     
@@ -162,8 +163,6 @@ const FloatingChatbot = ({ user }) => {
         question: questionToSend 
       });
 
-      // ✅ FIX: Python returns 'response', Proxy error returns 'answer'
-      // We check for both to cover success and error cases safely.
       const botReply = response.data?.response || response.data?.answer || "I'm connected, but I received an empty response.";
 
       const botMsg = { id: (Date.now() + 1).toString(), type: 'bot', text: botReply };
@@ -172,7 +171,6 @@ const FloatingChatbot = ({ user }) => {
     } catch (error) {
       console.error('Chatbot Error:', error);
       
-      // Handle network errors (e.g., Node server down)
       const errorText = error.response?.data?.answer || "Sorry, I can't reach the server right now. Please try again later.";
       
       const errorMsg = { 
@@ -185,6 +183,24 @@ const FloatingChatbot = ({ user }) => {
       setLoading(false);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
     }
+  };
+
+  // --- CLEAR CHAT LOGIC ---
+  const handleClearChat = () => {
+    if (messages.length <= 1) return; // Don't clear if only init message exists
+
+    Alert.alert(
+      "Clear Conversation",
+      "Are you sure you want to clear the chat history?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Clear", 
+          style: "destructive", 
+          onPress: () => setMessages([initialMessage]) 
+        }
+      ]
+    );
   };
 
   const toggleExpand = () => {
@@ -244,9 +260,17 @@ const FloatingChatbot = ({ user }) => {
                  <Text style={styles.subtitle}>Research Assistant • Online</Text>
                </View>
             </View>
-            <TouchableOpacity onPress={toggleExpand} style={styles.closeBtn}>
-              <MaterialIcons name="close" size={22} color="#FFF" />
-            </TouchableOpacity>
+            
+            {/* Header Actions */}
+            <View style={styles.headerActions}>
+              <TouchableOpacity onPress={handleClearChat} style={[styles.headerBtn, { marginRight: 8 }]}>
+                <MaterialIcons name="delete-outline" size={20} color="#FFF" />
+              </TouchableOpacity>
+              
+              <TouchableOpacity onPress={toggleExpand} style={styles.headerBtn}>
+                <MaterialIcons name="close" size={22} color="#FFF" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView 
@@ -354,9 +378,10 @@ const styles = StyleSheet.create({
     borderBottomColor: '#2C3E50',
   },
   headerInfo: { flexDirection: 'row', alignItems: 'center' },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
   title: { color: '#FFF', fontSize: 16, fontWeight: '800' },
   subtitle: { color: '#E0FBFC', fontSize: 11, fontWeight: '600' },
-  closeBtn: { padding: 5, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 15 },
+  headerBtn: { padding: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 15 },
   messagesContainer: { flex: 1, backgroundColor: '#F2F4F6' },
   messagesContent: { padding: 15, paddingBottom: 10 },
   messageWrapper: { marginVertical: 5, flexDirection: 'row', alignItems: 'flex-end' },
