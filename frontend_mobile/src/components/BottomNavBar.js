@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, TouchableOpacity, StyleSheet, Text, Image, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Text, Image, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,18 +9,23 @@ const BottomNavBar = ({ activeTab }) => {
   const navigation = useNavigation();
   const [alertsCount, setAlertsCount] = useState(0);
   const [chatCount, setChatCount] = useState(0); 
+  const [isGuest, setIsGuest] = useState(true); // Track guest status
 
-  // --- FETCH BADGE COUNTS ---
+  // --- FETCH BADGE COUNTS & CHECK AUTH ---
   useFocusEffect(
     useCallback(() => {
       const fetchCounts = async () => {
         try {
           // 1. SAFETY CHECK: Ensure Token Exists
           const token = await AsyncStorage.getItem('userToken');
+          
           if (!token) {
+            setIsGuest(true);
             setAlertsCount(0);
             return; 
           }
+
+          setIsGuest(false);
 
           // 2. Get Cached Alerts Count
           const cachedAlerts = await AsyncStorage.getItem('alertsCount');
@@ -37,6 +42,7 @@ const BottomNavBar = ({ activeTab }) => {
         } catch (error) {
           if (error.response && error.response.status === 401) {
              console.log("Badge fetch skipped: User not authenticated.");
+             setIsGuest(true);
           } else {
              console.log("Badge fetch error:", error.message);
           }
@@ -46,6 +52,22 @@ const BottomNavBar = ({ activeTab }) => {
       fetchCounts();
     }, [])
   );
+
+  // --- HANDLE SCAN PRESS ---
+  const handleScanPress = () => {
+    if (isGuest) {
+      Alert.alert(
+        "Login Required",
+        "Please log in to scan crayfish and contribute to research.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Log In", onPress: () => navigation.navigate('Login') }
+        ]
+      );
+    } else {
+      navigation.navigate('Camera');
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -71,9 +93,9 @@ const BottomNavBar = ({ activeTab }) => {
           <Text style={[styles.label, activeTab === 'Community' && styles.activeLabel]}>Community</Text>
         </TouchableOpacity>
 
-        {/* 3. SCAN (Center with Crayfish Logo) */}
+        {/* 3. SCAN (Center with Crayfish Logo & Guest Check) */}
         <View style={styles.scanWrapper}>
-          <TouchableOpacity style={styles.scanButton} onPress={() => navigation.navigate('Camera')}>
+          <TouchableOpacity style={styles.scanButton} onPress={handleScanPress}>
             <Image 
               source={require('../../assets/crayfish.png')} 
               style={styles.scanIcon} 
@@ -170,11 +192,10 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: '#F4F7F9', 
   },
-  // NEW STYLE FOR THE LOGO
   scanIcon: {
     width: 32,
     height: 32,
-    tintColor: '#FFF',
+    tintColor: '#FFF', // Keeping it white as requested
   },
   label: {
     fontSize: 10,
