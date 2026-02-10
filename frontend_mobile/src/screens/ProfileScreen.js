@@ -10,8 +10,9 @@ import { useFocusEffect } from '@react-navigation/native';
 // API Import
 import client from '../api/client';
 
-// Component Import
+// Component Imports
 import BottomNavBar from '../components/BottomNavBar';
+import PostDetailModal from '../components/PostDetailModal'; // <--- NEW IMPORT
 
 const { width } = Dimensions.get('window');
 const GRID_SIZE = width / 3;
@@ -29,7 +30,11 @@ export default function ProfileScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   
   const [followLoading, setFollowLoading] = useState(false); 
-  const [messageLoading, setMessageLoading] = useState(false); // New loading state for starting chat
+  const [messageLoading, setMessageLoading] = useState(false); 
+
+  // --- MODAL STATE ---
+  const [selectedPost, setSelectedPost] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
   // 3. FETCH DATA
   useFocusEffect(
@@ -125,13 +130,10 @@ export default function ProfileScreen({ navigation, route }) {
     setMessageLoading(true);
 
     try {
-      // We call startChat first to ensure the chat document exists in MongoDB
-      // This prevents "Chat not found" errors when sending the first message
       await client.post('/chat/start', { 
         targetUserId: userData._id || userData.id 
       });
 
-      // Navigate to ChatScreen with the user details
       navigation.navigate('Chat', {
         targetUser: {
           uid: userData._id || userData.id,
@@ -148,6 +150,12 @@ export default function ProfileScreen({ navigation, route }) {
     }
   };
 
+  // 6. HANDLE OPEN MODAL
+  const openPostDetail = (post) => {
+    setSelectedPost(post);
+    setModalVisible(true);
+  };
+
   // Helper function to format date
   const formatDate = (dateString) => {
     if (!dateString) return '';
@@ -157,10 +165,20 @@ export default function ProfileScreen({ navigation, route }) {
 
   const renderGridItem = ({ item }) => {
     const hasMedia = item.media && item.media.length > 0;
-    const imageSource = hasMedia ? { uri: item.media[0] } : require('../../assets/crayfish.png'); 
+    let imageSource = require('../../assets/crayfish.png'); 
+
+    // Handle media object vs string
+    if (hasMedia) {
+      const firstMedia = item.media[0];
+      if (typeof firstMedia === 'string') {
+        imageSource = { uri: firstMedia };
+      } else if (firstMedia.uri) {
+        imageSource = { uri: firstMedia.uri };
+      }
+    }
 
     return (
-      <TouchableOpacity style={styles.gridItem}>
+      <TouchableOpacity style={styles.gridItem} onPress={() => openPostDetail(item)}>
         <Image source={imageSource} style={styles.gridImage} resizeMode="cover" />
         {hasMedia && item.media.length > 1 && (
           <View style={styles.multiIcon}>
@@ -234,10 +252,9 @@ export default function ProfileScreen({ navigation, route }) {
             <Text style={styles.userLocation}>{userData?.city || 'Unknown Location'}</Text>
           </View>
           
-          {/* --- ACTION BUTTONS (Message & Follow) --- */}
+          {/* --- ACTION BUTTONS --- */}
           {!isViewingSelf ? (
             <View style={styles.actionRow}>
-              {/* Message Button */}
               <TouchableOpacity 
                 style={[styles.actionBtn, styles.messageBtn]}
                 onPress={handleMessagePress}
@@ -250,7 +267,6 @@ export default function ProfileScreen({ navigation, route }) {
                 )}
               </TouchableOpacity>
 
-              {/* Follow Button */}
               <TouchableOpacity 
                 style={[
                   styles.actionBtn, 
@@ -269,7 +285,6 @@ export default function ProfileScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
           ) : (
-            // Edit Profile Button (If viewing self)
             <TouchableOpacity 
               style={[styles.actionBtn, styles.editBtn]}
               onPress={() => navigation.navigate('EditProfile')}
@@ -298,7 +313,7 @@ export default function ProfileScreen({ navigation, route }) {
         {userData?.bio || "This researcher hasn't added a bio yet."}
       </Text>
 
-      {/* --- SCANS (POSTS) GRID --- */}
+      {/* --- SCANS GRID --- */}
       <View style={styles.gridHeader}>
         <Text style={styles.gridTitle}>
           {isViewingSelf ? "My Scans" : "Recent Contributions"}
@@ -320,6 +335,13 @@ export default function ProfileScreen({ navigation, route }) {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* --- MODAL FOR POST DETAILS --- */}
+      <PostDetailModal 
+        visible={modalVisible} 
+        post={selectedPost} 
+        onClose={() => setModalVisible(false)} 
+      />
 
       {/* --- BOTTOM NAV --- */}
       {isViewingSelf && (
@@ -351,21 +373,13 @@ const styles = StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   userLocation: { color: '#98C1D9', fontSize: 13, fontWeight: '600', marginLeft: 4 },
 
-  // --- BUTTONS ---
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 },
   actionBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 25, minWidth: 50, alignItems: 'center', justifyContent: 'center' },
-  
-  // Message Button
   messageBtn: { backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)', width: 50, height: 42, paddingHorizontal: 0 },
-  
-  // Follow Button
   followBtn: { backgroundColor: '#FFF', minWidth: 120 },
   followingBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#FFF', minWidth: 120 },
-  
   btnText: { fontSize: 14, fontWeight: '700', color: '#3D5A80' },
   followingBtnText: { color: '#FFF' },
-  
-  // Edit Button
   editBtn: { backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)', minWidth: 140 },
   editBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 
