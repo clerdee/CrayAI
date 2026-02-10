@@ -1,0 +1,12 @@
+# 1. Install both Node.js (for server.js) and Python (for app.py)
+[phases.setup]
+nixPkgs = ["nodejs", "npm", "python3", "python311Packages.pip"]
+
+# 2. Install dependencies for both
+[phases.install]
+cmds = ["npm install", "pip install -r requirements.txt"]
+
+# 3. Start BOTH servers together
+# We run python in the background (&) and node in the foreground
+[phases.start]
+cmd = "python3 app.py & node server.js"
