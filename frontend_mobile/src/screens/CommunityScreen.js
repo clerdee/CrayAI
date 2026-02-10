@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   View, Text, StyleSheet, Image, TouchableOpacity, 
   TextInput, Platform, StatusBar, FlatList, Dimensions, Keyboard, ScrollView, KeyboardAvoidingView, ActivityIndicator, Animated, Modal, TouchableWithoutFeedback
@@ -11,11 +11,51 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import client from '../api/client'; 
 import { CLOUDINARY_CONFIG } from '../config/cloudinary';
 
+// Data Imports
+import { BAD_WORDS } from '../data/badWords'; 
+
 // Components
 import Header from '../components/Header';
 import BottomNavBar from '../components/BottomNavBar';
 import Sidebar from '../components/Sidebar';
 import FloatingChatbot from '../components/FloatingChatbot';
+
+// --- 1. HELPER: ESCAPE REGEX CHARACTERS (THE FIX) ---
+const escapeRegExp = (string) => {
+  // This replaces special Regex characters (*, $, ., etc.) with a backslash version
+  // e.g., "f**k" becomes "f\*\*k"
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+};
+
+// --- 2. HELPER: PROFANITY MASKING (UPDATED) ---
+const maskProfanity = (text) => {
+  if (!text) return "";
+  let cleanText = text;
+
+  // We sort by length (longest first) to avoid partial replacement issues
+  // e.g., Replace "asshole" before "ass"
+  const sortedBadWords = [...BAD_WORDS].sort((a, b) => b.length - a.length);
+
+  sortedBadWords.forEach(word => {
+    const escapedWord = escapeRegExp(word);
+    
+    // We try to match with word boundaries (\b) first
+    // If the word contains symbols (like * or $), \b might fail, so we fallback to non-boundary check for those
+    const hasSymbols = /[^a-zA-Z0-9]/.test(word);
+    
+    let regex;
+    if (hasSymbols) {
+      // If word has symbols (f*ck), match literally without strict boundaries
+      regex = new RegExp(escapedWord, 'gi');
+    } else {
+      // If word is standard letters, use word boundaries (prevents masking "class" for "ass")
+      regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
+    }
+
+    cleanText = cleanText.replace(regex, '*'.repeat(word.length));
+  });
+  return cleanText;
+};
 
 // --- HELPER: TIME FORMATTER ---
 const formatTimeAgo = (dateInput) => {
@@ -57,19 +97,19 @@ export default function CommunityScreen({ navigation }) {
   const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [editCommentModalVisible, setEditCommentModalVisible] = useState(false); 
   
-  const [activePostId, setActivePostId] = useState(null); // Post we are interacting with
-  const [activeCommentId, setActiveCommentId] = useState(null); // Comment we are editing
+  const [activePostId, setActivePostId] = useState(null); 
+  const [activeCommentId, setActiveCommentId] = useState(null); 
   
-  const [commentDraft, setCommentDraft] = useState(''); // New comment text
-  const [editCommentDraft, setEditCommentDraft] = useState(''); // Edited comment text
+  const [commentDraft, setCommentDraft] = useState(''); 
+  const [editCommentDraft, setEditCommentDraft] = useState(''); 
 
   // --- MENUS & DELETE STATES ---
   const [optionsVisible, setOptionsVisible] = useState(false);        
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false); // For POSTS
-  const [deleteCommentModalVisible, setDeleteCommentModalVisible] = useState(false); // For COMMENTS (NEW)
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false); 
+  const [deleteCommentModalVisible, setDeleteCommentModalVisible] = useState(false); 
   
   const [selectedPostForOptions, setSelectedPostForOptions] = useState(null);
-  const [commentToDelete, setCommentToDelete] = useState(null); // Stores { post, commentId } for deletion
+  const [commentToDelete, setCommentToDelete] = useState(null); 
 
   // User Info
   const [currentUserInfo, setCurrentUserInfo] = useState({
@@ -502,7 +542,8 @@ export default function CommunityScreen({ navigation }) {
           )}
 
           <View style={styles.cardBody}>
-            <Text style={styles.contentText}>{item.content}</Text>
+            {/* APPLY MASK */}
+            <Text style={styles.contentText}>{maskProfanity(item.content)}</Text>
           </View>
 
           <View style={styles.cardActions}>
@@ -563,7 +604,8 @@ export default function CommunityScreen({ navigation }) {
                                 )}
                             </View>
                           </View>
-                          <Text style={styles.commentText}>{comment.text}</Text>
+                          {/* APPLY MASK TO COMMENTS */}
+                          <Text style={styles.commentText}>{maskProfanity(comment.text)}</Text>
                         </View>
                       </View>
                     );
