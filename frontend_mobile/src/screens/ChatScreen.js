@@ -24,6 +24,7 @@ export default function ChatScreen({ navigation, route }) {
   const [sendingImage, setSendingImage] = useState(false);
   const [stagedImage, setStagedImage] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [isGuest, setIsGuest] = useState(false); // New State
 
   const [myChats, setMyChats] = useState([]); 
   const [requests, setRequests] = useState([]); 
@@ -50,14 +51,28 @@ export default function ChatScreen({ navigation, route }) {
     const checkAuth = async () => {
       try {
         const token = await AsyncStorage.getItem('userToken');
+        
+        // --- SAFETY CHECK ---
         if (!token) {
-          if (mounted) { setCurrentUser(null); setLoadingContacts(false); }
+          if (mounted) { 
+            setCurrentUser(null); 
+            setLoadingContacts(false); 
+            setIsGuest(true); // Mark as guest
+          }
           return; 
         }
+        
+        // Only fetch profile if token exists
         const res = await client.get('/auth/profile');
-        if (mounted) setCurrentUser(res.data.user || null);
+        if (mounted) {
+            setCurrentUser(res.data.user || null);
+            setIsGuest(false);
+        }
       } catch (error) {
-        if (mounted) setCurrentUser(null);
+        if (mounted) {
+            setCurrentUser(null);
+            setIsGuest(true); // Fallback to guest on error
+        }
       }
     };
     checkAuth();
@@ -66,7 +81,7 @@ export default function ChatScreen({ navigation, route }) {
 
   // --- REFRESH DATA ---
   const fetchListData = async () => {
-    if (!currentUser) return;
+    if (!currentUser) return; // Prevent fetch if no user
     try {
       const [usersRes, chatsRes] = await Promise.all([
         client.get('/chat/users'),
@@ -111,27 +126,29 @@ export default function ChatScreen({ navigation, route }) {
       setRequests(incoming);
       setMyChats(active);
 
-    } catch (error) { showToast("Error", "Could not load chats.", "error"); } 
+    } catch (error) { 
+        if (error.response?.status !== 401) {
+            showToast("Error", "Could not load chats.", "error"); 
+        }
+    } 
     finally { setLoadingContacts(false); }
   };
 
-  useEffect(() => { fetchListData(); }, [currentUser, activeTab]);
+  useEffect(() => { 
+      if(currentUser) fetchListData(); 
+  }, [currentUser, activeTab]);
 
   // --- 1. HANDLE NAVIGATION FROM COMMUNITY SCREEN (FIXED) ---
   useEffect(() => {
-    // If we have a targetUser passed from navigation
     if (route.params?.targetUser) {
         const target = route.params.targetUser;
         
-        // --- FIX: Ensure targetId is a STRING, not an object ---
         let targetId = target.uid || target._id || target.id;
         if (typeof targetId === 'object') {
-            targetId = targetId.toString(); // Fallback if somehow an object slips through
+            targetId = targetId.toString(); 
         }
 
-        // Check if this user is already in My Chats
         const existingChat = myChats.find(u => String(u.uid) === String(targetId));
-        // Check if this user is in Requests
         const existingRequest = requests.find(u => String(u.uid) === String(targetId));
 
         if (existingChat) {
@@ -141,10 +158,9 @@ export default function ChatScreen({ navigation, route }) {
             setActiveTab('requests');
             setActiveChatUser(existingRequest);
         } else {
-            // It's a new conversation
             setActiveTab('chats');
             setActiveChatUser({
-                uid: targetId, // Explicit string ID
+                uid: targetId,
                 name: target.name,
                 profilePic: target.profilePic,
                 status: 'new',
@@ -154,13 +170,12 @@ export default function ChatScreen({ navigation, route }) {
     }
   }, [route.params, myChats, requests]); 
 
-  // --- LOAD MESSAGES (FIXED) ---
+  // --- LOAD MESSAGES ---
   useEffect(() => {
     if (!activeChatUser || !currentUser) return;
 
     const loadMessages = async () => {
       try {
-        // --- FIX: Explicitly cast UID to string to prevent [object Object] error ---
         const targetId = String(activeChatUser.uid); 
         
         const res = await client.get(`/chat/messages/${targetId}`);
@@ -177,7 +192,9 @@ export default function ChatScreen({ navigation, route }) {
         }));
         setMessages(fetched);
       } catch (err) { 
-        console.log("Load Msg Error:", err); 
+        if (err.response?.status !== 401) {
+            console.log("Load Msg Error:", err); 
+        }
       }
     };
 
@@ -188,10 +205,10 @@ export default function ChatScreen({ navigation, route }) {
   }, [activeChatUser, currentUser]);
 
   const handleLogout = async () => {
-  await AsyncStorage.multiRemove(['userToken', 'userInfo', 'alertsCount']);
-  setCurrentUser(null);
-  setSidebarVisible(false);
-  navigation.navigate('Login');
+    await AsyncStorage.multiRemove(['userToken', 'userInfo', 'alertsCount']);
+    setCurrentUser(null);
+    setSidebarVisible(false);
+    navigation.navigate('Login');
   };
 
   const handleSendMessage = async () => {
@@ -205,13 +222,12 @@ export default function ChatScreen({ navigation, route }) {
             const data = new FormData();
             data.append('file', { uri: stagedImage, type: 'image/jpeg', name: 'chat.jpg' });
             data.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
-            data.append('cloud_name', CLOUDINARY_CONFIG.cloudName); // Make sure to send cloud_name if needed by your backend logic or if directly fetching cloudinary
+            data.append('cloud_name', CLOUDINARY_CONFIG.cloudName); 
             const res = await fetch(CLOUDINARY_CONFIG.apiUrl, { method: 'POST', body: data });
             const result = await res.json();
             imageUrl = result.secure_url;
         }
         
-        // --- FIX: Ensure receiverId is a string ---
         await client.post('/chat/send', { 
             receiverId: String(activeChatUser.uid), 
             text: currentMsg, 
@@ -271,7 +287,8 @@ export default function ChatScreen({ navigation, route }) {
         </Animated.View>
       )}
 
-      {!currentUser ? (
+      {/* --- GUEST VIEW (If not logged in) --- */}
+      {(!currentUser || isGuest) ? (
         <View style={styles.centerContainer}>
           <Ionicons name="chatbubbles-outline" size={80} color="#BDC3C7" style={{ marginBottom: 20 }} />
           <Text style={styles.largeTitle}>Join the Chat</Text>

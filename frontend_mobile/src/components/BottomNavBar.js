@@ -1,169 +1,210 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  Platform, 
-  Image, 
-  Animated 
-} from 'react-native';
-import { Feather, Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useState, useCallback } from 'react';
+import { View, TouchableOpacity, StyleSheet, Text, Image, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
+import client from '../api/client'; 
 
-export default function BottomNavBar({ navigation, activeTab, alertsCount = 0 }) {
-  
-  const [showToast, setShowToast] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(20)).current; 
+const BottomNavBar = ({ activeTab }) => {
+  const navigation = useNavigation();
+  const [alertsCount, setAlertsCount] = useState(0);
+  const [chatCount, setChatCount] = useState(0); 
 
-  // --- 1. ROBUST LOGIN CHECK (No Props Needed) ---
-  // We check AsyncStorage directly on press to guarantee accuracy
-  const handleScanPress = async () => {
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (token) {
-        navigation.navigate('Camera');
-      } else {
-        triggerToast();
-      }
-    } catch (error) {
-      triggerToast();
-    }
-  };
+  // --- FETCH BADGE COUNTS ---
+  useFocusEffect(
+    useCallback(() => {
+      const fetchCounts = async () => {
+        try {
+          // 1. SAFETY CHECK: Ensure Token Exists
+          const token = await AsyncStorage.getItem('userToken');
+          if (!token) {
+            setAlertsCount(0);
+            return; 
+          }
 
-  const getIconColor = (tabName) => activeTab === tabName ? '#2C5364' : '#999';
-  const getTextColor = (tabName) => activeTab === tabName ? '#2C5364' : '#999';
+          // 2. Get Cached Alerts Count
+          const cachedAlerts = await AsyncStorage.getItem('alertsCount');
+          if (cachedAlerts) setAlertsCount(parseInt(cachedAlerts, 10));
 
-  const triggerToast = () => {
-    if (showToast) return; 
-    
-    setShowToast(true);
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.spring(translateY, { toValue: 0, friction: 5, useNativeDriver: true })
-    ]).start();
+          // 3. Fetch Fresh Count from Server
+          const res = await client.get('/notification');
+          if (res.data?.notifications) {
+            const unread = res.data.notifications.filter(n => !n.isRead).length;
+            setAlertsCount(unread);
+            await AsyncStorage.setItem('alertsCount', String(unread));
+          }
 
-    setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: 20, duration: 300, useNativeDriver: true })
-      ]).start(() => setShowToast(false));
-    }, 2500);
-  };
+        } catch (error) {
+          if (error.response && error.response.status === 401) {
+             console.log("Badge fetch skipped: User not authenticated.");
+          } else {
+             console.log("Badge fetch error:", error.message);
+          }
+        }
+      };
+
+      fetchCounts();
+    }, [])
+  );
 
   return (
-    <View style={[styles.bottomNav, styles.shadow]}>
-      
-      {/* --- GUEST ALERT PILL --- */}
-      <Animated.View style={[
-        styles.toastContainer, 
-        { 
-          opacity: fadeAnim,
-          transform: [{ translateY: translateY }]
-        }
-      ]}>
-        <View style={styles.toastContent}>
-          <Ionicons name="lock-closed" size={16} color="#FFF" />
-          <Text style={styles.toastText}>Please login to use Scanner</Text>
-        </View>
-        <View style={styles.toastArrow} />
-      </Animated.View>
+    <View style={styles.container}>
+      <View style={styles.tabContainer}>
+        
+        {/* 1. HOME */}
+        <TouchableOpacity style={styles.tab} onPress={() => navigation.navigate('Home')}>
+          <Ionicons 
+            name={activeTab === 'Home' ? "home" : "home-outline"} 
+            size={24} 
+            color={activeTab === 'Home' ? "#3D5A80" : "#95A5A6"} 
+          />
+          <Text style={[styles.label, activeTab === 'Home' && styles.activeLabel]}>Home</Text>
+        </TouchableOpacity>
 
-      {/* 1. Home */}
-      <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Home')}>
-        <Feather name="home" size={24} color={getIconColor('Home')} />
-        <Text style={[styles.navText, { color: getTextColor('Home') }]}>Home</Text>
-      </TouchableOpacity>
+        {/* 2. COMMUNITY */}
+        <TouchableOpacity style={styles.tab} onPress={() => navigation.navigate('Community')}>
+          <Ionicons 
+            name={activeTab === 'Community' ? "people" : "people-outline"} 
+            size={26} 
+            color={activeTab === 'Community' ? "#3D5A80" : "#95A5A6"} 
+          />
+          <Text style={[styles.label, activeTab === 'Community' && styles.activeLabel]}>Community</Text>
+        </TouchableOpacity>
 
-      {/* 2. Community */}
-      <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Community')}>
-        <Feather name="users" size={24} color={getIconColor('Community')} />
-        <Text style={[styles.navText, { color: getTextColor('Community') }]}>Community</Text>
-      </TouchableOpacity>
-      
-      {/* 3. Scan (Direct Async Check) */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity style={[styles.fab, styles.shadow]} onPress={handleScanPress} activeOpacity={0.9}>
-          <LinearGradient colors={['#FF6347', '#ff2727']} style={styles.fabGradient}>
+        {/* 3. SCAN (Center with Crayfish Logo) */}
+        <View style={styles.scanWrapper}>
+          <TouchableOpacity style={styles.scanButton} onPress={() => navigation.navigate('Camera')}>
             <Image 
               source={require('../../assets/crayfish.png')} 
-              style={{ width: 32, height: 32, tintColor: '#FFF' }} 
+              style={styles.scanIcon} 
               resizeMode="contain"
             />
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-
-      {/* 4. Chat */}
-      <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Chat')}>
-        <Feather name="message-square" size={24} color={getIconColor('Chat')} />
-        <Text style={[styles.navText, { color: getTextColor('Chat') }]}>Chat</Text>
-      </TouchableOpacity>
-
-      {/* 5. Notification / Alerts */}
-      <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Notification')}>
-        <View style={{ alignItems: 'center' }}>
-          <Feather 
-            name="bell" 
-            size={24} 
-            color={getIconColor('Alerts')} 
-          />
-          {alertsCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{alertsCount > 99 ? '99+' : alertsCount}</Text>
-            </View>
-          )}
+          </TouchableOpacity>
         </View>
-        <Text style={[styles.navText, { color: getTextColor('Alerts') }]}>Alerts</Text>
-      </TouchableOpacity>
+
+        {/* 4. CHAT */}
+        <TouchableOpacity style={styles.tab} onPress={() => navigation.navigate('Chat')}>
+          <View>
+            <Ionicons 
+              name={activeTab === 'Chat' ? "chatbubbles" : "chatbubbles-outline"} 
+              size={24} 
+              color={activeTab === 'Chat' ? "#3D5A80" : "#95A5A6"} 
+            />
+            {chatCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{chatCount}</Text>
+              </View>
+            )}
+          </View>
+          <Text style={[styles.label, activeTab === 'Chat' && styles.activeLabel]}>Chat</Text>
+        </TouchableOpacity>
+
+        {/* 5. ALERTS */}
+        <TouchableOpacity style={styles.tab} onPress={() => navigation.navigate('Notification')}>
+          <View>
+            <Ionicons 
+              name={activeTab === 'Alerts' ? "notifications" : "notifications-outline"} 
+              size={24} 
+              color={activeTab === 'Alerts' ? "#3D5A80" : "#95A5A6"} 
+            />
+            {alertsCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {alertsCount > 99 ? '99+' : alertsCount}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text style={[styles.label, activeTab === 'Alerts' && styles.activeLabel]}>Alerts</Text>
+        </TouchableOpacity>
+
+      </View>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  bottomNav: { position: 'absolute', bottom: 30, left: 20, right: 20, backgroundColor: '#FFF', flexDirection: 'row', borderRadius: 25, height: 70, justifyContent: 'space-around', alignItems: 'center', paddingHorizontal: 10, zIndex: 100 },
-  navItem: { alignItems: 'center', justifyContent: 'center', flex: 1 },
-  navText: { fontSize: 10, fontWeight: '600', marginTop: 4 },
-  
-  fabContainer: { position: 'relative', top: -30, flex: 1, alignItems: 'center', zIndex: 101 },
-  fab: { width: 65, height: 65, borderRadius: 33, backgroundColor: '#FFF', padding: 5 },
-  fabGradient: { flex: 1, borderRadius: 30, justifyContent: 'center', alignItems: 'center' },
-  
-  shadow: { ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.1, shadowRadius: 10 }, android: { elevation: 5 } }) },
-  
-  badge: { position: 'absolute', top: -8, right: -12, backgroundColor: '#E74C3C', borderRadius: 10, minWidth: 18, height: 18, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center' },
-  badgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
-
-  toastContainer: {
+  container: {
     position: 'absolute',
-    top: -65, 
-    alignSelf: 'center', 
-    alignItems: 'center',
-    zIndex: 200, 
-    pointerEvents: 'none', 
+    bottom: 0,
+    width: '100%',
+    backgroundColor: '#FFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F0F3F4',
+    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+    paddingTop: 10,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
   },
-  toastContent: {
-    backgroundColor: '#2C3E50',
+  tabContainer: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    shadowColor: "#000",
+  },
+  tab: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  scanWrapper: {
+    marginTop: -40, 
+    justifyContent: 'center',
+    alignItems: 'center',
+    flex: 1,
+  },
+  scanButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#E76F51', 
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#E76F51',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 4.65,
+    shadowRadius: 5,
     elevation: 8,
+    borderWidth: 4,
+    borderColor: '#F4F7F9', 
   },
-  toastText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  toastArrow: {
-    width: 0, height: 0, backgroundColor: 'transparent', borderStyle: 'solid',
-    borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 8,
-    borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#2C3E50', 
-    marginTop: -1, 
-  }
+  // NEW STYLE FOR THE LOGO
+  scanIcon: {
+    width: 32,
+    height: 32,
+    tintColor: '#FFF',
+  },
+  label: {
+    fontSize: 10,
+    color: '#95A5A6',
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  activeLabel: {
+    color: '#3D5A80',
+    fontWeight: '700',
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    backgroundColor: '#E74C3C',
+    borderRadius: 10,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#FFF',
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
 });
+
+export default BottomNavBar;
