@@ -1,164 +1,110 @@
 import cv2
 import numpy as np
 import base64
+import os
+from ultralytics import YOLO
 
-# --- CONFIGURATION ---
-# CALIBRATION: 137 pixels = 1 cm
-PIXELS_PER_CM = 137.0 
-MIN_AREA_THRESHOLD = 1500 
+PIXELS_PER_CM = 65.0 
+MIN_CRAYFISH_LENGTH_CM = 2.0 
 
-# FOCAL BOX SETTINGS (The "Yellow Zone")
-FOCUS_W_PCT = 0.80
-FOCUS_H_PCT = 0.60
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
+MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "crayfish.pt")
+
+try:
+    ai_model = YOLO(MODEL_PATH)
+    print(f"✅ AI Model successfully loaded from: {MODEL_PATH}")
+except Exception as e:
+    print(f"❌ Failed to load AI model: {e}")
+    ai_model = None
+
+def analyze_algae(img):
+    """Detects algae density using HSV color masking."""
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+    lower_green = np.array([35, 40, 40])
+    upper_green = np.array([85, 255, 255])
+
+    mask = cv2.inRange(hsv, lower_green, upper_green)
+
+    algae_pixels = cv2.countNonZero(mask)
+    total_pixels = img.shape[0] * img.shape[1]
+    percentage = (algae_pixels / total_pixels) * 100
+    
+    if percentage < 5:
+        return 0, "Low (Minimal Algae)"
+    elif percentage < 15:
+        return 1, "Moderate (Noticeable)"
+    elif percentage < 30:
+        return 2, "High (Dense Bloom)"
+    else:
+        return 3, "Critical (Immediate Action)"
+
+def estimate_age(size_cm):
+    if not size_cm or size_cm <= 0: return "Unknown"
+    if size_cm < 2: return "Crayling (< 1 month)"
+    elif 2 <= size_cm < 5.5: return "Juvenile (1-3 months)"
+    elif 5.5 <= size_cm < 9: return "Sub-Adult (3-6 months)"
+    else: return "Adult/Breeder (> 6 months)"
 
 def process_measurement(image_file):
-    # 1. READ IMAGE
     file_bytes = np.frombuffer(image_file.read(), np.uint8)
     original_img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     
-    # 2. RESIZE FOR SPEED (Process small, scale up later)
-    orig_h, orig_w = original_img.shape[:2]
-    process_width = 800
-    scale_factor = orig_w / process_width
-    process_height = int(orig_h / scale_factor)
+    algae_level, algae_desc = analyze_algae(original_img)
     
-    img = cv2.resize(original_img, (process_width, process_height))
-    
-    # 3. DEFINE FOCAL ZONE (ROI)
-    # We only look inside this box.
-    center_x, center_y = int(process_width / 2), int(process_height / 2)
-    box_w, box_h = int(process_width * FOCUS_W_PCT), int(process_height * FOCUS_H_PCT)
-    x1 = max(0, center_x - int(box_w / 2))
-    y1 = max(0, center_y - int(box_h / 2))
-    x2 = min(process_width, center_x + int(box_w / 2))
-    y2 = min(process_height, center_y + int(box_h / 2))
-    
-    rect = (x1, y1, x2-x1, y2-y1)
+    results_data = []
 
-    # 4. PRE-PROCESSING (The "Smart" Part)
-    # Bilateral Filter: Smoothes noise but keeps EDGES sharp (Better than Gaussian)
-    blur = cv2.bilateralFilter(img, 9, 75, 75)
-    gray = cv2.cvtColor(blur, cv2.COLOR_BGR2GRAY)
-
-    # 5. INITIAL MASK GENERATION (Otsu's Binarization)
-    # This automatically finds the "dark" object vs "light" background
-    # We use this to giving GrabCut a "Hint" instead of a blind guess.
-    _, binary_mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
-    # Clean the mask (Remove small white spots)
-    kernel = np.ones((5, 5), np.uint8)
-    binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_OPEN, kernel, iterations=2)
-    
-    # Only keep the mask INSIDE the focal rectangle
-    final_binary_mask = np.zeros_like(binary_mask)
-    final_binary_mask[y1:y2, x1:x2] = binary_mask[y1:y2, x1:x2]
-
-    # 6. GRABCUT WITH MASK INITIALIZATION
-    # GC_BGD = 0 (Background), GC_FGD = 1 (Foreground), GC_PR_BGD = 2, GC_PR_FGD = 3
-    gc_mask = np.zeros(img.shape[:2], np.uint8)
-    
-    # Everything is Probable Background (2) by default
-    gc_mask[:] = cv2.GC_PR_BGD 
-    # Where our Otsu mask is BLACK (Background), set to Definite Background (0)
-    gc_mask[final_binary_mask == 0] = cv2.GC_BGD
-    # Where our Otsu mask is WHITE (Object), set to Probable Foreground (3)
-    gc_mask[final_binary_mask == 255] = cv2.GC_PR_FGD
-
-    # Run GrabCut (Iterative Refinement)
-    bgdModel = np.zeros((1, 65), np.float64)
-    fgdModel = np.zeros((1, 65), np.float64)
-    
-    try:
-        cv2.grabCut(img, gc_mask, rect, bgdModel, fgdModel, 5, cv2.GC_INIT_WITH_MASK)
-    except:
-        # Fallback if GrabCut fails
-        pass
-
-    # Extract the final clean mask (Pixels labeled 1 or 3)
-    mask2 = np.where((gc_mask == 2) | (gc_mask == 0), 0, 1).astype('uint8')
-
-    # 7. FIND CONTOURS (On the clean mask)
-    contours, _ = cv2.findContours(mask2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # 8. FIND LARGEST OBJECT
-    largest_object = None
-    max_area = 0
-    
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if area > MIN_AREA_THRESHOLD:
-            if area > max_area:
-                max_area = area
-                
-                # Scale contours back to original HD size
-                rect_box = cv2.minAreaRect(cnt) 
-                (x_small, y_small), (w_small, h_small), angle = rect_box
-                
-                real_w = w_small * scale_factor
-                real_h = h_small * scale_factor
-                real_x = x_small * scale_factor
-                real_y = y_small * scale_factor
-                
-                # Fix orientation
-                if angle > 45: 
-                    real_w, real_h = real_h, real_w
-                
-                cnt_scaled = (cnt * scale_factor).astype(np.int32)
-                
-                largest_object = {
-                    'cnt': cnt_scaled,
-                    'rect_box': ((real_x, real_y), (real_w, real_h), angle),
-                    'x': real_x,
-                    'y': real_y,
-                    'w': real_w,
-                    'h': real_h
-                }
-
-    # 9. DRAW RESULTS
-    overlay = original_img.copy()
-    
-    # Draw Focal Zone
-    orig_cx, orig_cy = int(orig_w / 2), int(orig_h / 2)
-    orig_bx_w, orig_bx_h = int(orig_w * FOCUS_W_PCT), int(orig_h * FOCUS_H_PCT)
-    ox1 = max(0, orig_cx - int(orig_bx_w / 2))
-    oy1 = max(0, orig_cy - int(orig_bx_h / 2))
-    ox2 = min(orig_w, orig_cx + int(orig_bx_w / 2))
-    oy2 = min(orig_h, orig_cy + int(orig_bx_h / 2))
-    
-    cv2.rectangle(original_img, (ox1, oy1), (ox2, oy2), (0, 255, 255), 3)
-    cv2.putText(original_img, f"SCAN ZONE", (ox1 + 20, oy1 + 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
-
-    results = []
-
-    if largest_object:
-        # Measure
-        w_cm = largest_object['w'] / PIXELS_PER_CM
-        h_cm = largest_object['h'] / PIXELS_PER_CM
+    if ai_model:
+        results = ai_model.predict(source=original_img, conf=0.7)
         
-        # Draw TIGHT Green Mask (The Blob)
-        cv2.drawContours(overlay, [largest_object['cnt']], -1, (0, 255, 0), -1) 
-        
-        # Draw White Outline
-        box = np.int32(cv2.boxPoints(largest_object['rect_box']))
-        cv2.drawContours(original_img, [box], 0, (255, 255, 255), 4)
-        
-        # Draw Labels
-        lx, ly = int(largest_object['x']), int(largest_object['y'])
-        cv2.putText(original_img, f"CRAYFISH", (lx, ly - 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
-        cv2.putText(original_img, f"W: {w_cm:.2f}cm", (lx, ly - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
-        cv2.putText(original_img, f"H: {h_cm:.2f}cm", (lx, ly + 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
-        
-        results.append({
-            "type": "target",
-            "width_cm": round(w_cm, 2),
-            "height_cm": round(h_cm, 2)
-        })
+        raw_boxes = []
+        for result in results:
+            for box in result.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                h_cm = (y2 - y1) / PIXELS_PER_CM
+                
+                if h_cm >= MIN_CRAYFISH_LENGTH_CM:
+                    raw_boxes.append(box)
 
-    # Blend overlay (Opacity)
-    cv2.addWeighted(overlay, 0.35, original_img, 0.65, 0, original_img)
+        if len(raw_boxes) == 0:
+            h, w = original_img.shape[:2]
+            cv2.rectangle(original_img, (0, 0), (w, h), (0, 0, 255), 15)
+            cv2.putText(original_img, "NO CRAYFISH DETECTED", (int(w * 0.1), int(h / 2)), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+        else:
+            for box in raw_boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                width_px, height_px = x2 - x1, y2 - y1
+                
+                w_cm = width_px / PIXELS_PER_CM
+                h_cm = height_px / PIXELS_PER_CM
+                age_category = estimate_age(h_cm)
+                
+                cv2.rectangle(original_img, (x1, y1), (x2, y2), (0, 255, 0), 4)
+                cv2.putText(original_img, "CRAYFISH", (x1, max(30, y1 - 40)), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 3)
+                cv2.putText(original_img, f"W: {w_cm:.2f}cm", (x1, max(30, y1 - 10)), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                
+                cv2.putText(original_img, f"H: {h_cm:.2f}cm", (x1, y2 + 30), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                cv2.putText(original_img, f"Age: {age_category}", (x1, y2 + 65), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                
+                results_data.append({
+                    "type": "target",
+                    "width_cm": round(w_cm, 2),
+                    "height_cm": round(h_cm, 2),
+                    "estimated_age": age_category
+                })
 
-    # 10. RETURN
     _, buffer = cv2.imencode('.jpg', original_img)
     img_base64 = base64.b64encode(buffer).decode('utf-8')
 
-    return {"image": img_base64, "measurements": results}
+    return {
+        "image": img_base64, 
+        "measurements": results_data,
+        "success": len(results_data) > 0,
+        "algae_level": algae_level,    
+        "algae_desc": algae_desc        
+    }

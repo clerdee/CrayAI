@@ -8,14 +8,57 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Video, ResizeMode } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
+// NEW: SVG components for the curved Gauge Graph
+import Svg, { Path, G, Polygon, Line, Rect } from 'react-native-svg';
+
 // Import Main Client (Port 5000)
 import client from '../api/client'; 
 
 const { width } = Dimensions.get('window');
 
+// --- CUSTOM GAUGE CHART COMPONENT ---
+const GaugeChart = ({ levelIndex }) => {
+  // Rotations for the needle to point to the exact center of each color block
+  const needleRotations = [-67.5, -22.5, 22.5, 67.5];
+  const rotation = needleRotations[levelIndex] || -67.5;
+
+  return (
+    <View style={styles.gaugeWrapper}>
+      <Svg width="100%" height="160" viewBox="0 0 200 120">
+        
+        {/* 1. GREEN SEGMENT (Low) */}
+        <Path d="M 20 100 A 80 80 0 0 1 43.43 43.43" fill="none" stroke="#0FA958" strokeWidth="35" />
+        
+        {/* 2. YELLOW SEGMENT (Moderate) */}
+        <Path d="M 43.43 43.43 A 80 80 0 0 1 100 20" fill="none" stroke="#FFE600" strokeWidth="35" />
+        
+        {/* 3. RED SEGMENT (High) */}
+        <Path d="M 100 20 A 80 80 0 0 1 156.57 43.43" fill="none" stroke="#E11A22" strokeWidth="35" />
+        
+        {/* 4. DARK RED SEGMENT (Critical) */}
+        <Path d="M 156.57 43.43 A 80 80 0 0 1 180 100" fill="none" stroke="#A61016" strokeWidth="35" />
+
+        {/* WHITE SEPARATOR GAPS */}
+        <Line x1="100" y1="100" x2="43.43" y2="43.43" stroke="#FFF" strokeWidth="8" />
+        <Line x1="100" y1="100" x2="100" y2="20" stroke="#FFF" strokeWidth="8" />
+        <Line x1="100" y1="100" x2="156.57" y2="43.43" stroke="#FFF" strokeWidth="8" />
+
+        {/* FLAT BASELINE CUTOFF */}
+        <Rect x="0" y="100" width="200" height="20" fill="#FFF" />
+
+        {/* ROTATING NEEDLE */}
+        <G transform={`rotate(${rotation}, 100, 100)`}>
+          <Polygon points="90,100 110,100 100,25" fill="#111" />
+        </G>
+      </Svg>
+    </View>
+  );
+};
+
+
 export default function ResultsScreen({ route, navigation }) {
-  // 1. GET DATA FROM CAMERA
-  const { imageUri, type = 'image', measurements } = route.params || {}; 
+  // 1. GET DATA FROM CAMERA - Now including dynamic algae data
+  const { imageUri, type = 'image', measurements, algae_level, algae_desc } = route.params || {}; 
   
   const video = useRef(null);
   const [activeTab, setActiveTab] = useState('specimen'); 
@@ -44,10 +87,9 @@ export default function ResultsScreen({ route, navigation }) {
     loadUserLocation();
   }, []);
 
-  // 2. PARSE REAL DATA (Size) & CALCULATE AGE
+  // 2. PARSE REAL DATA
   const scanData = measurements && measurements.length > 0 ? measurements[0] : null;
 
-  // --- UPDATED AGE ESTIMATION LOGIC (4 CLASSES) ---
   const estimateAge = (sizeCm) => {
       if (!sizeCm) return "Unknown";
       if (sizeCm < 3) return "Crayling (< 1 month)";
@@ -56,29 +98,44 @@ export default function ResultsScreen({ route, navigation }) {
       return "Adult/Breeder (> 6 months)";
   };
 
-  // --- FORMAT DATE & TIME ---
   const formattedDate = scanTimestamp.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const formattedTime = scanTimestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   const fullTimestamp = `${formattedDate} • ${formattedTime}`;
 
-  const results = {
-    // REAL DATA
-    size: scanData ? `${scanData.width_cm}cm (W) x ${scanData.height_cm}cm (H)` : "Measurement Failed",
-    
-    // CALCULATED DATA
-    age: scanData ? estimateAge(scanData.width_cm) : "Unknown",
+  const cmW = scanData ? scanData.width_cm.toFixed(2) : 0;
+  const cmH = scanData ? scanData.height_cm.toFixed(2) : 0;
+  const inW = scanData ? (scanData.width_cm / 2.54).toFixed(2) : 0;
+  const inH = scanData ? (scanData.height_cm / 2.54).toFixed(2) : 0;
 
-    // MOCK DATA 
-    gender: "Male",
-    turbidity: "Clear (Low Turbidity)",
-    algae: "Moderate Green Algae",
+  // --- DYNAMIC ALGAE GAUGE CONFIGURATION ---
+  const algaeLevels = [
+    { id: 0, label: 'Low', color: '#0FA958' },       
+    { id: 1, label: 'Moderate', color: '#FFE600' },  
+    { id: 2, label: 'High', color: '#E11A22' },      
+    { id: 3, label: 'Critical', color: '#A61016' }   
+  ];
+  
+  // Use algae_level from Python response, default to 0 (Low)
+  const currentAlgaeIndex = algae_level !== undefined ? algae_level : 0;
+  const currentAlgae = algaeLevels[currentAlgaeIndex];
+
+  const results = {
+    sizeCm: scanData ? `${cmW}cm W x ${cmH}cm H` : "Measurement Failed",
+    sizeIn: scanData ? `${inW}in W x ${inH}in H` : "",
+    age: scanData ? estimateAge(scanData.width_cm) : "Unknown",
+    gender: "Not Defined",
+    turbidity: algae_desc || "Clear (Low Turbidity)", // Uses dynamic text from Python
     scanDate: fullTimestamp, 
-    confidence: 94.5
+    confidence: 0 
   };
 
-  const mainColor = results.gender === "Female" ? '#E76F51' : '#3D5A80';
+  const mainColor = '#3D5A80'; 
 
-  // --- SAVE TO DATABASE ---
+  // --- ACTIONS ---
+  const handleDiscard = () => {
+    navigation.navigate('Camera', { resetScan: Date.now() });
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -89,10 +146,9 @@ export default function ResultsScreen({ route, navigation }) {
         name: 'scan_result.jpg',
       });
 
-      const captionText = `🦞 CrayAI Scan\n\n📏 Size: ${results.size}\n🎂 Age: ${results.age}\n💧 Water: ${results.turbidity}\n📅 Time: ${formattedTime}`;
+      const captionSizeStr = scanData ? `${results.sizeCm}\n    📏 ${results.sizeIn}` : results.sizeCm;
+      const captionText = `🦞 CrayAI Scan\n\n📏 Size: ${captionSizeStr}\n🎂 Age: ${results.age}\n💧 Water: ${results.turbidity}\n🌿 Algae: ${currentAlgae.label}\n📅 Time: ${formattedTime}`;
       formData.append('caption', captionText);
-      
-      // SAVE LOCATION
       formData.append('location', userLocation); 
 
       await client.post('/posts/create', formData, {
@@ -133,7 +189,7 @@ export default function ResultsScreen({ route, navigation }) {
         <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={styles.topGradient} />
         
         <View style={styles.navBar}>
-          <TouchableOpacity style={styles.glassBtn} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={styles.glassBtn} onPress={handleDiscard}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
         </View>
@@ -158,7 +214,7 @@ export default function ResultsScreen({ route, navigation }) {
                 onPress={() => setActiveTab('env')}
             >
                 <Text style={[styles.tabText, activeTab === 'env' && styles.activeTabText]}>Environment</Text>
-                {activeTab === 'env' && <View style={[styles.activeIndicator, { backgroundColor: '#2A9D8F' }]} />}
+                {activeTab === 'env' && <View style={[styles.activeIndicator, { backgroundColor: '#0FA958' }]} />}
             </TouchableOpacity>
         </View>
 
@@ -167,16 +223,14 @@ export default function ResultsScreen({ route, navigation }) {
           {activeTab === 'specimen' ? (
             // === TAB 1: SPECIMEN INFO ===
             <>
-                {/* GENDER CARD */}
                 <View style={[styles.card, styles.shadow]}>
                     <View style={styles.cardHeader}>
                         <Text style={styles.cardTitle}>GENDER ID</Text>
-                        <FontAwesome5 name={results.gender === "Female" ? "venus" : "mars"} size={20} color={mainColor} />
+                        <FontAwesome5 name="genderless" size={20} color={mainColor} />
                     </View>
                     <Text style={[styles.bigResult, { color: mainColor }]}>{results.gender}</Text>
-                    <Text style={styles.subResult}>Cherax quadricarinatus</Text>
+                    <Text style={styles.subResult}>Model Pending Integration</Text>
                     
-                    {/* Confidence */}
                     <View style={styles.meterContainer}>
                         <View style={styles.meterLabels}>
                             <Text style={styles.meterLabel}>AI Confidence</Text>
@@ -188,10 +242,15 @@ export default function ResultsScreen({ route, navigation }) {
                     </View>
                 </View>
 
-                {/* MORPHOMETRICS LIST */}
                 <Text style={styles.sectionTitle}>Morphometrics</Text>
                 <View style={styles.detailsList}>
-                    <DetailRow icon="ruler-horizontal" label="Size Estimation" value={results.size} color={mainColor} />
+                    <DetailRow 
+                      icon="ruler-horizontal" 
+                      label="Size Estimation" 
+                      value={results.sizeCm} 
+                      subValue={results.sizeIn} 
+                      color={mainColor} 
+                    />
                     <View style={styles.divider} />
                     <DetailRow icon="hourglass-half" label="Age Class" value={results.age} color="#F4A261" />
                 </View>
@@ -199,28 +258,33 @@ export default function ResultsScreen({ route, navigation }) {
           ) : (
             // === TAB 2: ENVIRONMENT INFO ===
             <>
-                {/* WATER QUALITY CARD */}
+                {/* TURBIDITY CARD */}
                 <View style={[styles.card, styles.shadow]}>
                     <View style={styles.cardHeader}>
-                        <Text style={styles.cardTitle}>WATER ANALYSIS</Text>
-                        <Ionicons name="water" size={20} color="#4CC9F0" />
+                        <Text style={styles.cardTitle}>TURBIDITY</Text>
+                        <MaterialCommunityIcons name="water-opacity" size={20} color="#4CC9F0" />
                     </View>
-                    <View style={styles.envRow}>
-                        <View style={styles.envItem}>
-                            <MaterialCommunityIcons name="water-opacity" size={32} color="#4CC9F0" />
-                            <Text style={styles.envLabel}>Turbidity</Text>
-                            <Text style={styles.envValue}>{results.turbidity}</Text>
-                        </View>
-                        <View style={styles.verticalLine} />
-                        <View style={styles.envItem}>
-                            <MaterialCommunityIcons name="sprout" size={32} color="#2A9D8F" />
-                            <Text style={styles.envLabel}>Algae</Text>
-                            <Text style={styles.envValue}>{results.algae}</Text>
-                        </View>
+                    <Text style={[styles.bigResult, { color: '#4CC9F0', fontSize: 20 }]}>{results.turbidity}</Text>
+                    <Text style={styles.subResult}>Environmental Analysis</Text>
+                </View>
+
+                {/* SVG GAUGE CARD */}
+                <View style={[styles.card, styles.shadow]}>
+                    <View style={styles.cardHeader}>
+                        <Text style={styles.cardTitle}>BLUE-GREEN ALGAE</Text>
+                        <MaterialCommunityIcons name="sprout" size={20} color={currentAlgae.color} />
+                    </View>
+                    
+                    <GaugeChart levelIndex={currentAlgaeIndex} />
+                    
+                    <View style={styles.algaeTextContainer}>
+                        <Text style={styles.algaeAlertLabel}>Current alert level:</Text>
+                        <Text style={[styles.algaeAlertValue, { color: currentAlgae.color }]}>
+                            {currentAlgae.label}
+                        </Text>
                     </View>
                 </View>
 
-                {/* LOG INFO */}
                 <Text style={styles.sectionTitle}>Log Details</Text>
                 <View style={styles.detailsList}>
                     <DetailRow icon="clock" label="Time Scanned" value={results.scanDate} color="#546E7A" />
@@ -242,7 +306,7 @@ export default function ResultsScreen({ route, navigation }) {
               </LinearGradient>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('Camera')}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={handleDiscard}>
               <Text style={styles.secondaryText}>Discard</Text>
             </TouchableOpacity>
           </View>
@@ -253,8 +317,8 @@ export default function ResultsScreen({ route, navigation }) {
   );
 }
 
-// Reusable Row Component
-const DetailRow = ({ icon, label, value, color }) => (
+// Reusable Row Component 
+const DetailRow = ({ icon, label, value, subValue, color }) => (
   <View style={styles.detailRow}>
     <View style={[styles.iconCircle, { backgroundColor: `${color}15` }]}>
       <FontAwesome5 name={icon} size={18} color={color} />
@@ -262,6 +326,7 @@ const DetailRow = ({ icon, label, value, color }) => (
     <View style={styles.detailText}>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value}</Text>
+      {subValue ? <Text style={styles.detailSubValue}>{subValue}</Text> : null}
     </View>
   </View>
 );
@@ -284,7 +349,6 @@ const styles = StyleSheet.create({
   // Tabs
   tabContainer: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#EEE', marginBottom: 20 },
   tabItem: { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  activeTabItem: {},
   tabText: { fontSize: 15, fontWeight: '600', color: '#999' },
   activeTabText: { color: '#293241', fontWeight: '800' },
   activeIndicator: { position: 'absolute', bottom: -1, width: 40, height: 3, borderRadius: 3 },
@@ -296,6 +360,12 @@ const styles = StyleSheet.create({
   bigResult: { fontSize: 28, fontWeight: '800', marginBottom: 2 },
   subResult: { fontSize: 14, color: '#7F8C8D', fontStyle: 'italic', marginBottom: 15 },
   
+  // Custom Gauge Graph Styles
+  gaugeWrapper: { alignItems: 'center', marginTop: 10, marginBottom: -15 },
+  algaeTextContainer: { alignItems: 'center', marginBottom: 10 },
+  algaeAlertLabel: { fontSize: 16, color: '#444', fontWeight: '500' },
+  algaeAlertValue: { fontSize: 28, fontWeight: '900', marginTop: 2, letterSpacing: 0.5 },
+
   // Meter
   meterContainer: { gap: 8 },
   meterLabels: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -303,13 +373,6 @@ const styles = StyleSheet.create({
   meterValue: { fontSize: 13, fontWeight: '800', color: '#333' },
   progressBarBg: { height: 8, backgroundColor: '#F0F0F0', borderRadius: 4, overflow: 'hidden' },
   progressBarFill: { height: '100%', borderRadius: 4 },
-
-  // Env Card specific
-  envRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 10 },
-  envItem: { alignItems: 'center', gap: 5 },
-  envLabel: { fontSize: 13, color: '#777', marginTop: 5 },
-  envValue: { fontSize: 15, fontWeight: '700', color: '#333' },
-  verticalLine: { width: 1, backgroundColor: '#EEE', height: '80%' },
 
   // Lists
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#293241', marginBottom: 15 },
@@ -319,6 +382,7 @@ const styles = StyleSheet.create({
   detailText: { flex: 1 },
   detailLabel: { fontSize: 12, color: '#999', marginBottom: 2 },
   detailValue: { fontSize: 15, color: '#293241', fontWeight: '600' },
+  detailSubValue: { fontSize: 13, color: '#7F8C8D', marginTop: 3 }, 
   divider: { height: 1, backgroundColor: '#F0F0F0', marginVertical: 8, marginLeft: 55 },
 
   // Actions

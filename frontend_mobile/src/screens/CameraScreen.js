@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, Dimensions, StatusBar, 
-  Modal, ScrollView, ActivityIndicator, Animated, Vibration, Easing, Alert, Image
+  Modal, ScrollView, ActivityIndicator, Animated, Vibration, Easing, Image
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,7 +18,7 @@ const SCAN_HEIGHT = height * 0.55;
 const SAMPLES_NEEDED = 3; 
 const MODES = ['SCAN', 'PHOTO', 'VIDEO'];
 
-export default function CameraScreen({ navigation }) {
+export default function CameraScreen({ navigation, route }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [flashMode, setFlashMode] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -31,20 +31,91 @@ export default function CameraScreen({ navigation }) {
   // Scan State
   const [scanStatus, setScanStatus] = useState('searching'); 
   const [isScanningLoop, setIsScanningLoop] = useState(false);
-  
-  // NEW: State to show the "Green Mask" image returned from Python
   const [liveMask, setLiveMask] = useState(null);
   
-  const scanBuffer = useRef({ widths: [], heights: [], lastImage: null });
+  // Custom Error Modal State
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  
+  // Buffer stores measurements and latest algae data
+  const scanBuffer = useRef({ 
+    widths: [], 
+    heights: [], 
+    lastImage: null,
+    algaeLevel: 0,
+    algaeDesc: '' 
+  });
 
+  // Animation Values
   const pulseAnim = useRef(new Animated.Value(1)).current; 
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   const cameraRef = useRef(null); 
+  
+  // Timers to control the scan loop restarts safely
   const timerRef = useRef(null);
+  const searchTimerRef = useRef(null);
+  const lockTimerRef = useRef(null);
 
   useEffect(() => {
     if (!permission) requestPermission();
   }, [permission]);
+
+  // Listen for reset signal from Results Screen or Discard button
+  useEffect(() => {
+    if (route.params?.resetScan) {
+      startScanSequence();
+    }
+  }, [route.params?.resetScan]);
+
+  // --- ANIMATION CONTROLLER ---
+  const startAnimations = () => {
+    pulseAnim.setValue(1);
+    scanLineAnim.setValue(0);
+
+    Animated.loop(
+      Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.15, duration: 800, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true })
+      ])
+    ).start();
+    
+    Animated.loop(
+      Animated.sequence([
+          Animated.timing(scanLineAnim, { toValue: 1, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(scanLineAnim, { toValue: 0, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
+      ])
+    ).start();
+  };
+
+  const stopAnimations = () => {
+    pulseAnim.stopAnimation();
+    scanLineAnim.stopAnimation();
+  };
+
+  // --- SEQUENCE CONTROLLER ---
+  const startScanSequence = () => {
+    clearTimeout(searchTimerRef.current);
+    clearTimeout(lockTimerRef.current);
+
+    setScanStatus('searching');
+    setIsScanningLoop(false);
+    setLiveMask(null);
+    setErrorModalVisible(false);
+    
+    // Reset buffer for a fresh scan
+    scanBuffer.current = { widths: [], heights: [], lastImage: null, algaeLevel: 0, algaeDesc: '' };
+
+    startAnimations();
+
+    searchTimerRef.current = setTimeout(() => { 
+        setScanStatus('detecting'); 
+    }, 1500);
+
+    lockTimerRef.current = setTimeout(() => { 
+        setScanStatus('locked');
+        Vibration.vibrate(50);
+        performScanLoop(0); 
+    }, 3500);
+  };
 
   // --- SCANNING LOGIC ---
   const performScanLoop = async (currentCount = 0) => {
@@ -54,11 +125,10 @@ export default function CameraScreen({ navigation }) {
     setIsScanningLoop(true);
 
     try {
-      // 1. Take Low-Res Picture (Faster upload)
       const photo = await cameraRef.current.takePictureAsync({ 
           quality: 0.4, 
           base64: false,
-          skipProcessing: true // Android only: speeds up capture
+          skipProcessing: true 
       });
 
       const formData = new FormData();
@@ -75,106 +145,110 @@ export default function CameraScreen({ navigation }) {
 
       const data = response.data;
 
-      if (data.measurements) {
-        // --- NEW: SHOW THE MASK LIVE! ---
-        // We set the processed image (with green lines) as an overlay
+      // --- ENFORCED: NO CRAYFISH DETECTED LOGIC ---
+      if (data.success === false || !data.measurements || data.measurements.length === 0) {
         if (data.image) {
-            setLiveMask(`data:image/jpeg;base64,${data.image}`);
+          setLiveMask(`data:image/jpeg;base64,${data.image}`);
         }
 
-        const target = data.measurements.find(m => m.type === 'target');
+        setIsScanningLoop(false);
+        stopAnimations(); 
+        Vibration.vibrate(400); 
 
-        if (target) {
-          scanBuffer.current.widths.push(target.width_cm);
-          scanBuffer.current.heights.push(target.height_cm);
-          scanBuffer.current.lastImage = `data:image/jpeg;base64,${data.image}`; 
-          
-          if (scanBuffer.current.widths.length >= SAMPLES_NEEDED) {
-             finishScanning();
-             return;
-          }
-          performScanLoop(scanBuffer.current.widths.length);
+        setTimeout(() => {
+          setErrorModalVisible(true);
+        }, 500); 
 
-        } else {
-          console.log("No target found, retrying...");
-          performScanLoop(currentCount); 
+        return; // HALT THE PROCESS IMMEDIATELY
+      }
+
+      // --- CRAYFISH FOUND ---
+      if (data.image) {
+          setLiveMask(`data:image/jpeg;base64,${data.image}`);
+      }
+
+      // Capture algae data from the frame
+      scanBuffer.current.algaeLevel = data.algae_level;
+      scanBuffer.current.algaeDesc = data.algae_desc;
+
+      const target = data.measurements.find(m => m.type === 'target');
+
+      if (target) {
+        scanBuffer.current.widths.push(target.width_cm);
+        scanBuffer.current.heights.push(target.height_cm);
+        scanBuffer.current.lastImage = `data:image/jpeg;base64,${data.image}`; 
+        
+        if (scanBuffer.current.widths.length >= SAMPLES_NEEDED) {
+           finishScanning();
+           return;
         }
+        
+        performScanLoop(scanBuffer.current.widths.length);
       } else {
-        throw new Error("Invalid response");
+        // If success returned but no target found, treat as failure
+        setIsScanningLoop(false);
+        setErrorModalVisible(true);
       }
 
     } catch (error) {
       console.error("Scan Error:", error);
       setIsScanningLoop(false);
-      setLiveMask(null); // Hide mask on error
-      setScanStatus('searching');
-      scanBuffer.current = { widths: [], heights: [], lastImage: null }; 
-      Alert.alert("Connection Failed", "Ensure app.py is running on Port 5001.");
+      setLiveMask(null);
+      stopAnimations();
+      setErrorModalVisible(true);
     }
   };
 
   const finishScanning = () => {
+    // SECURITY CHECK: Don't navigate if the buffer is empty
+    if (scanBuffer.current.widths.length === 0) {
+        setErrorModalVisible(true);
+        return;
+    }
+
     Vibration.vibrate([0, 50, 100, 50]); 
+    stopAnimations();
     
-    // ... Calculation Logic ...
     const widths = scanBuffer.current.widths;
     const heights = scanBuffer.current.heights;
     const avgW = widths.reduce((a, b) => a + b, 0) / widths.length;
     const avgH = heights.reduce((a, b) => a + b, 0) / heights.length;
-    const minW = Math.min(...widths);
-    const maxW = Math.max(...widths);
     
-    const finalResult = {
-        width_cm: parseFloat(avgW.toFixed(2)),
-        height_cm: parseFloat(avgH.toFixed(2)),
-        range_w: `${minW.toFixed(2)} - ${maxW.toFixed(2)}`,
-        samples: widths.length
-    };
-
-    setLiveMask(null); // Clear overlay before navigating
     navigation.navigate('Results', { 
         imageUri: scanBuffer.current.lastImage, 
         type: 'image',
-        measurements: [finalResult], 
-        isAverage: true 
+        measurements: [{ width_cm: parseFloat(avgW.toFixed(2)), height_cm: parseFloat(avgH.toFixed(2)) }], 
+        algae_level: scanBuffer.current.algaeLevel,
+        algae_desc: scanBuffer.current.algaeDesc
     });
 
     setIsScanningLoop(false);
     setScanStatus('locked');
-    scanBuffer.current = { widths: [], heights: [], lastImage: null };
+    scanBuffer.current = { widths: [], heights: [], lastImage: null, algaeLevel: 0, algaeDesc: '' };
   };
 
-  // ... (Animations and Timer Effects - SAME AS BEFORE) ...
+  const handleRetryScan = () => {
+    setErrorModalVisible(false); 
+    setLiveMask(null); 
+    startScanSequence(); 
+  };
+
+  // --- LIFECYCLE CONTROLS ---
   useEffect(() => {
     if (selectedMode === 'SCAN') {
-      Animated.loop(
-        Animated.sequence([
-            Animated.timing(pulseAnim, { toValue: 1.1, duration: 1000, useNativeDriver: true }),
-            Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true })
-        ])
-      ).start();
-      
-      Animated.loop(
-        Animated.sequence([
-            Animated.timing(scanLineAnim, { toValue: 1, duration: 2000, easing: Easing.linear, useNativeDriver: true }),
-            Animated.timing(scanLineAnim, { toValue: 0, duration: 0, useNativeDriver: true })
-        ])
-      ).start();
-
-      setScanStatus('searching');
-      const t1 = setTimeout(() => { if (!isScanningLoop) setScanStatus('detecting'); }, 1500);
-      const t2 = setTimeout(() => { 
-          if (!isScanningLoop) {
-             setScanStatus('locked');
-             Vibration.vibrate(50);
-             performScanLoop(0); 
-          }
-      }, 3500); 
-
-      return () => { clearTimeout(t1); clearTimeout(t2); };
+      startScanSequence(); 
     } else {
       setScanStatus('idle');
+      clearTimeout(searchTimerRef.current);
+      clearTimeout(lockTimerRef.current);
+      stopAnimations();
     }
+    
+    return () => {
+        clearTimeout(searchTimerRef.current);
+        clearTimeout(lockTimerRef.current);
+        stopAnimations();
+    };
   }, [selectedMode]);
 
   useEffect(() => {
@@ -187,7 +261,6 @@ export default function CameraScreen({ navigation }) {
     return () => clearInterval(timerRef.current);
   }, [isRecording]);
 
-  // ... (Helper Functions - SAME AS BEFORE) ...
   const formatDuration = (s) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
@@ -208,28 +281,17 @@ export default function CameraScreen({ navigation }) {
   const handleManualCapture = async () => {
     if (!cameraRef.current || isScanningLoop) return;
 
-    if (selectedMode === 'VIDEO') {
-        if (isRecording) {
-            cameraRef.current.stopRecording(); 
-            setIsRecording(false);
-        } else {
-            setIsRecording(true);
-            try {
-              const video = await cameraRef.current.recordAsync();
-              navigation.navigate('Results', { imageUri: video.uri, type: 'video' });
-            } catch (e) { setIsRecording(false); }
-        }
-    } else if (selectedMode === 'PHOTO') {
+    if (selectedMode === 'PHOTO') {
        const photo = await cameraRef.current.takePictureAsync();
        navigation.navigate('Results', { imageUri: photo.uri, type: 'image' });
     } else if (selectedMode === 'SCAN') {
-       performScanLoop(0);
+       startScanSequence();
     }
   };
 
   const scanLineTranslateY = scanLineAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [-SCAN_HEIGHT/2, SCAN_HEIGHT/2]
+    outputRange: [-SCAN_HEIGHT/2.2, SCAN_HEIGHT/2.2]
   });
 
   if (!permission || !permission.granted) return <View style={styles.blackBg} />;
@@ -245,34 +307,47 @@ export default function CameraScreen({ navigation }) {
         mode={selectedMode === 'VIDEO' ? 'video' : 'picture'}
       >
         
-        {/* --- LIVE MASK OVERLAY --- */}
-        {/* This sits ON TOP of the camera but BELOW the UI controls */}
-        {liveMask && isScanningLoop && (
+        {/* LIVE MASK OVERLAY */}
+        {liveMask && (isScanningLoop || errorModalVisible) && (
             <Image 
                 source={{ uri: liveMask }} 
                 style={[StyleSheet.absoluteFillObject, { opacity: 0.8 }]} 
-                resizeMode="contain" // Ensures alignment matches camera aspect ratio
+                resizeMode="contain" 
             />
         )}
 
-        {selectedMode === 'SCAN' && (
+        {/* --- REINFORCED ERROR MODAL --- */}
+        {errorModalVisible && (
+            <View style={styles.customErrorOverlay}>
+                <View style={styles.errorCard}>
+                    <View style={styles.errorIconBg}>
+                        <Ionicons name="warning-outline" size={40} color="#FF4757" />
+                    </View>
+                    <Text style={styles.errorTitle}>Detection Failed</Text>
+                    <Text style={styles.errorDesc}>
+                        We couldn't find a crayfish in the frame. Please adjust your camera and ensure the subject is clearly visible from 6 inches.
+                    </Text>
+                    <TouchableOpacity style={styles.retryButton} onPress={handleRetryScan}>
+                        <Ionicons name="refresh" size={20} color="#FFF" />
+                        <Text style={styles.retryButtonText}>Try Again</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        )}
+
+        {selectedMode === 'SCAN' && !errorModalVisible && (
           <View style={styles.scanLayer}>
             <View style={styles.scanBox}>
-               {/* Show Box UI only if we are NOT showing the live mask (to avoid clutter) */}
                {!liveMask && (
                  <>
                    <View style={[styles.corner, styles.tl]} />
                    <View style={[styles.corner, styles.tr]} />
                    <View style={[styles.corner, styles.bl]} />
                    <View style={[styles.corner, styles.br]} />
-                   <View style={styles.gridOverlay}>
-                     <View style={styles.gridLineHorizontal} />
-                     <View style={styles.gridLineVertical} />
-                   </View>
                  </>
                )}
 
-               {!isScanningLoop && (
+               {!liveMask && scanStatus !== 'locked' && (
                    <Animated.View style={[styles.laserLine, { transform: [{ translateY: scanLineTranslateY }] }]} />
                )}
 
@@ -304,17 +379,9 @@ export default function CameraScreen({ navigation }) {
           </View>
         )}
 
-        {/* --- VIDEO RECORDING PILL --- */}
-        {selectedMode === 'VIDEO' && isRecording && (
-          <View style={styles.timerPill}>
-            <View style={styles.recordDot} />
-            <Text style={styles.timerText}>{formatDuration(recordingDuration)}</Text>
-          </View>
-        )}
-
-        {/* CONTROLS */}
+        {/* HEADER */}
         <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.blurBtn}>
+            <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.blurBtn}>
                 <Ionicons name="close" size={24} color="#FFF" />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setFlashMode(!flashMode)} style={styles.blurBtn}>
@@ -322,6 +389,7 @@ export default function CameraScreen({ navigation }) {
             </TouchableOpacity>
         </View>
 
+        {/* FOOTER */}
         <View style={styles.footer}>
              <View style={styles.modeRow}>
                 {MODES.map((m) => (
@@ -341,17 +409,11 @@ export default function CameraScreen({ navigation }) {
                 </TouchableOpacity>
                 
                 <View style={styles.shutterContainer}>
-                   {selectedMode === 'SCAN' ? (
-                       <TouchableOpacity onPress={() => performScanLoop(0)} disabled={isScanningLoop}>
-                         <View style={[styles.scanPlaceholder, isScanningLoop && {borderColor: '#4CC9F0'}]}>
-                            <MaterialCommunityIcons name="robot-outline" size={32} color={isScanningLoop ? "#4CC9F0" : "rgba(255,255,255,0.3)"} />
-                         </View>
-                       </TouchableOpacity>
-                   ) : (
-                       <TouchableOpacity onPress={handleManualCapture} style={styles.shutterOuter}>
-                           <View style={styles.photoInner} />
-                       </TouchableOpacity>
-                   )}
+                   <TouchableOpacity onPress={() => startScanSequence()} disabled={isScanningLoop}>
+                      <View style={[styles.scanPlaceholder, isScanningLoop && {borderColor: '#4CC9F0'}]}>
+                         <MaterialCommunityIcons name="robot-outline" size={32} color={isScanningLoop ? "#4CC9F0" : "rgba(255,255,255,0.3)"} />
+                      </View>
+                   </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.sideActionBtn}>
@@ -360,14 +422,13 @@ export default function CameraScreen({ navigation }) {
              </View>
         </View>
 
-        {/* MODAL */}
+        {/* GUIDE MODAL */}
         <Modal
           animationType="slide"
           transparent={true}
           visible={modalVisible}
           onRequestClose={() => setModalVisible(false)}
         >
-          {/* ... Modal content same as before ... */}
           <View style={styles.modalOverlay}>
             <TouchableOpacity style={{flex:1}} onPress={() => setModalVisible(false)} />
             <View style={styles.modalSheet}>
@@ -384,8 +445,8 @@ export default function CameraScreen({ navigation }) {
                       <MaterialCommunityIcons name="hand-back-left" size={28} color="#4CC9F0" />
                    </View>
                    <View style={styles.stepTextContainer}>
-                      <Text style={styles.stepHeader}>1. Grip Securely</Text>
-                      <Text style={styles.stepDesc}>Hold the crayfish by the back (thorax) to keep claws away.</Text>
+                      <Text style={styles.stepHeader}>1. Anchor Gesture</Text>
+                      <Text style={styles.stepDesc}>Place your middle finger on the surface and rest your phone on your extended thumb (~6 inches) for calibration.</Text>
                    </View>
                 </View>
                 <TouchableOpacity style={styles.primaryBtn} onPress={() => setModalVisible(false)}>
@@ -404,59 +465,95 @@ export default function CameraScreen({ navigation }) {
 const styles = StyleSheet.create({
   blackBg: { flex: 1, backgroundColor: '#000' },
   container: { flex: 1, backgroundColor: '#000' },
+  
+  // Custom Error Modal Styles
+  customErrorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  errorCard: {
+    backgroundColor: '#1E1E1E',
+    width: width * 0.85,
+    borderRadius: 28,
+    padding: 30,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 71, 87, 0.4)',
+    shadowColor: '#FF4757',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  errorIconBg: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: 'rgba(255, 71, 87, 0.1)',
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 20,
+  },
+  errorTitle: { color: '#FFF', fontSize: 24, fontWeight: '800', marginBottom: 10 },
+  errorDesc: { color: '#AAA', fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: 30 },
+  retryButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#FF4757', paddingVertical: 16, paddingHorizontal: 30,
+    borderRadius: 20, width: '100%', gap: 10,
+  },
+  retryButtonText: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+
+  // Scan Layer Styles
   scanLayer: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   scanBox: { width: SCAN_WIDTH, height: SCAN_HEIGHT, position: 'relative', justifyContent: 'center', alignItems: 'center' },
-  corner: { position: 'absolute', width: 30, height: 30, borderColor: '#FFF', borderWidth: 3 },
-  tl: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 12 },
-  tr: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 12 },
-  bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 12 },
-  br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 12 },
-  gridOverlay: { width: '100%', height: '100%', opacity: 0.1, position: 'absolute' },
-  gridLineHorizontal: { width: '100%', height: 1, backgroundColor: '#FFF', top: '50%' },
-  gridLineVertical: { height: '100%', width: 1, backgroundColor: '#FFF', left: '50%', position: 'absolute' },
-  laserLine: { width: '120%', height: 2, backgroundColor: '#4CC9F0', shadowColor: '#4CC9F0', shadowOpacity: 1, shadowRadius: 10, elevation: 5 },
-  centerTarget: { position: 'absolute' },
-  statusContainer: { 
-    position: 'absolute',
-    top: 120, 
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10
+  corner: { position: 'absolute', width: 35, height: 35, borderColor: '#FFF', borderWidth: 4 },
+  tl: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 15 },
+  tr: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 15 },
+  bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 15 },
+  br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 15 },
+  
+  laserLine: { 
+      width: '110%', 
+      height: 3, 
+      backgroundColor: '#4CC9F0', 
+      shadowColor: '#4CC9F0', 
+      shadowOpacity: 1, 
+      shadowRadius: 15, 
+      elevation: 10 
   },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 30, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  statusActive: { backgroundColor: 'rgba(0,0,0,0.6)' },
-  statusLocked: { backgroundColor: '#06D6A0', borderColor: '#06D6A0' },
-  statusText: { color: '#FFF', fontSize: 13, fontWeight: '700', letterSpacing: 1.2 },
-  header: { position: 'absolute', top: 50, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 10 },
-  blurBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  timerPill: { position: 'absolute', top: 110, alignSelf: 'center', backgroundColor: '#EF476F', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, gap: 8 },
-  recordDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FFF' },
-  timerText: { color: '#FFF', fontWeight: 'bold' },
-  footer: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: 'rgba(0,0,0,0.85)', borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingBottom: 40, paddingTop: 15 },
-  modeRow: { flexDirection: 'row', justifyContent: 'center', marginBottom: 20, gap: 20 },
-  modeItem: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 15 },
-  modeItemActive: { backgroundColor: 'rgba(255,255,255,0.15)' },
-  modeLabel: { color: '#888', fontSize: 13, fontWeight: '600' },
-  activeModeLabel: { color: '#FFF', fontWeight: '800' },
+  
+  centerTarget: { position: 'absolute' },
+  statusContainer: { position: 'absolute', top: 120, left: 0, right: 0, alignItems: 'center', zIndex: 10 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 25, paddingVertical: 14, borderRadius: 35 },
+  statusActive: { backgroundColor: 'rgba(0,0,0,0.7)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  statusLocked: { backgroundColor: '#06D6A0' },
+  statusText: { color: '#FFF', fontSize: 14, fontWeight: '800', letterSpacing: 1.5 },
+  
+  header: { position: 'absolute', top: 60, left: 25, right: 25, flexDirection: 'row', justifyContent: 'space-between', zIndex: 10 },
+  blurBtn: { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  footer: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: 'rgba(0,0,0,0.9)', borderTopLeftRadius: 35, borderTopRightRadius: 35, paddingBottom: 50, paddingTop: 20 },
+  modeRow: { flexDirection: 'row', justifyContent: 'center', marginBottom: 25, gap: 25 },
+  modeItem: { paddingVertical: 8, paddingHorizontal: 15 },
+  modeItemActive: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20 },
+  modeLabel: { color: '#666', fontSize: 14, fontWeight: '700' },
+  activeModeLabel: { color: '#FFF' },
   actionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly' },
-  sideActionBtn: { width: 50, height: 50, justifyContent: 'center', alignItems: 'center', borderRadius: 25, backgroundColor: 'rgba(255,255,255,0.1)' },
-  shutterContainer: { width: 80, height: 80, justifyContent: 'center', alignItems: 'center' },
-  scanPlaceholder: { width: 70, height: 70, borderRadius: 35, borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
-  shutterOuter: { width: 76, height: 76, borderRadius: 38, borderWidth: 4, borderColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
-  photoInner: { backgroundColor: '#FFF', width: 64, height: 64, borderRadius: 32 },
+  sideActionBtn: { width: 55, height: 55, justifyContent: 'center', alignItems: 'center', borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.1)' },
+  shutterContainer: { width: 90, height: 90, justifyContent: 'center', alignItems: 'center' },
+  scanPlaceholder: { width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
+  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
-  modalSheet: { backgroundColor: '#1A1A1A', borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 25, maxHeight: '80%' },
-  dragHandle: { width: 40, height: 4, backgroundColor: '#444', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  modalSheet: { backgroundColor: '#1A1A1A', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30 },
+  dragHandle: { width: 50, height: 5, backgroundColor: '#333', borderRadius: 3, alignSelf: 'center', marginBottom: 25 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
-  modalTitle: { fontSize: 24, fontWeight: '800', color: '#FFF' },
+  modalTitle: { fontSize: 26, fontWeight: '800', color: '#FFF' },
   modalCloseBtn: { opacity: 0.8 },
-  modalBody: { marginBottom: 10 },
-  guideStep: { flexDirection: 'row', marginBottom: 25, gap: 15 },
-  stepIconContainer: { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(76, 201, 240, 0.1)', justifyContent: 'center', alignItems: 'center' },
+  modalBody: { marginBottom: 15 },
+  guideStep: { flexDirection: 'row', marginBottom: 30, gap: 15 },
+  stepIconContainer: { width: 55, height: 55, borderRadius: 28, backgroundColor: 'rgba(76, 201, 240, 0.1)', justifyContent: 'center', alignItems: 'center' },
   stepTextContainer: { flex: 1, justifyContent: 'center' },
-  stepHeader: { fontSize: 17, fontWeight: '700', color: '#FFF', marginBottom: 4 },
-  stepDesc: { fontSize: 14, color: '#AAA', lineHeight: 20 },
-  primaryBtn: { backgroundColor: '#4CC9F0', paddingVertical: 16, borderRadius: 18, alignItems: 'center', marginTop: 10 },
-  primaryBtnText: { color: '#000', fontSize: 16, fontWeight: '800' },
+  stepHeader: { fontSize: 18, fontWeight: '700', color: '#FFF', marginBottom: 5 },
+  stepDesc: { fontSize: 15, color: '#AAA', lineHeight: 22 },
+  primaryBtn: { backgroundColor: '#4CC9F0', paddingVertical: 18, borderRadius: 22, alignItems: 'center', marginTop: 15 },
+  primaryBtnText: { color: '#000', fontSize: 18, fontWeight: '800' },
 });

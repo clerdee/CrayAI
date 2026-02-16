@@ -97,10 +97,10 @@ const VisionSimulator = () => {
               <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
               <span className="text-[10px] text-white font-bold tracking-wide">OBJECT</span>
             </div>
-            <div className="flex items-center gap-2">
+            {/* <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.6)]"></span>
               <span className="text-[10px] text-white font-bold tracking-wide">SCAN ZONE</span>
-            </div>
+            </div> */}
           </div>
         </div>
 
