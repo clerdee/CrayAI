@@ -1,5 +1,15 @@
 import React from 'react';
-import { Box, Container, Typography, Grid, Paper, Avatar, Stack, IconButton } from '@mui/material';
+import { 
+  Box, 
+  Container, 
+  Typography, 
+  Grid, 
+  Paper, 
+  Avatar, 
+  Stack, 
+  IconButton,
+  Tooltip
+} from '@mui/material';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import LinkedInIcon from '@mui/icons-material/LinkedIn';
@@ -18,14 +28,17 @@ const FontStyles = () => (
   </style>
 );
 
-// --- TEAM DATA ---
+// --- TEAM DATA (Now Scalable) ---
 const teamMembers = [
   { 
     id: 1, 
     name: "Cruz, HC.", 
-    role: "Lead Developer", 
+    role: "Project Lead", 
     initials: "HC",
-    gradient: 'linear-gradient(135deg, #0A2540 0%, #008080 100%)' 
+    gradient: 'linear-gradient(135deg, #0A2540 0%, #008080 100%)',
+    github: "https://github.com/clerdee",
+    linkedin: "https://www.linkedin.com/in/hanna-clerdee-382066387/",
+    email: "clerdeecruz@gmail.com"
   },
   { 
     id: 2, 
@@ -37,14 +50,14 @@ const teamMembers = [
   { 
     id: 3, 
     name: "Laceda, J.", 
-    role: "Researcher", 
+    role: "Research Specialist", 
     initials: "J",
     gradient: 'linear-gradient(135deg, #FF512F 0%, #DD2476 100%)'
   },
   { 
     id: 4, 
     name: "Cortez, DD.", 
-    role: "UI/UX Designer", 
+    role: "Data Handler", 
     initials: "DD",
     gradient: 'linear-gradient(135deg, #4776E6 0%, #8E54E9 100%)'
   },
@@ -55,8 +68,8 @@ const AboutUs = () => {
     <Box sx={{ minHeight: '100vh', bgcolor: '#F6F9FC' }}>
       <FontStyles />
       <Navbar />
-      
-      {/* --- HEADER SECTION --- */}
+
+      {/* HEADER */}
       <Box sx={{ 
         pt: { xs: 6, md: 8 },      
         pb: { xs: 10, md: 14 },    
@@ -69,20 +82,19 @@ const AboutUs = () => {
           <Typography variant="overline" sx={{ color: '#00E5FF', fontWeight: 800, letterSpacing: 3 }}>
             THE TEAM BEHIND CRAYAI
           </Typography>
-          <Typography variant="h2" sx={{ fontWeight: 800, mt: 1, mb: 1, letterSpacing: '-1px', fontSize: { xs: '2rem', md: '3rem' } }}>
-            Innovators. Developers. <br/> <span style={{ color: '#008080' }}>TUP Students.</span>
+          <Typography variant="h2" sx={{ fontWeight: 800, mt: 1, mb: 1 }}>
+            Innovators. Developers. <br/> 
+            <span style={{ color: '#008080' }}>TUP Students.</span>
           </Typography>
         </Container>
       </Box>
 
-      {/* --- TEAM GRID --- */}
+      {/* TEAM GRID */}
       <Container maxWidth="xl" sx={{ mt: -10, mb: 10, px: { xs: 2, md: 6 } }}>
-        <Grid container spacing={3} justifyContent="center" alignItems="stretch"> 
-          {/* alignItems="stretch" forces all grid items to have the same height */}
+        <Grid container spacing={3} justifyContent="center" alignItems="stretch">
           
           {teamMembers.map((member) => (
             <Grid item xs={12} sm={6} md={3} key={member.id} sx={{ display: 'flex' }}>
-              {/* display: 'flex' makes the Paper fill the entire grid cell height */}
               
               <Paper 
                 elevation={0}
@@ -102,16 +114,15 @@ const AboutUs = () => {
                   }
                 }}
               >
-                {/* 1. HEADER */}
+                
+                {/* HEADER */}
                 <Box 
                   sx={{
                     height: '130px',
-                    width: '100%',
                     background: member.gradient,
                     position: 'relative',
                     borderRadius: '0 0 50% 50% / 0 0 25px 25px',
-                    mb: '50px', 
-                    flexShrink: 0 
+                    mb: '50px'
                   }}
                 >
                   <Box 
@@ -141,16 +152,10 @@ const AboutUs = () => {
                   </Box>
                 </Box>
 
-                {/* 2. CONTENT */}
-                <Box sx={{ 
-                  px: 2, 
-                  pb: 4, 
-                  textAlign: 'center', 
-                  flexGrow: 1, 
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}>
-                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#0A2540', letterSpacing: '-0.5px' }}>
+                {/* CONTENT */}
+                <Box sx={{ px: 2, pb: 4, textAlign: 'center', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                  
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#0A2540' }}>
                     {member.name.toUpperCase()}
                   </Typography>
                   
@@ -158,28 +163,61 @@ const AboutUs = () => {
                     @{member.role.replace(/\s+/g, '').toLowerCase()}
                   </Typography>
                   
+                  {/* SOCIAL ICONS (Dynamic) */}
                   <Stack direction="row" spacing={2} justifyContent="center" sx={{ mb: 3 }}>
-                    <IconButton size="small" sx={{ color: '#0A2540', '&:hover': { color: '#008080' } }}>
-                      <GitHubIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" sx={{ color: '#0A2540', '&:hover': { color: '#008080' } }}>
-                      <LinkedInIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" sx={{ color: '#0A2540', '&:hover': { color: '#008080' } }}>
-                      <EmailIcon fontSize="small" />
-                    </IconButton>
+                    
+                    {member.github && (
+                      <Tooltip title="View GitHub Profile" arrow>
+                        <IconButton 
+                          size="small"
+                          sx={{ color: '#0A2540', '&:hover': { color: '#008080' } }}
+                          component="a"
+                          href={member.github}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <GitHubIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+
+                    {member.linkedin && (
+                      <Tooltip title="View LinkedIn Profile" arrow>
+                        <IconButton 
+                          size="small"
+                          sx={{ color: '#0A2540', '&:hover': { color: '#008080' } }}
+                          component="a"
+                          href={member.linkedin}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <LinkedInIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+
+                    {member.email && (
+                      <Tooltip title={`Send Email to ${member.email}`} arrow>
+                        <IconButton 
+                          size="small"
+                          sx={{ color: '#0A2540', '&:hover': { color: '#008080' } }}
+                          component="a"
+                          href={`mailto:${member.email}`}
+                        >
+                          <EmailIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+
                   </Stack>
 
-                  {/* FIX: Increased minHeight to 60px.
-                     This forces a consistent height whether the text is 1 line or 2 lines.
-                  */}
                   <Box sx={{ mt: 'auto', minHeight: '60px', display: 'flex', alignItems: 'start', justifyContent: 'center' }}>
-                     <Typography variant="body2" sx={{ color: '#556987', fontSize: '0.85rem', lineHeight: 1.5 }}>
-                       Specializing in {member.role.toLowerCase()}.
-                     </Typography>
+                    <Typography variant="body2" sx={{ color: '#556987', fontSize: '0.85rem' }}>
+                      Specializing in {member.role.toLowerCase()}.
+                    </Typography>
                   </Box>
-                </Box>
 
+                </Box>
               </Paper>
             </Grid>
           ))}

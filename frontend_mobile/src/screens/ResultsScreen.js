@@ -50,10 +50,10 @@ export default function ResultsScreen({ route, navigation }) {
   // --- UPDATED AGE ESTIMATION LOGIC (4 CLASSES) ---
   const estimateAge = (sizeCm) => {
       if (!sizeCm) return "Unknown";
-      if (sizeCm < 1) return "Crayling (< 1 month)";
-      if (sizeCm >= 1 && sizeCm < 3) return "Juvenile (1-3 months)";
-      if (sizeCm >= 3 && sizeCm < 6) return "Sub-Adult (3-6 months)";
-      return "Breeder (> 6 months)";
+      if (sizeCm < 3) return "Crayling (< 1 month)";
+      if (sizeCm >= 3 && sizeCm < 7) return "Juvenile (1-3 months)";
+      if (sizeCm >= 7 && sizeCm < 11) return "Sub-Adult (3-6 months)";
+      return "Adult/Breeder (> 6 months)";
   };
 
   // --- FORMAT DATE & TIME ---

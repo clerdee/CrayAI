@@ -2,6 +2,20 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { UploadCloud, Zap, Ruler, AlertCircle, RefreshCw, Image as ImageIcon, ChevronDown, ChevronUp } from 'lucide-react';
 
+// --- HELPER FUNCTIONS ---
+const cmToInches = (cm) => {
+  return (cm / 2.54).toFixed(2);
+};
+
+// --- UPDATED AGE ESTIMATION LOGIC (4 CLASSES) ---
+const estimateAge = (sizeCm) => {
+  if (!sizeCm) return "Unknown";
+  if (sizeCm < 3) return "Crayling (< 1 month)";
+  if (sizeCm >= 3 && sizeCm < 7) return "Juvenile (1-3 months)";
+  if (sizeCm >= 7 && sizeCm < 11) return "Sub-Adult (3-6 months)";
+  return "Adult/Breeder (> 6 months)";
+};
+
 const VisionSimulator = () => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -140,7 +154,12 @@ const VisionSimulator = () => {
                             <div className="flex justify-between items-end">
                                 <div>
                                     <p className="text-xs text-blue-400 font-semibold mb-1">Standard (Coin)</p>
-                                    <p className="text-2xl font-bold text-slate-800">2.90<span className="text-sm text-slate-400 ml-1">cm</span></p>
+                                    <p className="text-2xl font-bold text-slate-800">
+                                      {referenceItem.width_cm.toFixed(2)}<span className="text-sm text-slate-400 ml-1">cm</span>
+                                    </p>
+                                    <p className="text-xs text-slate-500 font-semibold mt-1">
+                                      {cmToInches(referenceItem.width_cm)} in
+                                    </p>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-[10px] text-slate-400">Calibrated</p>
@@ -157,15 +176,33 @@ const VisionSimulator = () => {
                     {targetItems.length > 0 ? (
                         targetItems.map((item, idx) => (
                             <div key={idx} className="bg-green-50 rounded-2xl p-4 border border-green-100 shadow-sm">
-                                <span className="text-[10px] font-extrabold text-green-600 bg-green-100 px-2 py-1 rounded mb-2 inline-block">TARGET #{idx + 1}</span>
+                                <div className="flex justify-between items-start mb-2">
+                                  <span className="text-[10px] font-extrabold text-green-600 bg-green-100 px-2 py-1 rounded inline-block">TARGET #{idx + 1}</span>
+                                  {/* AGE CLASSIFICATION BADGE */}
+                                  <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-2 py-1 rounded inline-block">
+                                    {estimateAge(item.width_cm)}
+                                  </span>
+                                </div>
                                 <div className="grid grid-cols-2 gap-4 mt-2">
                                     <div>
                                         <p className="text-xs text-green-600 font-bold uppercase mb-1">Width</p>
-                                        <p className="text-xl font-bold text-slate-800">{item.width_cm}<span className="text-sm text-slate-400 ml-1">cm</span></p>
+                                        <p className="text-xl font-bold text-slate-800">
+                                          {item.width_cm}<span className="text-sm text-slate-400 ml-1">cm</span>
+                                        </p>
+                                        {/* INCHES CONVERSION */}
+                                        <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                                          {cmToInches(item.width_cm)} in
+                                        </p>
                                     </div>
                                     <div className="border-l border-green-200 pl-4">
                                         <p className="text-xs text-green-600 font-bold uppercase mb-1">Height</p>
-                                        <p className="text-xl font-bold text-slate-800">{item.height_cm}<span className="text-sm text-slate-400 ml-1">cm</span></p>
+                                        <p className="text-xl font-bold text-slate-800">
+                                          {item.height_cm}<span className="text-sm text-slate-400 ml-1">cm</span>
+                                        </p>
+                                        {/* INCHES CONVERSION */}
+                                        <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                                          {cmToInches(item.height_cm)} in
+                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -190,7 +227,7 @@ const VisionSimulator = () => {
                                     {noiseItems.map((item, idx) => (
                                         <div key={idx} className="flex justify-between p-2 bg-slate-50 rounded-lg text-xs text-slate-500 font-mono">
                                             <span>Item #{idx + 1}</span>
-                                            <span>{item.width_cm} x {item.height_cm} cm</span>
+                                            <span>{item.width_cm}cm ({cmToInches(item.width_cm)}in)</span>
                                         </div>
                                     ))}
                                 </div>

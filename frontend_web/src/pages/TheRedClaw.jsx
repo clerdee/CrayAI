@@ -37,25 +37,27 @@ const TheRedClaw = () => {
         </Typography>
       </Box>
 
-      {/* --- 2. FULL WIDTH FLEX LAYOUT --- */}
+      {/* --- 2. FULL WIDTH FLEX LAYOUT (BALANCED) --- */}
       <Box sx={{ 
         display: 'flex', 
         flexDirection: { xs: 'column', md: 'row' },
         width: '100%', 
-        height: { xs: 'auto', md: '85vh' }, 
-        p: 2, 
-        gap: 2 
+        maxWidth: '1400px', // Added to keep layout contained on huge screens
+        mx: 'auto', // Centers the container
+        height: { xs: 'auto', md: '70vh' }, // Reduced from 85vh to prevent extreme tallness
+        p: { xs: 2, md: 4 }, // Added slightly more padding on desktop
+        gap: 3 // Increased gap slightly for breathing room
       }}>
         
-        {/* --- LEFT COLUMN: VIDEO (75% WIDTH) --- */}
+        {/* --- LEFT COLUMN: VIDEO (~55% WIDTH) --- */}
         <Box sx={{ 
-          flex: 3, 
+          flex: 1.2, // Changed from 3 to 1.2 for a more balanced split
           position: 'relative',
           borderRadius: '24px',
           overflow: 'hidden',
           bgcolor: 'black',
           boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-          minHeight: '400px' 
+          minHeight: { xs: '300px', md: '100%' } 
         }}>
           <video
             autoPlay loop muted playsInline
@@ -66,7 +68,6 @@ const TheRedClaw = () => {
               opacity: 0.95
             }}
           >
-            {/* UPDATED SOURCE LINK HERE */}
             <source 
               src="https://www.shutterstock.com/shutterstock/videos/3438134305/preview/stock-footage-growing-of-crayfish-australian-blue-crayfish-cherax-quadricarinatus-in-aquarium.webm" 
               type="video/webm" 
@@ -87,7 +88,7 @@ const TheRedClaw = () => {
           </Box>
         </Box>
 
-        {/* --- RIGHT COLUMN: TRIVIA CARDS (25% WIDTH) --- */}
+        {/* --- RIGHT COLUMN: TRIVIA CARDS (~45% WIDTH) --- */}
         <Box sx={{ 
           flex: 1, 
           display: 'flex',
@@ -106,16 +107,30 @@ const TheRedClaw = () => {
             flexDirection: 'column', 
             justifyContent: 'center',
             boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-            transition: '0.2s', '&:hover': { transform: 'scale(1.01)', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }
+            cursor: 'default',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            '&:hover': { 
+              transform: 'translateY(-8px)',
+              boxShadow: '0 14px 28px rgba(0,0,0,0.12)',
+              '& .MuiBox-root:first-of-type': { 
+                transform: 'scale(1.1) rotate(5deg)',
+              }
+            }
           }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 2, 
+              mb: 1,
+              transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)' 
+            }}>
               <Box sx={{ p: 1, bgcolor: '#FFEBEE', borderRadius: '12px', color: '#FF5252' }}>
                 <LocalOfferIcon />
               </Box>
               <Typography variant="h6" fontWeight="800" color="#0A2540">The Name</Typography>
             </Box>
             <Typography variant="body2" sx={{ color: '#556987', lineHeight: 1.5 }}>
-                Named for the <strong>red patch</strong> on adult male claws. Females do not develop this patch!
+                Named for the vibrant <strong>red patch</strong> on the outer margin of adult male claws. Females completely lack this patch, and both sexes actually feature a striking blue-green body!
             </Typography>
           </Paper>
 
@@ -129,16 +144,30 @@ const TheRedClaw = () => {
             flexDirection: 'column', 
             justifyContent: 'center',
             boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-            transition: '0.2s', '&:hover': { transform: 'scale(1.01)', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }
+            cursor: 'default',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            '&:hover': { 
+              transform: 'translateY(-8px)',
+              boxShadow: '0 14px 28px rgba(0,0,0,0.12)',
+              '& .MuiBox-root:first-of-type': { 
+                transform: 'scale(1.1) rotate(5deg)',
+              }
+            }
           }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 2, 
+              mb: 1,
+              transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)' 
+            }}>
                 <Box sx={{ p: 1, bgcolor: '#E0F2F1', borderRadius: '12px', color: '#008080' }}>
                 <ThermostatIcon />
               </Box>
-              <Typography variant="h6" fontWeight="800" color="#0A2540">Climate</Typography>
+              <Typography variant="h6" fontWeight="800" color="#0A2540">Environment</Typography>
             </Box>
             <Typography variant="body2" sx={{ color: '#556987', lineHeight: 1.5 }}>
-              Thrives in <strong>23°C - 31°C</strong>. Requires high dissolved oxygen for maximum growth.
+              A robust tropical species thriving in <strong>23°C - 31°C</strong> water. Unlike many crayfish, they are highly tolerant of low dissolved oxygen, though well-aerated water maximizes growth.
             </Typography>
           </Paper>
 
@@ -152,16 +181,30 @@ const TheRedClaw = () => {
             flexDirection: 'column', 
             justifyContent: 'center',
             boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-            transition: '0.2s', '&:hover': { transform: 'scale(1.01)', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }
+            cursor: 'default',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            '&:hover': { 
+              transform: 'translateY(-8px)',
+              boxShadow: '0 14px 28px rgba(0,0,0,0.12)',
+              '& .MuiBox-root:first-of-type': { 
+                transform: 'scale(1.1) rotate(5deg)',
+              }
+            }
           }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 2, 
+              mb: 1,
+              transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)' 
+            }}>
                 <Box sx={{ p: 1, bgcolor: '#E3F2FD', borderRadius: '12px', color: '#00E5FF' }}>
                 <ScaleIcon />
               </Box>
-              <Typography variant="h6" fontWeight="800" color="#0A2540">Size</Typography>
+              <Typography variant="h6" fontWeight="800" color="#0A2540">The Yield</Typography>
             </Box>
             <Typography variant="body2" sx={{ color: '#556987', lineHeight: 1.5 }}>
-              Can grow over <strong>600g</strong> (1.3 lbs). Boasts a 30% meat yield.
+              Capable of reaching <strong>600g</strong> in the wild, they are prized in aquaculture for a massive 30% meat yield—significantly higher than most freshwater crustaceans.
             </Typography>
           </Paper>
 
