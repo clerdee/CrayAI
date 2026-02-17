@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const Post = require('../models/Post');
-const Comment = require('../models/Comment'); // <--- Import New Model
+const Comment = require('../models/Comment'); 
 const { createNotification } = require('../utils/notificationHelper'); 
 
 // 1. CREATE POST

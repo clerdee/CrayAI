@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, 
-  Platform, StatusBar, Dimensions, ActivityIndicator, Alert 
+  Platform, StatusBar, Dimensions, ActivityIndicator,
+  Animated, PanResponder
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,7 +11,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, G, Polygon, Line, Rect } from 'react-native-svg';
 import client from '../api/client'; 
 
-const { width } = Dimensions.get('window');
+// Import your secure environment variables
+import { CLOUDINARY_CONFIG } from '../config/cloudinary';
+
+const { width, height } = Dimensions.get('window');
 
 const GaugeChart = ({ levelIndex }) => {
   const needleRotations = [-67.5, -22.5, 22.5, 67.5];
@@ -60,7 +64,6 @@ const TurbidityGraph = ({ level }) => {
 };
 
 export default function ResultsScreen({ route, navigation }) {
-  // EXTRACT REAL LOG DETAILS PASSED FROM CAMERA
   const { 
     imageUri, 
     type = 'image', 
@@ -78,6 +81,75 @@ export default function ResultsScreen({ route, navigation }) {
   const [isSaving, setIsSaving] = useState(false);
   const [userLocation, setUserLocation] = useState('Unknown Location');
   const [scanTimestamp] = useState(new Date()); 
+
+  // --- CUSTOM NOTIFICATION STATE & ANIMATION ---
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+  const toastAnim = useRef(new Animated.Value(-100)).current;
+
+  const showToastAndNavigate = (message, type = 'success') => {
+    setToast({ visible: true, message, type });
+    
+    // Slide Down
+    Animated.timing(toastAnim, {
+      toValue: 60, // Drops down nicely below the status bar
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+
+    // Wait 2 seconds, slide up, then navigate
+    setTimeout(() => {
+      Animated.timing(toastAnim, {
+        toValue: -150,
+        duration: 400,
+        useNativeDriver: true,
+      }).start(() => {
+        setToast(prev => ({ ...prev, visible: false }));
+        if(type === 'success') {
+          navigation.navigate('Home');
+        }
+      });
+    }, 2000);
+  };
+
+  const SNAP_TOP = 0; 
+  const SNAP_BOTTOM = height * 0.55; 
+  
+  const translateY = useRef(new Animated.Value(SNAP_TOP)).current;
+  const lastGestureDy = useRef(SNAP_TOP);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 5, 
+      onPanResponderGrant: () => {
+        translateY.setOffset(lastGestureDy.current);
+        translateY.setValue(0);
+      },
+      onPanResponderMove: (_, gesture) => {
+        const newY = lastGestureDy.current + gesture.dy;
+        if (newY >= SNAP_TOP && newY <= SNAP_BOTTOM + 50) {
+          translateY.setValue(gesture.dy);
+        }
+      },
+      onPanResponderRelease: (_, gesture) => {
+        translateY.flattenOffset();
+        if (gesture.vy > 0.5 || gesture.dy > 100) {
+          Animated.spring(translateY, { toValue: SNAP_BOTTOM, useNativeDriver: true, bounciness: 4 }).start(() => { lastGestureDy.current = SNAP_BOTTOM; });
+        } else if (gesture.vy < -0.5 || gesture.dy < -100) {
+          Animated.spring(translateY, { toValue: SNAP_TOP, useNativeDriver: true, bounciness: 4 }).start(() => { lastGestureDy.current = SNAP_TOP; });
+        } else {
+          const target = (lastGestureDy.current + gesture.dy) > (SNAP_BOTTOM / 2) ? SNAP_BOTTOM : SNAP_TOP;
+          Animated.spring(translateY, { toValue: target, useNativeDriver: true, bounciness: 4 }).start(() => { lastGestureDy.current = target; });
+        }
+      }
+    })
+  ).current;
+
+  const imageTranslateY = translateY.interpolate({
+      inputRange: [SNAP_TOP, SNAP_BOTTOM],
+      outputRange: [-height * 0.20, 0], 
+      extrapolate: 'clamp'
+  });
 
   useEffect(() => {
     const loadUserLocation = async () => {
@@ -104,7 +176,6 @@ export default function ResultsScreen({ route, navigation }) {
 
   const formattedDate = scanTimestamp.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const formattedTime = scanTimestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  const fullTimestamp = `${formattedDate} • ${formattedTime}`;
 
   const cmW = scanData ? scanData.width_cm.toFixed(2) : 0;
   const cmH = scanData ? scanData.height_cm.toFixed(2) : 0;
@@ -121,13 +192,15 @@ export default function ResultsScreen({ route, navigation }) {
   const currentAlgaeIndex = algae_level !== undefined ? algae_level : 0;
   const currentAlgae = algaeLevels[currentAlgaeIndex];
 
+  const calculatedAge = scanData ? estimateAge(scanData.height_cm) : "Unknown"; 
+
   const results = {
     sizeCm: scanData ? `${cmW}cm W x ${cmH}cm H` : "Measurement Failed",
     sizeIn: scanData ? `${inW}in W x ${inH}in H` : "",
-    age: scanData ? estimateAge(scanData.width_cm) : "Unknown",
+    age: calculatedAge, 
     gender: "Not Defined",
     turbidity: `Turbidity Level ${turbidity_level}`,
-    scanDate: fullTimestamp, 
+    scanDate: `${formattedDate} • ${formattedTime}`, 
     confidence: 0 
   };
 
@@ -139,32 +212,90 @@ export default function ResultsScreen({ route, navigation }) {
     setIsSaving(true);
     try {
       const formData = new FormData();
-      formData.append('image', { uri: imageUri, type: 'image/jpeg', name: 'scan_result.jpg' });
-      const captionText = `CrayAI Scan: ${results.sizeCm}\nAge: ${results.age}\nAlgae: ${currentAlgae.label}\nTurbidity: ${turbidity_level}`;
-      formData.append('caption', captionText);
-      formData.append('location', userLocation); 
-      await client.post('/posts/create', formData);
-      Alert.alert("Saved", "Record added!", [{ text: "OK", onPress: () => navigation.navigate('Home') }]);
+      formData.append('file', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'scan_result.jpg',
+      });
+
+      formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset); 
+      formData.append('cloud_name', CLOUDINARY_CONFIG.cloudName); 
+      formData.append('folder', 'scanrecords');
+      
+      const cloudinaryRes = await fetch(CLOUDINARY_CONFIG.apiUrl, {
+        method: 'POST',
+        body: formData
+      });
+      const cloudinaryData = await cloudinaryRes.json();
+      
+      const uploadedImageUrl = cloudinaryData.secure_url;
+      const uploadedPublicId = cloudinaryData.public_id;
+
+      if (!uploadedImageUrl) throw new Error("Cloudinary upload failed");
+
+      const scanDataPayload = {
+        scanId: scan_id,
+        imageUrl: uploadedImageUrl,
+        imagePublicId: uploadedPublicId,
+        width_cm: parseFloat(cmW),
+        height_cm: parseFloat(cmH),
+        estimated_age: results.age,
+        algae_label: currentAlgae.label,
+        turbidity_level: parseInt(turbidity_level),
+        location: userLocation,
+        processing_time: processing_time,
+        model_version: model_version
+      };
+
+      await client.post('/scans/create', scanDataPayload);
+
+      // Trigger Custom Success Toast
+      showToastAndNavigate("Record saved to database!", "success");
+
     } catch (error) {
-      Alert.alert("Error", "Could not save.");
-    } finally { setIsSaving(false); }
+      console.error("Save Error:", error);
+      // Trigger Custom Error Toast
+      showToastAndNavigate("Failed to save. Please try again.", "error");
+    } finally { 
+      setIsSaving(false); 
+    }
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      <View style={styles.mediaHeader}>
-        <Image source={{ uri: imageUri }} style={styles.media} />
-        <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={styles.topGradient} />
-        <View style={styles.navBar}>
-          <TouchableOpacity style={styles.glassBtn} onPress={handleDiscard}>
-            <Ionicons name="arrow-back" size={24} color="#FFF" />
-          </TouchableOpacity>
-        </View>
+
+      {/* --- CUSTOM NOTIFICATION TOAST --- */}
+      <Animated.View style={[
+        styles.toastContainer, 
+        { transform: [{ translateY: toastAnim }] },
+        toast.type === 'success' ? styles.toastSuccess : styles.toastError
+      ]}>
+        <Ionicons 
+          name={toast.type === 'success' ? "checkmark-circle" : "warning"} 
+          size={24} 
+          color="#FFF" 
+        />
+        <Text style={styles.toastText}>{toast.message}</Text>
+      </Animated.View>
+      
+      {/* Background Image (Parallax) */}
+      <Animated.View style={[styles.imageWrapper, { transform: [{ translateY: imageTranslateY }] }]}>
+        <Image source={{ uri: imageUri }} style={styles.media} resizeMode="cover" />
+      </Animated.View>
+      
+      <LinearGradient colors={['rgba(0,0,0,0.8)', 'transparent']} style={styles.topGradient} />
+      <View style={styles.navBar}>
+        <TouchableOpacity style={styles.glassBtn} onPress={handleDiscard}>
+          <Ionicons name="arrow-back" size={24} color="#FFF" />
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.bottomSheetContainer}>
-        <View style={styles.dragHandle} />
+      {/* Draggable Bottom Sheet */}
+      <Animated.View style={[styles.bottomSheetContainer, { transform: [{ translateY }] }]}>
+        <View {...panResponder.panHandlers} style={styles.dragHandleArea}>
+            <View style={styles.dragHandle} />
+        </View>
         
         <View style={styles.tabContainer}>
             <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('specimen')}>
@@ -228,7 +359,7 @@ export default function ResultsScreen({ route, navigation }) {
 
                 <View style={[styles.card, styles.shadow]}>
                     <View style={styles.cardHeader}>
-                        <Text style={styles.cardTitle}>ALGAE MONITORING</Text>
+                        <Text style={styles.cardTitle}>BLUE-GREEN ALGAE</Text>
                         <MaterialCommunityIcons name="sprout" size={20} color={currentAlgae.color} />
                     </View>
                     <GaugeChart levelIndex={currentAlgaeIndex} />
@@ -247,12 +378,11 @@ export default function ResultsScreen({ route, navigation }) {
                     <View style={styles.divider} />
                     <DetailRow icon="map-marker-alt" label="Location" value={userLocation} color="#E76F51" />
                     <View style={styles.divider} />
-                    <DetailRow icon="camera" label="Capture Method" value="Biometric Anchor" subValue="Fixed Focal Distance (15cm)" color="#8E44AD" />
+                    <DetailRow icon="camera" label="Capture Method" value="Biometric Anchor" subValue="Fixed Focal Distance (~15cm)" color="#8E44AD" />
                 </View>
 
                 <Text style={styles.sectionTitle}>System Logs</Text>
                 <View style={styles.detailsList}>
-                    {/* IMPLEMENTED REAL DATA HERE */}
                     <DetailRow icon="fingerprint" label="Session ID" value={scan_id} color="#2A9D8F" />
                     <View style={styles.divider} />
                     <DetailRow icon="microchip" label="AI Model Used" value={model_version} color="#3D5A80" />
@@ -273,7 +403,7 @@ export default function ResultsScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
         </ScrollView>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -291,36 +421,54 @@ const DetailRow = ({ icon, label, value, subValue, color }) => (
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  mediaHeader: { height: '35%', width: '100%' },
+  imageWrapper: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
   media: { width: '100%', height: '100%' },
-  topGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 80 },
-  navBar: { position: 'absolute', top: 50, left: 20 },
-  glassBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.25)', justifyContent: 'center', alignItems: 'center' },
+  topGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 110, zIndex: 5 },
+  navBar: { position: 'absolute', top: 50, left: 20, zIndex: 10 },
+  glassBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
   
-  bottomSheetContainer: { flex: 1, marginTop: -30, backgroundColor: '#FFF', borderTopLeftRadius: 30, borderTopRightRadius: 30 },
-  dragHandle: { width: 40, height: 5, backgroundColor: '#DDD', borderRadius: 2.5, alignSelf: 'center', marginTop: 15 },
-  
-  tabContainer: { flexDirection: 'row', marginTop: 10, paddingHorizontal: 15 },
-  tabItem: { flex: 1, alignItems: 'center', paddingVertical: 15 },
+  // --- CUSTOM TOAST STYLES ---
+  toastContainer: {
+    position: 'absolute',
+    top: 0, // Gets animated downwards
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 14,
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 15,
+  },
+  toastSuccess: { backgroundColor: '#0FA958' },
+  toastError: { backgroundColor: '#E11A22' },
+  toastText: { color: '#FFF', fontSize: 15, fontWeight: '700', marginLeft: 12, flex: 1 },
+
+  bottomSheetContainer: { position: 'absolute', bottom: 0, width: '100%', height: height * 0.70, backgroundColor: '#FFF', borderTopLeftRadius: 30, borderTopRightRadius: 30, shadowColor: '#000', shadowOffset: { width: 0, height: -5 }, shadowOpacity: 0.15, shadowRadius: 15, elevation: 20, zIndex: 10 },
+  dragHandleArea: { width: '100%', paddingVertical: 18, alignItems: 'center', backgroundColor: 'transparent' },
+  dragHandle: { width: 45, height: 5, backgroundColor: '#CCC', borderRadius: 3 },
+  tabContainer: { flexDirection: 'row', paddingHorizontal: 15, borderBottomWidth: 1, borderColor: '#F0F0F0' },
+  tabItem: { flex: 1, alignItems: 'center', paddingVertical: 12 },
   tabText: { fontSize: 14, fontWeight: '700', color: '#AAA' },
   activeTabText: { color: '#293241', fontWeight: '800' },
-  activeIndicator: { position: 'absolute', bottom: 0, width: 35, height: 4, borderRadius: 2 },
-  
-  scrollContent: { padding: 20 },
-  card: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, marginBottom: 20, elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5 },
-  shadow: { elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5 },
+  activeIndicator: { position: 'absolute', bottom: -1, width: 35, height: 4, borderRadius: 2 },
+  scrollContent: { padding: 20, paddingBottom: 50 },
+  card: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, marginBottom: 20, elevation: 3, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8 },
+  shadow: { elevation: 3, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   cardTitle: { fontSize: 12, fontWeight: '700', color: '#999', letterSpacing: 1 },
   bigResult: { fontSize: 28, fontWeight: '800' },
   subResult: { fontSize: 14, color: '#7F8C8D', fontStyle: 'italic', marginBottom: 10 },
-  
   meterContainer: { marginTop: 10 },
   meterLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
   meterLabel: { fontSize: 12, color: '#666' },
   meterValue: { fontSize: 12, fontWeight: '800' },
   progressBarBg: { height: 8, backgroundColor: '#EEE', borderRadius: 4 },
   progressBarFill: { height: '100%', borderRadius: 4 },
-  
   sectionTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15, color: '#293241', marginTop: 5 },
   detailsList: { backgroundColor: '#F9F9F9', borderRadius: 15, padding: 15, marginBottom: 25 },
   detailRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 8 },
@@ -330,11 +478,9 @@ const styles = StyleSheet.create({
   detailValue: { fontSize: 15, fontWeight: '700', color: '#293241' },
   detailSubValue: { fontSize: 13, color: '#7F8C8D', marginTop: 2 },
   divider: { height: 1, backgroundColor: '#EEE', marginLeft: 55 },
-  
   gaugeWrapper: { alignItems: 'center', height: 140, marginBottom: 10 },
   algaeTextContainer: { alignItems: 'center', marginTop: -20 },
   algaeAlertValue: { fontSize: 22, fontWeight: '900' },
-  
   turbidityContainer: { marginTop: 10 },
   turbidityBar: { flexDirection: 'row', height: 45, justifyContent: 'space-between' },
   turbiditySegmentWrapper: { flex: 1, alignItems: 'center' },
@@ -344,7 +490,6 @@ const styles = StyleSheet.create({
   activeLabelText: { fontWeight: '800', color: '#3D5A80' },
   turbidityInfo: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FDF8F3', padding: 12, borderRadius: 12, marginTop: 15, gap: 10 },
   turbidityStatusText: { fontSize: 12, color: '#5D4037', flex: 1, fontWeight: '600' },
-  
   actionContainer: { marginTop: 5, paddingBottom: 20 },
   saveBtn: { borderRadius: 15, overflow: 'hidden' },
   saveGradient: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 18, gap: 10 },

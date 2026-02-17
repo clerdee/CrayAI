@@ -36,7 +36,7 @@ export default function CameraScreen({ navigation, route }) {
     lastImage: null,
     algaeLevel: 0,
     algaeDesc: '',
-    turbidityLevel: 2, // Added turbidity
+    turbidityLevel: 2,
     processingTime: 0,
     modelVersion: ''
   });

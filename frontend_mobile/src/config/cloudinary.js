@@ -1,5 +1,5 @@
 export const CLOUDINARY_CONFIG = {
-  cloudName: 'dvdrak5wl', 
-  uploadPreset: 'CrayAI', 
-  apiUrl: 'https://api.cloudinary.com/v1_1/dvdrak5wl/image/upload'
+  cloudName: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME, 
+  uploadPreset: process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET, 
+  apiUrl: process.env.EXPO_PUBLIC_CLOUDINARY_API_URL
 };

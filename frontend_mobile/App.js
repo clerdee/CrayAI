@@ -18,6 +18,7 @@ import EditProfileScreen from './src/screens/EditProfileScreen';
 import SecuritySettingScreen from './src/screens/SecuritySettingsScreen';
 import EmailPreferencesScreen from './src/screens/EmailPreferencesScreen';
 import VerifyOtpScreen from './src/screens/VerifyOtpScreen'; 
+import HistoryScreen from './src/screens/HistoryScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -48,6 +49,7 @@ export default function App() {
         <Stack.Screen name="Results" component={ResultsScreen} />
         <Stack.Screen name="Chat" component={ChatScreen} />
         <Stack.Screen name="Notification" component={NotificationScreen} />
+        <Stack.Screen name="History" component={HistoryScreen} options={{ headerShown: false }} />
         
         {/* Settings & Profile */}
         <Stack.Screen name="Profile" component={ProfileScreen} />
