@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  View, Text, StyleSheet, Image, TouchableOpacity, 
+  View, Text, StyleSheet, Image, TouchableOpacity, Modal,
   ActivityIndicator, StatusBar, SafeAreaView, RefreshControl, Platform, Animated
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
@@ -8,7 +8,6 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { SwipeListView } from 'react-native-swipe-list-view';
 
 import client from '../api/client';
-// 1. Modal is imported
 import ScanDetailsModal from '../components/ScanDetailsModal';
 
 const ITEMS_PER_PAGE = 10;
@@ -23,9 +22,13 @@ export default function HistoryScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Modal States
+  // Scan Details Modal States
   const [selectedScan, setSelectedScan] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+
+  // Custom Delete Confirmation Modal States
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
   
   const [mainFilter, setMainFilter] = useState('All'); 
   const [ageFilter, setAgeFilter] = useState('All');
@@ -97,13 +100,13 @@ export default function HistoryScreen({ navigation }) {
     if (rowMap[rowKey]) rowMap[rowKey].closeRow();
     
     setAllScans(prev => prev.map(item => item._id === rowKey ? { ...item, isDeleted: true } : item));
-    showNotification("Moved to Deleted 🗑️", "warning");
+    showNotification("Moved to Trash 🗑️", "warning");
 
     try {
         await client.patch(`/scans/${rowKey}/delete`);
     } catch (error) {
-        console.error("Failed to delete record:", error);
-        showNotification("Error deleting record.", "warning");
+        console.error("Failed to soft-delete record:", error);
+        showNotification("Error updating record.", "warning");
     }
   };
 
@@ -118,6 +121,31 @@ export default function HistoryScreen({ navigation }) {
     } catch (error) {
         console.error("Failed to restore record:", error);
         showNotification("Error restoring record.", "warning");
+    }
+  };
+
+  // --- CUSTOM HARD DELETE LOGIC ---
+  const promptHardDelete = (rowKey, rowMap) => {
+    if (rowMap[rowKey]) rowMap[rowKey].closeRow();
+    setItemToDelete(rowKey);
+    setDeleteModalVisible(true);
+  };
+
+  const confirmHardDelete = async () => {
+    const rowKey = itemToDelete;
+    setDeleteModalVisible(false); // Close modal instantly
+    if (!rowKey) return;
+
+    // 1. Instantly remove from UI
+    setAllScans(prev => prev.filter(item => item._id !== rowKey));
+    showNotification("Record permanently deleted.", "warning");
+
+    // 2. Delete from Server & Cloudinary
+    try {
+        await client.delete(`/scans/${rowKey}/hard-delete`);
+    } catch (error) {
+        console.error("Failed to hard delete record:", error);
+        showNotification("Error deleting record from server.", "warning");
     }
   };
 
@@ -188,7 +216,6 @@ export default function HistoryScreen({ navigation }) {
     }
   };
 
-  // --- 2. FIXED: RENDER ITEM WITH ONPRESS ACTION ---
   const renderItem = (data) => {
     const item = data.item;
     const dateObj = new Date(item.createdAt);
@@ -210,7 +237,6 @@ export default function HistoryScreen({ navigation }) {
 
     return (
       <View style={styles.cardWrapper}>
-        {/* ADDED TOUCHABLE OPACITY TO TRIGGER MODAL */}
         <TouchableOpacity 
             style={styles.cardInner}
             activeOpacity={0.8}
@@ -272,6 +298,11 @@ export default function HistoryScreen({ navigation }) {
                     <MaterialCommunityIcons name="restore" size={24} color="#FFF" />
                     <Text style={styles.backTextWhite}>Restore</Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.backRightBtn, styles.backRightBtnHardDelete]} onPress={() => promptHardDelete(item._id, rowMap)}>
+                    <MaterialCommunityIcons name="delete-forever" size={24} color="#FFF" />
+                    <Text style={styles.backTextWhite}>Destroy</Text>
+                </TouchableOpacity>
             </View>
         );
     }
@@ -285,7 +316,7 @@ export default function HistoryScreen({ navigation }) {
 
         <TouchableOpacity style={[styles.backRightBtn, styles.backRightBtnRight]} onPress={() => toggleDelete(item._id, rowMap)}>
           <MaterialCommunityIcons name="delete" size={24} color="#FFF" />
-          <Text style={styles.backTextWhite}>Delete</Text>
+          <Text style={styles.backTextWhite}>Trash</Text>
         </TouchableOpacity>
       </View>
     );
@@ -295,6 +326,7 @@ export default function HistoryScreen({ navigation }) {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       
+      {/* TOAST NOTIFICATION */}
       {notification.visible && (
         <Animated.View style={[
             styles.toastContainer, 
@@ -306,6 +338,28 @@ export default function HistoryScreen({ navigation }) {
           </View>
         </Animated.View>
       )}
+
+      {/* CUSTOM DELETE CONFIRMATION MODAL */}
+      <Modal transparent={true} visible={deleteModalVisible} animationType="fade" onRequestClose={() => setDeleteModalVisible(false)}>
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmBox}>
+            <View style={styles.confirmIconBg}>
+                <Ionicons name="warning" size={32} color="#E11A22" />
+            </View>
+            <Text style={styles.confirmTitle}>Permanent Delete</Text>
+            <Text style={styles.confirmMessage}>This will permanently delete this record and its image from the database. This action cannot be undone.</Text>
+            
+            <View style={styles.confirmBtnRow}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setDeleteModalVisible(false)}>
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.confirmDeleteBtn} onPress={confirmHardDelete}>
+                    <Text style={styles.confirmDeleteBtnText}>Delete</Text>
+                </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
@@ -392,7 +446,6 @@ export default function HistoryScreen({ navigation }) {
           
           leftOpenValue={85} 
           rightOpenValue={-85} 
-          disableLeftSwipe={mainFilter === 'Deleted'} 
 
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
@@ -415,7 +468,6 @@ export default function HistoryScreen({ navigation }) {
         />
       )}
 
-      {/* 3. FIXED: ADDED MODAL COMPONENT AT THE BOTTOM OF THE SCREEN */}
       <ScanDetailsModal 
         visible={modalVisible} 
         onClose={() => setModalVisible(false)} 
@@ -434,6 +486,18 @@ const styles = StyleSheet.create({
   toastWarning: { backgroundColor: '#E76F51' }, 
   toastInfo: { backgroundColor: '#2A9D8F' },    
   toastText: { color: '#FFF', fontWeight: '700', fontSize: 13, marginLeft: 10 },
+
+  // CONFIRMATION MODAL STYLES
+  confirmOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  confirmBox: { width: '85%', backgroundColor: '#FFF', borderRadius: 24, padding: 25, alignItems: 'center', elevation: 10, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 15 },
+  confirmIconBg: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFF0F0', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
+  confirmTitle: { fontSize: 18, fontWeight: '800', color: '#293241', marginBottom: 8 },
+  confirmMessage: { fontSize: 14, color: '#7F8C8D', textAlign: 'center', marginBottom: 25, lineHeight: 20 },
+  confirmBtnRow: { flexDirection: 'row', width: '100%', gap: 12 },
+  cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#F0F4F8', alignItems: 'center' },
+  cancelBtnText: { color: '#3D5A80', fontWeight: '700', fontSize: 15 },
+  confirmDeleteBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#E11A22', alignItems: 'center' },
+  confirmDeleteBtnText: { color: '#FFF', fontWeight: '700', fontSize: 15 },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -494,9 +558,10 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 85,
   },
-  backRightBtnLeft: { backgroundColor: '#F1C40F', right: 0 },   
-  backRightBtnRight: { backgroundColor: '#E76F51', left: 0 },    
-  backRightBtnRestore: { backgroundColor: '#2A9D8F', left: 0 },  
+  backRightBtnLeft: { backgroundColor: '#F1C40F', left: 0 },         
+  backRightBtnRight: { backgroundColor: '#E76F51', right: 0 },       
+  backRightBtnRestore: { backgroundColor: '#2A9D8F', left: 0 },      
+  backRightBtnHardDelete: { backgroundColor: '#A61016', right: 0 },  
   backTextWhite: { color: '#FFF', fontSize: 11, fontWeight: '700', marginTop: 4 },
 
   cardWrapper: { marginBottom: 15 },

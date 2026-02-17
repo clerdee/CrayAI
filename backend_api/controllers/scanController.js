@@ -1,4 +1,11 @@
 const ScanRecord = require('../models/ScanRecord');
+const cloudinary = require('cloudinary').v2;
+
+cloudinary.config({ 
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
+  api_key: process.env.CLOUDINARY_API_KEY, 
+  api_secret: process.env.CLOUDINARY_API_SECRET 
+});
 
 exports.createScanRecord = async (req, res) => {
   try {
@@ -76,5 +83,23 @@ exports.toggleSoftDelete = async (req, res) => {
     res.status(200).json({ success: true, isDeleted: scan.isDeleted });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+exports.hardDeleteScan = async (req, res) => {
+  try {
+    const scan = await ScanRecord.findById(req.params.id);
+    if (!scan) return res.status(404).json({ success: false, message: 'Scan not found' });
+
+    if (scan.image && scan.image.public_id) {
+        await cloudinary.uploader.destroy(scan.image.public_id);
+    }
+
+    await scan.deleteOne(); 
+
+    res.status(200).json({ success: true, message: 'Record permanently deleted.' });
+  } catch (error) {
+    console.error("Hard Delete Error:", error);
+    res.status(500).json({ success: false, message: 'Server error during hard delete' });
   }
 };
