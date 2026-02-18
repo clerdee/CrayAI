@@ -1,27 +1,17 @@
 const Post = require('../models/Post');
 const Comment = require('../models/Comment');
 const User = require('../models/User');
+const ScanRecord = require('../models/ScanRecord');
 
 // 1. GET ALL CONTENT (Posts & Comments) FOR MODERATION
 exports.getModerationContent = async (req, res) => {
   try {
-    // A. Fetch All Posts
-    const posts = await Post.find()
-      .populate('userId', 'firstName lastName profilePic email') // Fetch profile info
-      .sort({ createdAt: -1 })
-      .lean();
+    const posts = await Post.find().populate('userId', 'firstName lastName profilePic email').sort({ createdAt: -1 }).lean();
+    const comments = await Comment.find().populate('userId', 'firstName lastName profilePic email').sort({ createdAt: -1 }).lean();
 
-    // B. Fetch All Comments
-    const comments = await Comment.find()
-      .populate('userId', 'firstName lastName profilePic email')
-      .sort({ createdAt: -1 })
-      .lean();
-
-    // C. Format Posts
     const formattedPosts = posts.map(p => ({
       id: p._id,
       type: 'Post',
-      // 👇 IMPORTANT: Send Author as an Object with profilePic
       author: {
         name: p.userId ? `${p.userId.firstName} ${p.userId.lastName}` : 'Unknown',
         email: p.userId?.email || 'N/A',
@@ -31,16 +21,14 @@ exports.getModerationContent = async (req, res) => {
       reason: 'New Content',
       severity: 'Low',      
       timestamp: p.createdAt,
-      status: p.moderationStatus || 'Pending', // Ensure your DB has this field
+      status: p.moderationStatus || 'Pending',
       actionTaken: p.moderationStatus === 'Resolved' ? 'Approved' : null,
       media: p.media
     }));
 
-    // D. Format Comments
     const formattedComments = comments.map(c => ({
       id: c._id,
       type: 'Comment',
-      // 👇 IMPORTANT: Same here for Comments
       author: {
         name: c.userId ? `${c.userId.firstName} ${c.userId.lastName}` : 'Unknown',
         email: c.userId?.email || 'N/A',
@@ -54,10 +42,7 @@ exports.getModerationContent = async (req, res) => {
       actionTaken: c.moderationStatus === 'Resolved' ? 'Approved' : null
     }));
 
-    // E. Combine and Sort by Newest
-    const allContent = [...formattedPosts, ...formattedComments].sort((a, b) => 
-      new Date(b.timestamp) - new Date(a.timestamp)
-    );
+    const allContent = [...formattedPosts, ...formattedComments].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
     res.status(200).json({ success: true, items: allContent });
 
@@ -67,23 +52,18 @@ exports.getModerationContent = async (req, res) => {
   }
 };
 
-// 2. MODERATE CONTENT (Approve OR Delete)
+// 2. MODERATE CONTENT
 exports.moderateContent = async (req, res) => {
   try {
     const { id, type } = req.params; 
-    const { status } = req.body; // Expecting 'Approved' or 'Deleted'
+    const { status } = req.body;
 
     const Model = type === 'Post' ? Post : Comment;
     
     if (status === 'Deleted') {
-        // Option A: Hard Delete (Permanently remove)
         await Model.findByIdAndDelete(id);
-        
-        // Option B: Soft Delete (Hide but keep record) - UNCOMMENT TO USE
-        // await Model.findByIdAndUpdate(id, { moderationStatus: 'Rejected', isVisible: false });
     } 
     else if (status === 'Approved') {
-        // ✅ Updates status to 'Resolved' so it disappears from Pending list
         await Model.findByIdAndUpdate(id, { moderationStatus: 'Resolved' });
     } else {
         return res.status(400).json({ message: "Invalid status action" });
@@ -96,41 +76,102 @@ exports.moderateContent = async (req, res) => {
   }
 };
 
-// 3. DASHBOARD ANALYTICS (Placeholder Data for Now)
+// 3. REAL DASHBOARD ANALYTICS
 exports.getDashboardAnalytics = async (req, res) => {
   try {
+    const allScans = await ScanRecord.find({ isDeleted: { $ne: true } })
+        .populate('user', 'firstName lastName email');
 
-    // 1. SCANS COUNT
-    const totalScans = 0; 
+    const totalScans = allScans.length; 
 
-    // 2. SCAN ACTIVITY (Last 7 Days)
-    // Sending empty structure so the chart renders (flat line) instead of crashing
-    const activity = [
-        { name: 'Mon', scans: 0, detected_disease: 0 },
-        { name: 'Tue', scans: 0, detected_disease: 0 },
-        { name: 'Wed', scans: 0, detected_disease: 0 },
-        { name: 'Thu', scans: 0, detected_disease: 0 },
-        { name: 'Fri', scans: 0, detected_disease: 0 },
-        { name: 'Sat', scans: 0, detected_disease: 0 },
-        { name: 'Sun', scans: 0, detected_disease: 0 },
-    ];
+    // SCAN ACTIVITY (Last 7 Days)
+    const activity = [];
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        d.setHours(0,0,0,0);
+        const nextD = new Date(d);
+        nextD.setDate(nextD.getDate() + 1);
 
-    // 3. POPULATION STATS
+        const dayScans = allScans.filter(s => s.createdAt >= d && s.createdAt < nextD);
+        
+        let diseaseCount = 0;
+        dayScans.forEach(s => {
+            if (s.environment?.algae_label === 'High' || s.environment?.algae_label === 'Critical' || s.environment?.turbidity_level > 6) {
+                diseaseCount++;
+            }
+        });
+
+        activity.push({
+            // 🚨 UPDATED: Now includes month and day (e.g., 'Mon, Feb 19')
+            name: d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), 
+            scans: dayScans.length,
+            detected_disease: diseaseCount
+        });
+    }
+
+    // POPULATION STATS
+    let male = 0, female = 0, berried = 0, juvenile = 0;
+    allScans.forEach(s => {
+        if (s.gender === 'Male') male++;
+        if (s.gender === 'Female') female++;
+        if (s.gender === 'Berried') berried++;
+        if (s.morphometrics?.estimated_age?.includes('Juvenile') || s.morphometrics?.estimated_age?.includes('Crayling')) juvenile++;
+    });
+
     const population = [
-        { name: 'Male', value: 0, color: '#3B82F6' },
-        { name: 'Female', value: 0, color: '#EC4899' },
-        { name: 'Berried', value: 0, color: '#F59E0B' },
-        { name: 'Juvenile', value: 0, color: '#94A3B8' },
+        { name: 'Male', value: male, color: '#3B82F6' },
+        { name: 'Female', value: female, color: '#EC4899' },
+        { name: 'Berried', value: berried, color: '#F59E0B' },
+        { name: 'Juvenile', value: juvenile, color: '#94A3B8' },
     ];
 
-    // 4. WATER QUALITY
-    const water = [
-        { name: 'Pond A', turbidity: 0, algae: 0 },
-        { name: 'Pond B', turbidity: 0, algae: 0 },
-    ];
+    // WATER QUALITY (Grouped by User + Location, Top 6 Most Active)
+    const userPondStats = {};
+    allScans.forEach(scan => {
+        const loc = scan.location || 'Unknown Pond';
+        const userName = scan.user ? `${scan.user.firstName} ${scan.user.lastName}` : 'Unknown';
+        
+        const key = `${userName.split(' ')[0]} (${loc})`; 
+        
+        if (!userPondStats[key]) userPondStats[key] = { turb: 0, alg: 0, count: 0 };
+        
+        userPondStats[key].turb += (scan.environment?.turbidity_level || 0);
+        
+        const alg = scan.environment?.algae_label;
+        let algVal = 1; 
+        if (alg === 'Moderate') algVal = 2;
+        if (alg === 'High') algVal = 3;
+        if (alg === 'Critical') algVal = 4;
+        
+        userPondStats[key].alg += algVal;
+        userPondStats[key].count += 1;
+    });
 
-    // 5. RECENT LOGS
-    const logs = []; // Empty array for now
+    const sortedKeys = Object.keys(userPondStats)
+        .sort((a, b) => userPondStats[b].count - userPondStats[a].count)
+        .slice(0, 6);
+
+    const water = sortedKeys.map(key => ({ 
+        name: key.length > 15 ? key.substring(0, 15) + '...' : key,
+        turbidity: Number((userPondStats[key].turb / userPondStats[key].count).toFixed(1)),
+        algae: Number((userPondStats[key].alg / userPondStats[key].count).toFixed(1))
+    }));
+
+    // RECENT LOGS (Top 5)
+    const sortedScans = [...allScans].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+    const logs = sortedScans.map(r => {
+        const hasWarning = r.environment?.algae_label === 'High' || r.environment?.algae_label === 'Critical' || r.environment?.turbidity_level > 6;
+        return {
+            id: r.scanId || r._id,
+            species: 'Australian Red Claw',
+            user: r.user ? `${r.user.firstName} ${r.user.lastName}` : 'Unknown User',
+            email: r.user?.email || 'No email provided', 
+            image: r.image?.url || null,
+            health: hasWarning ? 'Warning' : 'Healthy',
+            confidence: 95
+        };
+    });
 
     res.status(200).json({
       success: true,
@@ -149,7 +190,7 @@ exports.getDashboardAnalytics = async (req, res) => {
   }
 };
 
-// 4. PROMOTE USER TO ADMIN (This was missing!)
+// 4. PROMOTE USER TO ADMIN
 exports.promoteUser = async (req, res) => {
   try {
     const { id } = req.params; 

@@ -6,7 +6,6 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Video, ResizeMode } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 import Svg, { Path, G, Polygon, Line, Rect } from 'react-native-svg';
 import client from '../api/client'; 
@@ -76,27 +75,23 @@ export default function ResultsScreen({ route, navigation }) {
     scan_id = "N/A"
   } = route.params || {}; 
   
-  const video = useRef(null);
   const [activeTab, setActiveTab] = useState('specimen'); 
   const [isSaving, setIsSaving] = useState(false);
   const [userLocation, setUserLocation] = useState('Unknown Location');
   const [scanTimestamp] = useState(new Date()); 
 
-  // --- CUSTOM NOTIFICATION STATE & ANIMATION ---
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
   const toastAnim = useRef(new Animated.Value(-100)).current;
 
   const showToastAndNavigate = (message, type = 'success') => {
     setToast({ visible: true, message, type });
     
-    // Slide Down
     Animated.timing(toastAnim, {
-      toValue: 60, // Drops down nicely below the status bar
+      toValue: 60, 
       duration: 400,
       useNativeDriver: true,
     }).start();
 
-    // Wait 2 seconds, slide up, then navigate
     setTimeout(() => {
       Animated.timing(toastAnim, {
         toValue: -150,
@@ -248,24 +243,27 @@ export default function ResultsScreen({ route, navigation }) {
       };
 
       await client.post('/scans/create', scanDataPayload);
-
-      // Trigger Custom Success Toast
       showToastAndNavigate("Record saved to database!", "success");
 
     } catch (error) {
       console.error("Save Error:", error);
-      // Trigger Custom Error Toast
       showToastAndNavigate("Failed to save. Please try again.", "error");
     } finally { 
       setIsSaving(false); 
     }
   };
 
+  // --- NEW: POST TO FEED ACTION ---
+  const handlePostToFeed = () => {
+    // Navigate straight to Community screen.
+    // If you want to pass image data in the future, you can add it as params: { imageUri }
+    navigation.navigate('Community');
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* --- CUSTOM NOTIFICATION TOAST --- */}
       <Animated.View style={[
         styles.toastContainer, 
         { transform: [{ translateY: toastAnim }] },
@@ -279,7 +277,6 @@ export default function ResultsScreen({ route, navigation }) {
         <Text style={styles.toastText}>{toast.message}</Text>
       </Animated.View>
       
-      {/* Background Image (Parallax) */}
       <Animated.View style={[styles.imageWrapper, { transform: [{ translateY: imageTranslateY }] }]}>
         <Image source={{ uri: imageUri }} style={styles.media} resizeMode="cover" />
       </Animated.View>
@@ -291,7 +288,6 @@ export default function ResultsScreen({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* Draggable Bottom Sheet */}
       <Animated.View style={[styles.bottomSheetContainer, { transform: [{ translateY }] }]}>
         <View {...panResponder.panHandlers} style={styles.dragHandleArea}>
             <View style={styles.dragHandle} />
@@ -392,16 +388,33 @@ export default function ResultsScreen({ route, navigation }) {
             </>
           )}
 
+          {/* --- UPDATED: ACTION BUTTONS IN A ROW --- */}
           <View style={styles.actionContainer}>
-            <TouchableOpacity style={[styles.saveBtn, styles.shadow]} onPress={handleSave} disabled={isSaving}>
-              <LinearGradient colors={['#293241', '#3D5A80']} style={styles.saveGradient}>
-                {isSaving ? <ActivityIndicator color="#FFF"/> : <><Feather name="save" size={20} color="#FFF" /><Text style={styles.saveText}>Save Record</Text></>}
-              </LinearGradient>
-            </TouchableOpacity>
+            <View style={styles.actionRowContainer}>
+              
+              {/* Button 1: Save Record */}
+              <TouchableOpacity style={[styles.primaryActionBtn, styles.shadow]} onPress={handleSave} disabled={isSaving}>
+                <LinearGradient colors={['#293241', '#3D5A80']} style={styles.btnGradient}>
+                  {isSaving ? <ActivityIndicator color="#FFF"/> : <><Feather name="save" size={18} color="#FFF" /><Text style={styles.btnText}>Save</Text></>}
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Button 2: Post to Feed */}
+              <TouchableOpacity style={[styles.primaryActionBtn, styles.shadow]} onPress={handlePostToFeed}>
+                <LinearGradient colors={['#E76F51', '#D65A31']} style={styles.btnGradient}>
+                  <Feather name="share-2" size={18} color="#FFF" />
+                  <Text style={styles.btnText}>Post to Feed</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+            </View>
+
+            {/* Button 3: Discard */}
             <TouchableOpacity style={styles.secondaryBtn} onPress={handleDiscard}>
                 <Text style={styles.secondaryText}>Discard Result</Text>
             </TouchableOpacity>
           </View>
+
         </ScrollView>
       </Animated.View>
     </View>
@@ -427,10 +440,9 @@ const styles = StyleSheet.create({
   navBar: { position: 'absolute', top: 50, left: 20, zIndex: 10 },
   glassBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
   
-  // --- CUSTOM TOAST STYLES ---
   toastContainer: {
     position: 'absolute',
-    top: 0, // Gets animated downwards
+    top: 0, 
     left: 20,
     right: 20,
     flexDirection: 'row',
@@ -490,10 +502,14 @@ const styles = StyleSheet.create({
   activeLabelText: { fontWeight: '800', color: '#3D5A80' },
   turbidityInfo: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FDF8F3', padding: 12, borderRadius: 12, marginTop: 15, gap: 10 },
   turbidityStatusText: { fontSize: 12, color: '#5D4037', flex: 1, fontWeight: '600' },
+  
+  // --- UPDATED LAYOUT STYLES ---
   actionContainer: { marginTop: 5, paddingBottom: 20 },
-  saveBtn: { borderRadius: 15, overflow: 'hidden' },
-  saveGradient: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 18, gap: 10 },
-  saveText: { color: '#FFF', fontSize: 18, fontWeight: '800' },
-  secondaryBtn: { paddingVertical: 15, alignItems: 'center', marginTop: 10 },
+  actionRowContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  primaryActionBtn: { flex: 1, borderRadius: 15, overflow: 'hidden' },
+  btnGradient: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 16, gap: 8 },
+  btnText: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+  
+  secondaryBtn: { paddingVertical: 15, alignItems: 'center', marginTop: 15 },
   secondaryText: { color: '#AAA', fontWeight: '700', fontSize: 15 }
 });

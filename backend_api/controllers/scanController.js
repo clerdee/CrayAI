@@ -103,3 +103,16 @@ exports.hardDeleteScan = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error during hard delete' });
   }
 };
+
+exports.getAllScans = async (req, res) => {
+  try {
+    const records = await ScanRecord.find()
+      .populate('user', 'firstName lastName profilePic email') 
+      .sort({ createdAt: -1 }); 
+      
+    res.status(200).json({ success: true, records });
+  } catch (error) {
+    console.error("Fetch All Scans Error:", error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};

@@ -13,7 +13,8 @@ const { width, height } = Dimensions.get('window');
 const SCAN_WIDTH = width * 0.75;
 const SCAN_HEIGHT = height * 0.55;
 const SAMPLES_NEEDED = 3; 
-const MODES = ['SCAN', 'PHOTO', 'VIDEO'];
+
+const MODES = ['SCAN', 'PHOTO'];
 
 export default function CameraScreen({ navigation, route }) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -21,15 +22,11 @@ export default function CameraScreen({ navigation, route }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedMode, setSelectedMode] = useState('SCAN'); 
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-
   const [scanStatus, setScanStatus] = useState('searching'); 
   const [isScanningLoop, setIsScanningLoop] = useState(false);
   const [liveMask, setLiveMask] = useState(null);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   
-  // UPDATED: Buffer now tracks processing time, model version, and turbidity
   const scanBuffer = useRef({ 
     widths: [], 
     heights: [], 
@@ -44,7 +41,6 @@ export default function CameraScreen({ navigation, route }) {
   const pulseAnim = useRef(new Animated.Value(1)).current; 
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   const cameraRef = useRef(null); 
-  const timerRef = useRef(null);
   const searchTimerRef = useRef(null);
   const lockTimerRef = useRef(null);
 
@@ -54,7 +50,8 @@ export default function CameraScreen({ navigation, route }) {
 
   useEffect(() => {
     if (route.params?.resetScan) {
-      startScanSequence();
+      if (selectedMode === 'SCAN') startScanSequence();
+      else setScanStatus('READY');
     }
   }, [route.params?.resetScan]);
 
@@ -86,16 +83,7 @@ export default function CameraScreen({ navigation, route }) {
     setLiveMask(null);
     setErrorModalVisible(false);
     
-    scanBuffer.current = { 
-      widths: [], 
-      heights: [], 
-      lastImage: null, 
-      algaeLevel: 0, 
-      algaeDesc: '', 
-      turbidityLevel: 2, 
-      processingTime: 0, 
-      modelVersion: '' 
-    };
+    scanBuffer.current = { widths: [], heights: [], lastImage: null, algaeLevel: 0, algaeDesc: '', turbidityLevel: 2, processingTime: 0, modelVersion: '' };
 
     startAnimations();
     searchTimerRef.current = setTimeout(() => { setScanStatus('detecting'); }, 1500);
@@ -117,15 +105,11 @@ export default function CameraScreen({ navigation, route }) {
       const formData = new FormData();
       formData.append('photo', { uri: photo.uri, type: 'image/jpeg', name: 'scan.jpg' });
 
-      // --- ⏱️ START REAL TIMER ---
       const startTimeMs = Date.now();
-
       const response = await aiClient.post('/measure', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         transformRequest: (data) => data, 
       });
-
-      // --- ⏱️ STOP REAL TIMER ---
       const endTimeMs = Date.now();
       const timeTakenInSeconds = ((endTimeMs - startTimeMs) / 1000).toFixed(2);
 
@@ -133,19 +117,15 @@ export default function CameraScreen({ navigation, route }) {
 
       if (data.success === false || !data.measurements || data.measurements.length === 0) {
         if (data.image) setLiveMask(`data:image/jpeg;base64,${data.image}`);
-        setIsScanningLoop(false);
-        stopAnimations(); 
-        Vibration.vibrate(400); 
-        setTimeout(() => { setErrorModalVisible(true); }, 500); 
+        handleScanFailure();
         return; 
       }
 
       if (data.image) setLiveMask(`data:image/jpeg;base64,${data.image}`);
 
-      // Save real data to buffer from Python response
       scanBuffer.current.algaeLevel = data.algae_level;
       scanBuffer.current.algaeDesc = data.algae_desc;
-      scanBuffer.current.turbidityLevel = data.turbidity_level || 2; // NEW: Turbidity added
+      scanBuffer.current.turbidityLevel = data.turbidity_level || 2; 
       scanBuffer.current.processingTime = timeTakenInSeconds;
       scanBuffer.current.modelVersion = data.model_version || 'Local Fallback';
 
@@ -162,22 +142,18 @@ export default function CameraScreen({ navigation, route }) {
         }
         performScanLoop(scanBuffer.current.widths.length);
       } else {
-        setIsScanningLoop(false);
-        setErrorModalVisible(true);
+        handleScanFailure();
       }
 
     } catch (error) {
       console.error("Scan Error:", error);
-      setIsScanningLoop(false);
-      setLiveMask(null);
-      stopAnimations();
-      setErrorModalVisible(true);
+      handleScanFailure();
     }
   };
 
   const finishScanning = () => {
     if (scanBuffer.current.widths.length === 0) {
-        setErrorModalVisible(true);
+        handleScanFailure();
         return;
     }
 
@@ -189,17 +165,15 @@ export default function CameraScreen({ navigation, route }) {
     const avgW = widths.reduce((a, b) => a + b, 0) / widths.length;
     const avgH = heights.reduce((a, b) => a + b, 0) / heights.length;
     
-    // --- GENERATE REAL SCAN ID ---
     const generatedScanId = `CRY-${Math.floor(Date.now() / 1000)}`;
 
-    // Pass REAL data to results screen
     navigation.navigate('Results', { 
         imageUri: scanBuffer.current.lastImage, 
         type: 'image',
         measurements: [{ width_cm: parseFloat(avgW.toFixed(2)), height_cm: parseFloat(avgH.toFixed(2)) }], 
         algae_level: scanBuffer.current.algaeLevel,
         algae_desc: scanBuffer.current.algaeDesc,
-        turbidity_level: scanBuffer.current.turbidityLevel, // NEW
+        turbidity_level: scanBuffer.current.turbidityLevel, 
         processing_time: `${scanBuffer.current.processingTime}s`,
         model_version: scanBuffer.current.modelVersion,
         scan_id: generatedScanId
@@ -210,16 +184,153 @@ export default function CameraScreen({ navigation, route }) {
     scanBuffer.current = { widths: [], heights: [], lastImage: null, algaeLevel: 0, algaeDesc: '', turbidityLevel: 2, processingTime: 0, modelVersion: '' };
   };
 
+  const takeSinglePhotoAI = async () => {
+    if (!cameraRef.current || isScanningLoop) return;
+    
+    setScanStatus('CAPTURING...');
+    setIsScanningLoop(true); 
+    setLiveMask(null);
+    startAnimations();
+
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.4, base64: false, skipProcessing: true });
+      const formData = new FormData();
+      formData.append('photo', { uri: photo.uri, type: 'image/jpeg', name: 'photo.jpg' });
+
+      const startTimeMs = Date.now();
+      const response = await aiClient.post('/measure', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        transformRequest: (data) => data, 
+      });
+      const timeTakenInSeconds = ((Date.now() - startTimeMs) / 1000).toFixed(2);
+      const data = response.data;
+
+      if (data.success === false || !data.measurements || data.measurements.length === 0) {
+        if (data.image) setLiveMask(`data:image/jpeg;base64,${data.image}`);
+        handleScanFailure();
+        return; 
+      }
+
+      const target = data.measurements.find(m => m.type === 'target');
+      
+      if (target) {
+        Vibration.vibrate([0, 50, 100, 50]); 
+        stopAnimations();
+        setIsScanningLoop(false);
+
+        const generatedScanId = `CRY-${Math.floor(Date.now() / 1000)}`;
+
+        navigation.navigate('Results', { 
+            imageUri: `data:image/jpeg;base64,${data.image}`, 
+            type: 'image',
+            measurements: [{ width_cm: parseFloat(target.width_cm.toFixed(2)), height_cm: parseFloat(target.height_cm.toFixed(2)) }], 
+            algae_level: data.algae_level,
+            algae_desc: data.algae_desc,
+            turbidity_level: data.turbidity_level || 2,
+            processing_time: `${timeTakenInSeconds}s`,
+            model_version: data.model_version || 'Local Fallback',
+            scan_id: generatedScanId
+        });
+        setScanStatus('READY');
+      } else {
+        handleScanFailure();
+      }
+
+    } catch (error) {
+      console.error("Photo Error:", error);
+      handleScanFailure();
+    }
+  };
+
+  const handleGalleryPick = async () => {
+    if (isScanningLoop) return;
+
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setScanStatus('ANALYZING GALLERY IMAGE...');
+      setIsScanningLoop(true); 
+      setLiveMask(null);
+      startAnimations();
+
+      try {
+        const formData = new FormData();
+        formData.append('photo', { uri: result.assets[0].uri, type: 'image/jpeg', name: 'gallery.jpg' });
+
+        const startTimeMs = Date.now();
+        const response = await aiClient.post('/measure', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          transformRequest: (data) => data, 
+        });
+        
+        const timeTakenInSeconds = ((Date.now() - startTimeMs) / 1000).toFixed(2);
+        const data = response.data;
+
+        if (data.success === false || !data.measurements || data.measurements.length === 0) {
+          if (data.image) setLiveMask(`data:image/jpeg;base64,${data.image}`);
+          handleScanFailure();
+          return; 
+        }
+
+        const target = data.measurements.find(m => m.type === 'target');
+        
+        if (target) {
+          Vibration.vibrate([0, 50, 100, 50]); 
+          stopAnimations();
+          setIsScanningLoop(false);
+
+          const generatedScanId = `CRY-${Math.floor(Date.now() / 1000)}`;
+
+          navigation.navigate('Results', { 
+              imageUri: `data:image/jpeg;base64,${data.image}`, 
+              type: 'image',
+              measurements: [{ width_cm: parseFloat(target.width_cm.toFixed(2)), height_cm: parseFloat(target.height_cm.toFixed(2)) }], 
+              algae_level: data.algae_level,
+              algae_desc: data.algae_desc,
+              turbidity_level: data.turbidity_level || 2,
+              processing_time: `${timeTakenInSeconds}s`,
+              model_version: data.model_version || 'Local Fallback',
+              scan_id: generatedScanId
+          });
+          
+          if (selectedMode === 'PHOTO') setScanStatus('READY');
+          else setScanStatus('searching');
+
+        } else {
+          handleScanFailure();
+        }
+
+      } catch (error) {
+        console.error("Gallery AI Error:", error);
+        handleScanFailure();
+      }
+    }
+  };
+
+  const handleScanFailure = () => {
+    setIsScanningLoop(false);
+    stopAnimations(); 
+    Vibration.vibrate(400); 
+    setTimeout(() => { setErrorModalVisible(true); }, 500); 
+  };
+
   const handleRetryScan = () => {
     setErrorModalVisible(false); 
     setLiveMask(null); 
-    startScanSequence(); 
+    if (selectedMode === 'SCAN') startScanSequence(); 
+    else setScanStatus('READY');
   };
 
   useEffect(() => {
-    if (selectedMode === 'SCAN') { startScanSequence(); } 
-    else {
-      setScanStatus('idle');
+    if (selectedMode === 'SCAN') { 
+        startScanSequence(); 
+    } else {
+      setScanStatus('READY');
       clearTimeout(searchTimerRef.current);
       clearTimeout(lockTimerRef.current);
       stopAnimations();
@@ -231,32 +342,6 @@ export default function CameraScreen({ navigation, route }) {
     };
   }, [selectedMode]);
 
-  useEffect(() => {
-    if (isRecording) {
-      timerRef.current = setInterval(() => setRecordingDuration(p => p + 1), 1000);
-    } else {
-      clearInterval(timerRef.current);
-      setRecordingDuration(0);
-    }
-    return () => clearInterval(timerRef.current);
-  }, [isRecording]);
-
-  const formatDuration = (s) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec < 10 ? '0' : ''}${sec}`;
-  };
-
-  const handleManualCapture = async () => {
-    if (!cameraRef.current || isScanningLoop) return;
-    if (selectedMode === 'PHOTO') {
-       const photo = await cameraRef.current.takePictureAsync();
-       navigation.navigate('Results', { imageUri: photo.uri, type: 'image' });
-    } else if (selectedMode === 'SCAN') {
-       startScanSequence();
-    }
-  };
-
   const scanLineTranslateY = scanLineAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [-SCAN_HEIGHT/2.2, SCAN_HEIGHT/2.2]
@@ -267,132 +352,153 @@ export default function CameraScreen({ navigation, route }) {
   return (
     <View style={styles.container}>
       <StatusBar hidden={true} />
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing="back" enableTorch={flashMode} mode={selectedMode === 'VIDEO' ? 'video' : 'picture'}>
+      
+      {/* 1. CameraView closed immediately. No children inside! */}
+      <CameraView 
+        ref={cameraRef} 
+        style={StyleSheet.absoluteFillObject} 
+        facing="back" 
+        enableTorch={flashMode} 
+        mode="picture" 
+      />
         
-        {liveMask && (isScanningLoop || errorModalVisible) && (
-            <Image source={{ uri: liveMask }} style={[StyleSheet.absoluteFillObject, { opacity: 0.8 }]} resizeMode="contain" />
-        )}
+      {/* 2. All overlays are now Siblings, floating on top securely */}
+      {liveMask && (isScanningLoop || errorModalVisible) && (
+          <Image source={{ uri: liveMask }} style={[StyleSheet.absoluteFillObject, { opacity: 0.8 }]} resizeMode="contain" />
+      )}
 
-        {errorModalVisible && (
-            <View style={styles.customErrorOverlay}>
-                <View style={styles.errorCard}>
-                    <View style={styles.errorIconBg}>
-                        <Ionicons name="warning-outline" size={40} color="#FF4757" />
-                    </View>
-                    <Text style={styles.errorTitle}>Detection Failed</Text>
-                    <Text style={styles.errorDesc}>
-                        We couldn't find a crayfish in the frame. Please adjust your camera and ensure the subject is clearly visible from 6 inches.
-                    </Text>
-                    <TouchableOpacity style={styles.retryButton} onPress={handleRetryScan}>
-                        <Ionicons name="refresh" size={20} color="#FFF" />
-                        <Text style={styles.retryButtonText}>Try Again</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        )}
-
-        {selectedMode === 'SCAN' && !errorModalVisible && (
-          <View style={styles.scanLayer}>
-            <View style={styles.scanBox}>
-               {!liveMask && (
-                 <>
-                   <View style={[styles.corner, styles.tl]} />
-                   <View style={[styles.corner, styles.tr]} />
-                   <View style={[styles.corner, styles.bl]} />
-                   <View style={[styles.corner, styles.br]} />
-                 </>
-               )}
-
-               {!liveMask && scanStatus !== 'locked' && (
-                   <Animated.View style={[styles.laserLine, { transform: [{ translateY: scanLineTranslateY }] }]} />
-               )}
-
-               {!liveMask && (
-                   <Animated.View style={[styles.centerTarget, { transform: [{ scale: pulseAnim }] }]}>
-                      {scanStatus.includes('SCANNING') ? (
-                           <ActivityIndicator size="large" color="#4CC9F0" />
-                      ) : (
-                           scanStatus === 'searching' ? <Ionicons name="scan" size={48} color="rgba(255,255,255,0.7)" /> :
-                           scanStatus === 'detecting' ? <Ionicons name="aperture" size={54} color="#FFD166" /> :
-                           <Ionicons name="checkmark-circle" size={80} color="#06D6A0" />
-                      )}
-                   </Animated.View>
-               )}
-            </View>
-            <View style={styles.statusContainer}>
-              <View style={[styles.statusBadge, (scanStatus === 'locked' || scanStatus.includes('SCANNING')) ? styles.statusLocked : styles.statusActive]}>
-                <Text style={styles.statusText}>
-                  {scanStatus === 'searching' ? 'LOCATING SUBJECT...' : scanStatus === 'detecting' ? 'HOLD STEADY' : scanStatus}
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.blurBtn}>
-                <Ionicons name="close" size={24} color="#FFF" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setFlashMode(!flashMode)} style={styles.blurBtn}>
-                <Ionicons name={flashMode ? "flash" : "flash-off"} size={22} color="#FFF" />
-            </TouchableOpacity>
-        </View>
-
-        <View style={styles.footer}>
-             <View style={styles.modeRow}>
-                {MODES.map((m) => (
-                  <TouchableOpacity key={m} onPress={() => !isScanningLoop && setSelectedMode(m)} style={[styles.modeItem, selectedMode === m && styles.modeItemActive]}>
-                    <Text style={[styles.modeLabel, selectedMode === m && styles.activeModeLabel]}>{m}</Text>
+      {errorModalVisible && (
+          <View style={styles.customErrorOverlay}>
+              <View style={styles.errorCard}>
+                  <View style={styles.errorIconBg}>
+                      <Ionicons name="warning-outline" size={40} color="#FF4757" />
+                  </View>
+                  <Text style={styles.errorTitle}>Detection Failed</Text>
+                  <Text style={styles.errorDesc}>
+                      We couldn't find a crayfish in the frame. Please adjust your camera and ensure the subject is clearly visible from 6 inches.
+                  </Text>
+                  <TouchableOpacity style={styles.retryButton} onPress={handleRetryScan}>
+                      <Ionicons name="refresh" size={20} color="#FFF" />
+                      <Text style={styles.retryButtonText}>Try Again</Text>
                   </TouchableOpacity>
-                ))}
-             </View>
-
-             <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.sideActionBtn}>
-                    <Ionicons name="images-outline" size={26} color="#FFF" />
-                </TouchableOpacity>
-                <View style={styles.shutterContainer}>
-                   <TouchableOpacity onPress={() => startScanSequence()} disabled={isScanningLoop}>
-                      <View style={[styles.scanPlaceholder, isScanningLoop && {borderColor: '#4CC9F0'}]}>
-                         <MaterialCommunityIcons name="robot-outline" size={32} color={isScanningLoop ? "#4CC9F0" : "rgba(255,255,255,0.3)"} />
-                      </View>
-                   </TouchableOpacity>
-                </View>
-                <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.sideActionBtn}>
-                    <Ionicons name="help-circle-outline" size={28} color="#FFF" />
-                </TouchableOpacity>
-             </View>
-        </View>
-
-        <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity style={{flex:1}} onPress={() => setModalVisible(false)} />
-            <View style={styles.modalSheet}>
-              <View style={styles.dragHandle} />
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Scan Guide</Text>
-                <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalCloseBtn}>
-                  <Ionicons name="close-circle" size={30} color="#E5E5E5" />
-                </TouchableOpacity>
               </View>
-              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                <View style={styles.guideStep}>
-                   <View style={styles.stepIconContainer}>
-                      <MaterialCommunityIcons name="hand-back-left" size={28} color="#4CC9F0" />
-                   </View>
-                   <View style={styles.stepTextContainer}>
-                      <Text style={styles.stepHeader}>1. Anchor Gesture</Text>
-                      <Text style={styles.stepDesc}>Place your middle finger on the surface and rest your phone on your extended thumb (~6 inches) for calibration.</Text>
-                   </View>
-                </View>
-                <TouchableOpacity style={styles.primaryBtn} onPress={() => setModalVisible(false)}>
-                  <Text style={styles.primaryBtnText}>I'm Ready</Text>
-                </TouchableOpacity>
-              </ScrollView>
+          </View>
+      )}
+
+      {!errorModalVisible && (
+        <View style={styles.scanLayer}>
+          <View style={styles.scanBox}>
+              {!liveMask && (
+                <>
+                  <View style={[styles.corner, styles.tl]} />
+                  <View style={[styles.corner, styles.tr]} />
+                  <View style={[styles.corner, styles.bl]} />
+                  <View style={[styles.corner, styles.br]} />
+                </>
+              )}
+
+              {!liveMask && scanStatus !== 'locked' && scanStatus !== 'READY' && selectedMode === 'SCAN' && (
+                  <Animated.View style={[styles.laserLine, { transform: [{ translateY: scanLineTranslateY }] }]} />
+              )}
+
+              {!liveMask && (
+                  <Animated.View style={[styles.centerTarget, { transform: [{ scale: pulseAnim }] }]}>
+                    {scanStatus.includes('SCANNING') || scanStatus.includes('CAPTURING') || scanStatus.includes('ANALYZING') ? (
+                          <ActivityIndicator size="large" color="#4CC9F0" />
+                    ) : (
+                          scanStatus === 'searching' ? <Ionicons name="scan" size={48} color="rgba(255,255,255,0.7)" /> :
+                          scanStatus === 'detecting' ? <Ionicons name="aperture" size={54} color="#FFD166" /> :
+                          scanStatus === 'locked' ? <Ionicons name="checkmark-circle" size={80} color="#06D6A0" /> :
+                          <Ionicons name="camera-outline" size={48} color="rgba(255,255,255,0.5)" /> 
+                    )}
+                  </Animated.View>
+              )}
+          </View>
+          <View style={styles.statusContainer}>
+            <View style={[styles.statusBadge, (scanStatus === 'locked' || scanStatus.includes('SCANNING') || scanStatus.includes('CAPTURING') || scanStatus.includes('ANALYZING')) ? styles.statusLocked : styles.statusActive]}>
+              <Text style={styles.statusText}>
+                {scanStatus === 'searching' ? 'LOCATING SUBJECT...' : scanStatus === 'detecting' ? 'HOLD STEADY' : scanStatus}
+              </Text>
             </View>
           </View>
-        </Modal>
-      </CameraView>
+        </View>
+      )}
+
+      <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.blurBtn}>
+              <Ionicons name="close" size={24} color="#FFF" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setFlashMode(!flashMode)} style={styles.blurBtn}>
+              <Ionicons name={flashMode ? "flash" : "flash-off"} size={22} color="#FFF" />
+          </TouchableOpacity>
+      </View>
+
+      <View style={styles.footer}>
+            <View style={styles.modeRow}>
+              {MODES.map((m) => (
+                <TouchableOpacity key={m} onPress={() => !isScanningLoop && setSelectedMode(m)} style={[styles.modeItem, selectedMode === m && styles.modeItemActive]}>
+                  <Text style={[styles.modeLabel, selectedMode === m && styles.activeModeLabel]}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.actionRow}>
+              <TouchableOpacity onPress={handleGalleryPick} style={styles.sideActionBtn}>
+                  <Ionicons name="images-outline" size={26} color="#FFF" />
+              </TouchableOpacity>
+              <View style={styles.shutterContainer}>
+                  
+                  <TouchableOpacity 
+                      onPress={() => {
+                          if (selectedMode === 'SCAN') startScanSequence();
+                          else takeSinglePhotoAI();
+                      }} 
+                      disabled={isScanningLoop}
+                  >
+                    <View style={[styles.scanPlaceholder, isScanningLoop && {borderColor: '#4CC9F0'}]}>
+                        <MaterialCommunityIcons 
+                          name={selectedMode === 'SCAN' ? "robot-outline" : "camera-iris"} 
+                          size={32} 
+                          color={isScanningLoop ? "#4CC9F0" : "rgba(255,255,255,0.8)"} 
+                        />
+                    </View>
+                  </TouchableOpacity>
+
+              </View>
+              <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.sideActionBtn}>
+                  <Ionicons name="help-circle-outline" size={28} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+      </View>
+
+      <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={{flex:1}} onPress={() => setModalVisible(false)} />
+          <View style={styles.modalSheet}>
+            <View style={styles.dragHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Scan Guide</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close-circle" size={30} color="#E5E5E5" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <View style={styles.guideStep}>
+                  <View style={styles.stepIconContainer}>
+                    <MaterialCommunityIcons name="hand-back-left" size={28} color="#4CC9F0" />
+                  </View>
+                  <View style={styles.stepTextContainer}>
+                    <Text style={styles.stepHeader}>1. Anchor Gesture</Text>
+                    <Text style={styles.stepDesc}>Place your middle finger on the surface and rest your phone on your extended thumb (~6 inches) for calibration.</Text>
+                  </View>
+              </View>
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => setModalVisible(false)}>
+                <Text style={styles.primaryBtnText}>I'm Ready</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

@@ -117,7 +117,10 @@ export default function HomeScreen({ navigation }) {
     if (status !== 'granted') return showNotification("Gallery permission is needed.", "warning");
     
     let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 1,
+        mediaTypes: ['images'],
+        allowsEditing: true, 
+        aspect: [4, 3], 
+        quality: 1,
     });
     if (!result.canceled) showNotification("Image selected! Analyzing...", "success");
   };
