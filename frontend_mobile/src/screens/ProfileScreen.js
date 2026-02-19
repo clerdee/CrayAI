@@ -52,7 +52,6 @@ export default function ProfileScreen({ navigation, route }) {
       let profileId = targetUserId;
       let profileData = null;
 
-      // FIRST: Always fetch my own profile to know who "I" am (for the edit button)
       const myRes = await client.get('/auth/profile');
       if (myRes.data.success) {
          setLoggedInUserId(myRes.data.user._id || myRes.data.user.id);
@@ -164,7 +163,6 @@ export default function ProfileScreen({ navigation, route }) {
     setModalVisible(true);
   };
 
-  // Helper function to format date
   const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -175,7 +173,6 @@ export default function ProfileScreen({ navigation, route }) {
     const hasMedia = item.media && item.media.length > 0;
     let imageSource = require('../../assets/crayfish.png'); 
 
-    // Handle media object vs string
     if (hasMedia) {
       const firstMedia = item.media[0];
       if (typeof firstMedia === 'string') {
@@ -346,13 +343,11 @@ export default function ProfileScreen({ navigation, route }) {
         />
       )}
 
-      {/* --- 🚨 UPDATED MODAL CALL WITH CURRENT USER ID & ONUPDATE --- */}
       <PostDetailModal 
         visible={modalVisible} 
         post={selectedPost} 
         currentUserId={loggedInUserId}
         onUpdate={(updatedPost) => {
-          // Updates the grid immediately so changes reflect without refreshing
           setUserPosts(prev => prev.map(p => p._id === updatedPost._id ? updatedPost : p));
           setSelectedPost(updatedPost);
         }}
@@ -411,21 +406,16 @@ const styles = StyleSheet.create({
   divider: { width: 1, backgroundColor: '#ECF0F1', height: '80%' },
 
   bioText: { marginHorizontal: 30, marginTop: 20, marginBottom: 10, fontSize: 14, color: '#555', lineHeight: 20, textAlign: 'center' },
-  
   gridHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#ECF0F1' },
   gridTitle: { fontSize: 14, fontWeight: '800', color: '#3D5A80', textTransform: 'uppercase' },
   scanCount: { fontSize: 12, color: '#98C1D9', fontWeight: '600' },
-  
   gridContainer: { paddingBottom: 100 },
   gridItem: { width: GRID_SIZE, height: GRID_SIZE, padding: 1 },
   gridImage: { width: '100%', height: '100%', backgroundColor: '#EEE' },
-  
   dateBadge: { position: 'absolute', bottom: 5, left: 5, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   dateText: { color: '#FFF', fontSize: 9, fontWeight: '700' },
   multiIcon: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 4, padding: 2 },
-
   emptyState: { padding: 40, alignItems: 'center' },
   emptyStateText: { color: '#999', fontSize: 14, fontStyle: 'italic' },
-
   bottomNavWrapper: { position: 'absolute', bottom: 0, width: '100%' }
 });
