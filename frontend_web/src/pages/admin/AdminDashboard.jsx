@@ -264,7 +264,7 @@ const AdminDashboard = () => {
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
               <div className="flex justify-between items-center mb-6">
                   <h3 className="font-bold text-slate-800 text-lg">Recent AI Logs</h3>
-                  <button onClick={() => navigate('/admin/logs')} className="text-xs text-teal-600 font-bold hover:underline">
+                  <button onClick={() => navigate('/admin/scans')} className="text-xs text-teal-600 font-bold hover:underline">
                       View All
                   </button>
               </div>

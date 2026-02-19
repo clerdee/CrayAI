@@ -3,7 +3,7 @@ import axios from 'axios';
 import AdminLayout from '../../layouts/AdminLayout';
 import { 
   Search, Filter, CheckCircle, AlertTriangle, Eye, MoreHorizontal, MapPin, 
-  Pencil, Database, Download, Trash2, Loader, ChevronLeft, ChevronRight, ScanLine, RefreshCw
+  Pencil, Database, Trash2, Loader, ChevronLeft, ChevronRight, ScanLine, RefreshCw, X
 } from 'lucide-react';
 import ScanDetailsModal from './ScanDetailsModal';
 
@@ -19,8 +19,19 @@ const AIScanLogs = () => {
   const [activeMenu, setActiveMenu] = useState(null);
   const menuRef = useRef(null);
 
+  // Custom Modal & Toast States
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, logId: null });
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6; 
+
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: '', type: 'success' });
+    }, 3000);
+  };
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -32,11 +43,6 @@ const AIScanLogs = () => {
       
       if (response.data && response.data.success) {
          const formattedLogs = response.data.records.map(record => {
-            const isUnhealthy = 
-                record.environment?.algae_label === 'High' || 
-                record.environment?.algae_label === 'Critical' || 
-                record.environment?.turbidity_level > 6;
-
             const width = record.morphometrics?.width_cm || 0;
             const height = record.morphometrics?.height_cm || 0;
             const widthIn = (width / 2.54).toFixed(2);
@@ -49,7 +55,7 @@ const AIScanLogs = () => {
             return {
                 id: record.scanId || record._id,
                 user: record.user ? `${record.user.firstName} ${record.user.lastName}` : 'Unknown User',
-                userEmail: record.user?.email || 'No email provided', // Fetched Email
+                userEmail: record.user?.email || 'No email provided', 
                 userImage: record.user?.profilePic || null, 
                 pond: record.location || 'Unknown Location',
                 species: 'Australian Red Claw', 
@@ -71,6 +77,7 @@ const AIScanLogs = () => {
       }
     } catch (error) {
       console.error("Failed to fetch logs:", error);
+      showToast("Failed to fetch logs.", "error");
     } finally {
       setLoading(false);
     }
@@ -90,14 +97,35 @@ const AIScanLogs = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleMenuAction = async (action, logId) => {
+  const handleMenuAction = (action, logId) => {
     setActiveMenu(null); 
     if (action === 'delete') {
-      try {
-        setLogs(prev => prev.filter(log => log.id !== logId));
-      } catch (error) {
-        console.error("Delete failed", error);
-      }
+      setDeleteModal({ isOpen: true, logId });
+    }
+  };
+
+  const confirmDelete = async () => {
+    const logId = deleteModal.logId;
+    if (!logId) return;
+
+    try {
+      const logToDelete = logs.find(log => log.id === logId);
+      if (!logToDelete) return;
+
+      const objectId = logToDelete.rawRecord._id;
+      const token = localStorage.getItem('token');
+      
+      await axios.delete(`${API_BASE_URL}/scans/${objectId}/hard-delete`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      setLogs(prev => prev.filter(log => log.id !== logId));
+      showToast("Log deleted successfully.");
+    } catch (error) {
+      console.error("Delete failed:", error);
+      showToast("Failed to delete log. Please try again.", "error");
+    } finally {
+      setDeleteModal({ isOpen: false, logId: null });
     }
   };
 
@@ -170,7 +198,7 @@ const AIScanLogs = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 min-h-[600px] flex flex-col"> 
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 min-h-[600px] flex flex-col relative z-0"> 
           
           <div className="overflow-x-auto flex-1">
               <table className="w-full text-left border-collapse min-w-[1050px]">
@@ -310,9 +338,9 @@ const AIScanLogs = () => {
                                               {activeMenu === log.id && (
                                                   <div ref={menuRef} className="absolute right-0 top-8 w-48 bg-white rounded-xl shadow-xl border border-slate-100 z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right text-left">
                                                       <div className="p-1.5 space-y-1">
-                                                          <button onClick={(e) => { e.stopPropagation(); handleMenuAction('edit', log.id); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg transition-colors">
+                                                          {/* <button onClick={(e) => { e.stopPropagation(); handleMenuAction('edit', log.id); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg transition-colors">
                                                               <Pencil className="w-3.5 h-3.5" /> Edit Details
-                                                          </button>
+                                                          </button> */}
                                                           <button onClick={(e) => { e.stopPropagation(); handleMenuAction('dataset', log.id); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg transition-colors">
                                                               <Database className="w-3.5 h-3.5" /> Add to Training
                                                           </button>
@@ -375,6 +403,52 @@ const AIScanLogs = () => {
       </div>
 
       <ScanDetailsModal log={selectedLog} onClose={() => setSelectedLog(null)} />
+
+      {/* --- Custom Delete Confirmation Modal --- */}
+      {deleteModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="p-6">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4 mx-auto">
+                        <AlertTriangle className="w-6 h-6 text-red-600" />
+                    </div>
+                    <h3 className="text-lg font-bold text-center text-slate-900 mb-2">Delete Scan Log</h3>
+                    <p className="text-center text-sm text-slate-500 mb-6">
+                        Are you sure you want to permanently delete this scan log? This action cannot be undone.
+                    </p>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => setDeleteModal({ isOpen: false, logId: null })}
+                            className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors text-sm"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={confirmDelete}
+                            className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors text-sm shadow-sm shadow-red-200"
+                        >
+                            Delete Log
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* --- Custom Toast Notification --- */}
+      {toast.show && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border ${
+                toast.type === 'success' ? 'bg-teal-50 border-teal-100 text-teal-800' : 'bg-red-50 border-red-100 text-red-800'
+            }`}>
+                {toast.type === 'success' ? <CheckCircle className="w-5 h-5 text-teal-500" /> : <AlertTriangle className="w-5 h-5 text-red-500" />}
+                <p className="text-sm font-semibold">{toast.message}</p>
+                <button onClick={() => setToast({ show: false, message: '', type: 'success' })} className="ml-2 opacity-50 hover:opacity-100">
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
+      )}
 
     </AdminLayout>
   );
