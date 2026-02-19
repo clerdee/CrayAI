@@ -6,7 +6,9 @@ import client from '../api/client';
 
 const UserLayout = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
+  
+  // Now ONLY used for mobile screens!
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -22,31 +24,23 @@ const UserLayout = ({ children }) => {
       }
     };
     fetchUser();
-
-    // Auto adjust on resize
-    const handleResize = () => {
-      if (window.innerWidth < 768) setIsSidebarOpen(false);
-      else setIsSidebarOpen(true);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   return (
-    // Flex container holds the entire screen
     <div className="flex h-screen w-full bg-[#F4F7F9] overflow-hidden">
       
-      {/* Sidebar now acts as a flex child on desktop, pushing content naturally */}
-      <Sidebar user={user} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+      {/* Sidebar Component */}
+      <Sidebar user={user} isMobileOpen={isMobileMenuOpen} setIsMobileOpen={setIsMobileMenuOpen} />
 
-      {/* Main Content Area (Header + Page) takes remaining space */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen relative">
-        <Header user={user} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+      {/* Main Content Area (Permanently leaves 80px space on desktop for the collapsed icons) */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen relative transition-all duration-300 md:pl-20 pl-0">
         
-        {/* Scrollable Page Content */}
+        <Header user={user} toggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+        
         <main className="flex-1 overflow-y-auto overflow-x-hidden w-full relative">
           {children}
         </main>
+
       </div>
 
       {/* Floating Chatbot */}

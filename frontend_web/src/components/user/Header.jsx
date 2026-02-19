@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Menu, HelpCircle, AlertCircle, X, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-const Header = ({ user, toggleSidebar }) => {
+const Header = ({ user, toggleMobileMenu }) => {
   const [showHelpModal, setShowHelpModal] = useState(false);
 
   const faqs = [
@@ -17,15 +17,15 @@ const Header = ({ user, toggleSidebar }) => {
         <div className="flex justify-between items-center px-4 md:px-8 h-20">
           
           <div className="flex items-center gap-4">
-            {/* Mobile Hamburger (Hidden on Desktop because it's in the Sidebar) */}
+            {/* Mobile Hamburger - Only shows on mobile devices */}
             <button 
-              onClick={toggleSidebar}
+              onClick={toggleMobileMenu}
               className="md:hidden p-2 bg-[#293241] text-[#E0FBFC] rounded-lg hover:bg-[#293241]/80 transition-colors focus:outline-none focus:ring-2 focus:ring-[#98C1D9]/50"
             >
               <Menu className="w-6 h-6" />
             </button>
             <h1 className="text-xl font-black text-white hidden sm:block tracking-wide">
-              RESEARCHER <span className="text-[#98C1D9]">PORTAL</span>
+              CRAYFISH <span className="text-[#98C1D9]">AI</span>
             </h1>
           </div>
 
