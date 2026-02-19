@@ -44,9 +44,11 @@ const UserDashboard = () => {
     try {
       const token = localStorage.getItem('token');
       
+      // Fetch Real User Data
       const profileRes = await client.get('/auth/profile', { headers: { Authorization: `Bearer ${token}` } });
       if (profileRes.data?.success) setCurrentUser(profileRes.data.user);
 
+      // Fetch Real Scan Data
       const scanRes = await client.get('/scans/me', { headers: { Authorization: `Bearer ${token}` } });
       if (scanRes.data?.success) {
         const records = scanRes.data.records?.filter(r => !r.isDeleted) || [];
@@ -61,6 +63,7 @@ const UserDashboard = () => {
         setStats({ total: records.length, warnings, berried }); 
       }
 
+      // Fetch Real Market Data
       const feedRes = await client.get('/posts/feed', { headers: { Authorization: `Bearer ${token}` } });
       if (feedRes.data?.posts) {
         const sales = feedRes.data.posts.filter(p => p.isForSale && p.price > 0);
@@ -128,22 +131,22 @@ const UserDashboard = () => {
     ? [{ name: 'No Scans Yet', value: 1, color: 'rgba(255,255,255,0.05)' }] 
     : genderData.data;
 
-  // Logic specifically for the Size/Age Distribution Chart based on the reference Python code
+  // Logic for Size/Age Distribution Chart strictly matching the Python backend logic
   const getSizeAgeChartData = () => {
     let counts = { crayling: 0, juvenile: 0, subAdult: 0, adult: 0 };
     recentScans.forEach(r => {
        const size = r.morphometrics?.height_cm || 0;
-       // We ignore 0 or missing
+       
        if (size > 0 && size < 3) counts.crayling++;
        else if (size >= 3 && size < 7) counts.juvenile++;
        else if (size >= 7 && size < 11) counts.subAdult++;
        else if (size >= 11) counts.adult++;
     });
     return [
-       { name: 'Crayling (<1mo | <3cm)', value: counts.crayling },
-       { name: 'Juvenile (1-3mo | 3-7cm)', value: counts.juvenile },
-       { name: 'Sub-Adult (3-6mo | 7-11cm)', value: counts.subAdult },
-       { name: 'Adult (>6mo | 11cm+)', value: counts.adult }
+       { name: 'Crayling (< 1mo | < 3cm)', value: counts.crayling },
+       { name: 'Juvenile (1-3mo | 3-6.9cm)', value: counts.juvenile },
+       { name: 'Sub-Adult (3-6mo | 7-10.9cm)', value: counts.subAdult },
+       { name: 'Adult/Breeder (> 6mo | 11cm+)', value: counts.adult }
     ];
   };
   const sizeAgeData = getSizeAgeChartData();
@@ -425,14 +428,13 @@ const UserDashboard = () => {
 
             <div className="w-full h-[400px] relative">
                 <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                    {/* Fixed Margin: Removed negative left margin, added bottom margin to prevent text clipping */}
                     <BarChart data={sizeAgeData} margin={{ top: 20, right: 20, left: 0, bottom: 25 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                         <XAxis 
                             dataKey="name" 
                             axisLine={false} 
                             tickLine={false} 
-                            tick={{ fill: '#94A3B8', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }} 
+                            tick={{ fill: '#94A3B8', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }} 
                             dy={10} 
                         />
                         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94A3B8', fontSize: 11, fontWeight: 700 }} />

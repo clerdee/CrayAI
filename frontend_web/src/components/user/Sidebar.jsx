@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Clock, Camera, Users, LogOut, X, User } from 'lucide-react';
+import { Home, Clock, Camera, Users, LogOut, X, User, MessageSquare, Bell } from 'lucide-react';
 
 const Sidebar = ({ user, isMobileOpen, setIsMobileOpen }) => {
   const location = useLocation();
@@ -16,8 +16,8 @@ const Sidebar = ({ user, isMobileOpen, setIsMobileOpen }) => {
     { name: 'Community', path: '/community', icon: Users },
     { name: 'Scan', path: '/scan', icon: Camera },
     { name: 'History', path: '/history', icon: Clock },
-    { name: 'Chat', path: '/chat', icon: User },
-    // { name: 'Notifications', path: '/notifications', icon: AlertCircle },
+    { name: 'Chat', path: '/chat', icon: MessageSquare },
+    { name: 'Notifications', path: '/notifications', icon: Bell },
   ];
 
   return (

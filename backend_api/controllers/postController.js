@@ -190,7 +190,9 @@ exports.updatePost = async (req, res) => {
     if (typeof price !== 'undefined') post.price = price;
 
     await post.save();
-    await post.populate('userId', 'firstName lastName profilePic');
+    await post.populate('user', 'firstName lastName profilePic email')
+    await post.populate('comments.user', 'firstName lastName profilePic')
+    .sort({ createdAt: -1 });
 
     res.json({ success: true, message: "Post updated", post });
   } catch (error) {

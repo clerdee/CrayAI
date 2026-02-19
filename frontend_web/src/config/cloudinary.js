@@ -1,8 +1,5 @@
-const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
 export const CLOUDINARY_CONFIG = {
-  cloudName,
-  uploadPreset,
-  apiUrl: `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`
+  cloudName: import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dvdrak5wl', 
+  uploadPreset: import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'CrayAI',  
+  apiUrl: import.meta.env.VITE_CLOUDINARY_API_URL || 'https://api.cloudinary.com/v1_1/dvdrak5wl/image/upload'
 };

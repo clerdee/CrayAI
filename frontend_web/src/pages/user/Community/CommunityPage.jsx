@@ -1,0 +1,193 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Users, LayoutGrid, Search } from 'lucide-react';
+import client from '../../../api/client';
+import PostCard from './PostCard';
+import CreatePostModal from './CreatePostModal';
+import PostDetailModal from './PostDetailModal';
+
+const CommunityPage = () => {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [filter, setFilter] = useState('All');
+  
+  // Modal States
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [selectedPost, setSelectedPost] = useState(null);
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      // Fetch Profile to get current user info
+      const userRes = await client.get('/auth/profile', { headers: { Authorization: `Bearer ${token}` } });
+      if (userRes.data?.success) setCurrentUser(userRes.data.user);
+
+      // Fetch Feed
+      const postRes = await client.get('/posts/feed', { headers: { Authorization: `Bearer ${token}` } });
+      if (postRes.data?.success) {
+        setPosts(postRes.data.posts);
+      }
+    } catch (error) {
+      console.error("Failed to fetch community data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePostCreated = (newPost) => {
+    // Append the user object manually so it immediately shows up with avatar
+    const completePost = { ...newPost, user: currentUser };
+    setPosts([completePost, ...posts]);
+  };
+
+  const handleLikeUpdate = (postId) => {
+    setPosts(prev => prev.map(p => {
+      if (p._id === postId) {
+        const hasLiked = p.likes.includes(currentUser._id);
+        const updatedLikes = hasLiked 
+            ? p.likes.filter(id => id !== currentUser._id) 
+            : [...p.likes, currentUser._id];
+        return { ...p, likes: updatedLikes };
+      }
+      return p;
+    }));
+    
+    // Also update selected post if it's currently open in the modal
+    if (selectedPost && selectedPost._id === postId) {
+        const hasLiked = selectedPost.likes.includes(currentUser._id);
+        const updatedLikes = hasLiked 
+            ? selectedPost.likes.filter(id => id !== currentUser._id) 
+            : [...selectedPost.likes, currentUser._id];
+        setSelectedPost({ ...selectedPost, likes: updatedLikes });
+    }
+  };
+
+  // NEW: Handle Delete Post
+  const handleDeletePost = async (postId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await client.delete(`/posts/${postId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (res.data?.success) {
+        // Remove the post from the UI instantly
+        setPosts(prev => prev.filter(p => p._id !== postId));
+        
+        // If the post was open in the modal, close the modal
+        if (selectedPost && selectedPost._id === postId) {
+          setSelectedPost(null);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to delete post", error);
+      alert("Failed to delete post. Please try again.");
+    }
+  };
+
+  const filteredPosts = posts.filter(post => {
+    if (filter === 'For Sale') return post.isForSale;
+    if (filter === 'General') return !post.isForSale;
+    return true; 
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F4F7F9]">
+        <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.5 }} className="text-2xl font-black text-[#293241] tracking-widest uppercase">
+          Loading<span className="text-[#98C1D9]">Feed</span>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F4F7F9] font-sans pb-24">
+      
+      {/* Header Area */}
+      <div className="bg-white border-b border-slate-100 sticky top-0 z-20 shadow-sm">
+        <div className="max-w-[90rem] mx-auto px-4 md:px-8 py-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-[#293241] tracking-tight flex items-center gap-3">
+              <Users className="w-8 h-8 text-[#3D5A80]" /> Community Feed
+            </h1>
+            <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">Connect, Share, and Trade</p>
+          </div>
+          
+          <button 
+            onClick={() => setIsCreateOpen(true)}
+            className="flex items-center gap-2 bg-[#E76F51] hover:bg-[#D65A3E] text-white px-6 py-3 rounded-full font-black uppercase tracking-widest text-xs transition-colors shadow-md shadow-[#E76F51]/20"
+          >
+            <Plus className="w-4 h-4" /> New Post
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-[90rem] mx-auto px-4 md:px-8 py-8">
+        
+        {/* Filters */}
+        <div className="flex gap-2 mb-8 bg-white w-fit p-1.5 rounded-2xl shadow-sm border border-slate-100">
+          {['All', 'General', 'For Sale'].map(tab => (
+            <button
+              key={tab}
+              onClick={() => setFilter(tab)}
+              className={`px-5 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${filter === tab ? 'bg-[#293241] text-white shadow-md' : 'text-slate-500 hover:text-[#293241]'}`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {/* Feed Grid */}
+        {filteredPosts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm border border-slate-100">
+              <LayoutGrid className="w-8 h-8 text-slate-300" />
+            </div>
+            <h3 className="text-xl font-black text-[#293241] uppercase tracking-wider mb-2">It's quiet here</h3>
+            <p className="text-sm font-bold text-slate-400 tracking-widest uppercase">Be the first to create a post!</p>
+          </div>
+        ) : (
+          <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <AnimatePresence>
+              {filteredPosts.map(post => (
+                <PostCard 
+                  key={post._id} 
+                  post={post} 
+                  currentUser={currentUser} 
+                  onLike={handleLikeUpdate}
+                  onClick={setSelectedPost}
+                  onDelete={handleDeletePost} // Passed Delete Prop
+                />
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Modals */}
+      <CreatePostModal 
+        isOpen={isCreateOpen} 
+        onClose={() => setIsCreateOpen(false)} 
+        onPostCreated={handlePostCreated} 
+      />
+
+      <PostDetailModal 
+        post={selectedPost} 
+        currentUser={currentUser}
+        isOpen={!!selectedPost} 
+        onClose={() => setSelectedPost(null)} 
+        onDelete={handleDeletePost} // Passed Delete Prop
+      />
+
+    </div>
+  );
+};
+
+export default CommunityPage;
