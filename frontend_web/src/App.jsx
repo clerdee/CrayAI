@@ -6,7 +6,7 @@ import LandingPage from './pages/LandingPage';
 import AboutUs from './pages/AboutUs';
 import TheRedClaw from './pages/TheRedClaw';
 import AuthPage from './pages/auth/AuthPage';
-import UserDashboard from './pages/user/UserDashboard';
+
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AIScanLogs from './pages/admin/AIScanLogs';
 import TrainingData from './pages/admin/Training/TrainingData';
@@ -16,10 +16,9 @@ import UserManagement from './pages/admin/UserManagement';
 import SystemHealth from './pages/admin/SystemHealth';
 import Settings from './pages/admin/Settings';
 
+import UserDashboard from './pages/user/UserDashboard';
+import UserLayout from './layouts/UserLayout';
 
-// =========================================================
-// 2. ADD AXIOS INTERCEPTOR (The Session Guard)
-// =========================================================
 axios.interceptors.response.use(
   (response) => response, 
   (error) => {
@@ -68,56 +67,17 @@ const App = () => {
       <Route path="/register" element={<AuthPage />} />
 
       {/* USER ROUTES (Researchers) */}
-      <Route 
-        path="/dashboard" 
-        element={
-          <ProtectedRoute allowedRoles={['user', 'admin']}>
-            <UserDashboard />
-          </ProtectedRoute>
-        } 
-      />
+      <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['user']}><UserLayout><UserDashboard /></UserLayout></ProtectedRoute>} />
 
       {/* ADMIN ROUTES (System Management) */}
-      <Route 
-        path="/admin/dashboard" 
-        element={
-          <ProtectedRoute allowedRoles={['admin']}>
-            <AdminDashboard />
-          </ProtectedRoute>
-        } 
-      />
-
-      <Route 
-        path="/admin/scans" 
-        element={<ProtectedRoute allowedRoles={['admin']}><AIScanLogs /></ProtectedRoute>} 
-      />
-
-      <Route 
-        path="/admin/dataset" 
-        element={<ProtectedRoute allowedRoles={['admin']}><TrainingData /></ProtectedRoute>} 
-      />
-
-      <Route path="/admin/moderation" 
-        element={<ProtectedRoute allowedRoles={['admin']}><Moderation /></ProtectedRoute>} 
-      />
-
-      <Route 
-        path="/admin/training" 
-        element={<ProtectedRoute allowedRoles={['admin']}><ChatbotMode /></ProtectedRoute>} 
-      />
-
-      <Route 
-        path="/admin/users" 
-        element={<ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute>} 
-      />
-
-      <Route path="/admin/health" 
-        element={<ProtectedRoute allowedRoles={['admin']}><SystemHealth /></ProtectedRoute>} 
-      />
-
-      <Route path="/admin/settings"
-        element={<ProtectedRoute allowedRoles={['admin']}><Settings /></ProtectedRoute>} 
-      />
+      <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+      <Route path="/admin/scans" element={<ProtectedRoute allowedRoles={['admin']}><AIScanLogs /></ProtectedRoute>} />
+      <Route path="/admin/dataset" element={<ProtectedRoute allowedRoles={['admin']}><TrainingData /></ProtectedRoute>} />
+      <Route path="/admin/moderation" element={<ProtectedRoute allowedRoles={['admin']}><Moderation /></ProtectedRoute>} />
+      <Route path="/admin/training" element={<ProtectedRoute allowedRoles={['admin']}><ChatbotMode /></ProtectedRoute>} />
+      <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute>} />
+      <Route path="/admin/health" element={<ProtectedRoute allowedRoles={['admin']}><SystemHealth /></ProtectedRoute>} />
+      <Route path="/admin/settings"element={<ProtectedRoute allowedRoles={['admin']}><Settings /></ProtectedRoute>} />
 
     </Routes>
   );
