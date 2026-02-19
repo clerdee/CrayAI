@@ -3,6 +3,7 @@ const Post = require('../models/Post');
 const Comment = require('../models/Comment');
 const User = require('../models/User');
 const ScanRecord = require('../models/ScanRecord');
+const Settings = require('../models/Settings');
 
 // 1. GET ALL CONTENT (Posts & Comments) FOR MODERATION
 exports.getModerationContent = async (req, res) => {
@@ -117,14 +118,12 @@ exports.getDashboardAnalytics = async (req, res) => {
         if (s.gender === 'Male') male++;
         if (s.gender === 'Female') female++;
         if (s.gender === 'Berried') berried++;
-        if (s.morphometrics?.estimated_age?.includes('Juvenile') || s.morphometrics?.estimated_age?.includes('Crayling')) juvenile++;
     });
 
     const population = [
         { name: 'Male', value: male, color: '#3B82F6' },
         { name: 'Female', value: female, color: '#EC4899' },
         { name: 'Berried', value: berried, color: '#F59E0B' },
-        { name: 'Juvenile', value: juvenile, color: '#94A3B8' },
     ];
 
     // WATER QUALITY (Grouped by User + Location, Top 6 Most Active)
@@ -282,5 +281,49 @@ exports.getSystemHealth = async (req, res) => {
   } catch (error) {
     console.error("Health Check Error:", error);
     res.status(500).json({ success: false, message: 'Health Check Failed' });
+  }
+};
+
+// 6. GET GLOBAL SETTINGS
+exports.getSettings = async (req, res) => {
+  try {
+    // Find the single settings document
+    let settings = await Settings.findOne();
+
+    // If it doesn't exist yet, create default settings automatically
+    if (!settings) {
+      settings = await Settings.create({});
+    }
+
+    res.status(200).json({ success: true, settings });
+  } catch (error) {
+    console.error("Get Settings Error:", error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// 7. UPDATE GLOBAL SETTINGS
+exports.updateSettings = async (req, res) => {
+  try {
+    const { aiThreshold, marketplaceEnabled, profanityFilter, chatbotPrompt } = req.body;
+
+    let settings = await Settings.findOne();
+    if (!settings) {
+      settings = new Settings();
+    }
+
+    // Apply updates dynamically based on what was sent
+    if (aiThreshold !== undefined) settings.aiThreshold = aiThreshold;
+    if (marketplaceEnabled !== undefined) settings.marketplaceEnabled = marketplaceEnabled;
+    if (profanityFilter !== undefined) settings.profanityFilter = profanityFilter;
+    if (chatbotPrompt !== undefined) settings.chatbotPrompt = chatbotPrompt;
+
+    settings.updatedAt = Date.now();
+    await settings.save();
+
+    res.status(200).json({ success: true, message: 'Settings updated successfully', settings });
+  } catch (error) {
+    console.error("Update Settings Error:", error);
+    res.status(500).json({ message: 'Server Error' });
   }
 };

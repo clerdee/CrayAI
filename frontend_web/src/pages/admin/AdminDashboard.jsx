@@ -150,7 +150,6 @@ const AdminDashboard = () => {
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                         
-                        {/* 🚨 FIX: Reduced fontSize slightly to 11 to perfectly fit "Mon, Feb 19" without overlap */}
                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 11}} dy={10} />
                         
                         <YAxis 
@@ -173,8 +172,9 @@ const AdminDashboard = () => {
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col min-h-[350px]">
             <h3 className="font-bold text-slate-800 text-lg mb-2">Population Gender Stats</h3>
             <p className="text-xs text-slate-500 mb-6">Aggregated from valid species scans</p>
-            <div className="w-full relative flex-1 min-h-[200px]">
-                <ResponsiveContainer width="99%" height="100%">
+            
+            <div className="w-full relative flex-1 min-h-[180px]">
+                <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                         <Pie 
                             data={finalPopulationData} 
@@ -188,17 +188,38 @@ const AdminDashboard = () => {
                                 <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                         </Pie>
-                        {hasPopulationData && <Legend verticalAlign="bottom" height={36} iconType="circle" />}
                         {hasPopulationData && <Tooltip />}
                     </PieChart>
                 </ResponsiveContainer>
                 
                 {/* Center Text */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[50%] text-center pointer-events-none">
                     <p className={`text-2xl font-bold ${hasPopulationData ? 'text-slate-800' : 'text-slate-300'}`}>
                         {hasPopulationData ? totalScans : '0'}
                     </p>
                     <p className="text-xs text-slate-400">Specimens</p>
+                </div>
+            </div>
+
+            {/* --- CUSTOM ALWAYS-VISIBLE LEGEND --- */}
+            <div className="flex justify-center items-center gap-6 mt-4 pt-4 border-t border-slate-50">
+                <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-[#3B82F6]"></span>
+                    <span className="text-sm font-medium text-slate-600">
+                        {populationData.find(d => d.name === 'Male')?.value || 0} Male
+                    </span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-[#EC4899]"></span>
+                    <span className="text-sm font-medium text-slate-600">
+                        {populationData.find(d => d.name === 'Female')?.value || 0} Female
+                    </span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-[#F59E0B]"></span>
+                    <span className="text-sm font-medium text-slate-600">
+                        {populationData.find(d => d.name === 'Berried')?.value || 0} Berried
+                    </span>
                 </div>
             </div>
         </div>
