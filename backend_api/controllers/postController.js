@@ -9,7 +9,8 @@ exports.createPost = async (req, res) => {
     const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-    const { content, media } = req.body;
+    // 🚨 UPDATED: Destructure isForSale and price from req.body
+    const { content, media, isForSale, price } = req.body;
 
     if (!content && (!media || media.length === 0)) {
       return res.status(400).json({ message: 'Post must have content or media' });
@@ -24,6 +25,9 @@ exports.createPost = async (req, res) => {
       userAvatar: user.profilePic,
       content: content || '',
       media: media || [],
+      // 🚨 ADDED: Save marketplace data
+      isForSale: isForSale || false,
+      price: price || 0,
       likes: [],
       commentsCount: 0,
       createdAt: new Date()
@@ -41,15 +45,11 @@ exports.createPost = async (req, res) => {
 // 2. GET ALL POSTS (Feed)
 exports.getAllPosts = async (req, res) => {
   try {
-    // 1. Get posts
     const posts = await Post.find()
       .sort({ createdAt: -1 })
       .populate('userId', 'firstName lastName profilePic')
-      .lean(); // Convert to plain object to attach comments
+      .lean(); 
 
-    // 2. Fetch comments for each post manually
-    // (In a large app, you would load comments only when "Show Comments" is clicked, 
-    // but this maintains your current functionality)
     const postsWithComments = await Promise.all(posts.map(async (post) => {
       const comments = await Comment.find({ postId: post._id })
         .sort({ createdAt: 1 })
@@ -66,7 +66,7 @@ exports.getAllPosts = async (req, res) => {
 
       return {
         ...post,
-        commentsData: formattedComments, // Re-attach so frontend doesn't break
+        commentsData: formattedComments, 
         showComments: false
       };
     }));
@@ -97,7 +97,6 @@ exports.toggleLike = async (req, res) => {
       post.likes = post.likes.filter(id => id.toString() !== userId);
     } else {
       post.likes.push(userId);
-      // Trigger Notification
       if (post.userId.toString() !== userId) {
         await createNotification({
           recipient: post.userId, 
@@ -145,7 +144,7 @@ exports.getUserInfo = async (req, res) => {
   }
 };
 
-// 5. DELETE POST (Cascade Delete Comments)
+// 5. DELETE POST
 exports.deletePost = async (req, res) => {
   try {
     const postId = req.params.id;
@@ -158,10 +157,7 @@ exports.deletePost = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // Delete the post
     await Post.findByIdAndDelete(postId);
-    
-    // DELETE ALL COMMENTS ASSOCIATED WITH THIS POST
     await Comment.deleteMany({ postId: postId });
 
     res.json({ success: true, message: "Post deleted" });
@@ -176,7 +172,8 @@ exports.updatePost = async (req, res) => {
   try {
     const postId = req.params.id;
     const userId = req.user.userId;
-    const { content, media } = req.body;
+
+    const { content, media, isForSale, price, isSold } = req.body;
 
     const post = await Post.findById(postId);
     if (!post) return res.status(404).json({ message: "Post not found" });
@@ -187,6 +184,10 @@ exports.updatePost = async (req, res) => {
 
     post.content = content || post.content;
     if (media) post.media = media;
+    
+    if (typeof isForSale !== 'undefined') post.isForSale = isForSale;
+    if (typeof isSold !== 'undefined') post.isSold = isSold;
+    if (typeof price !== 'undefined') post.price = price;
 
     await post.save();
     await post.populate('userId', 'firstName lastName profilePic');

@@ -1,63 +1,46 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   View, Text, StyleSheet, Image, TouchableOpacity, 
-  TextInput, Platform, StatusBar, FlatList, Dimensions, Keyboard, ScrollView, KeyboardAvoidingView, ActivityIndicator, Animated, Modal, TouchableWithoutFeedback
+  TextInput, Platform, StatusBar, FlatList, Dimensions, Keyboard, ScrollView, 
+  KeyboardAvoidingView, ActivityIndicator, Animated, Modal, TouchableWithoutFeedback, Switch
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// API & Config
 import client from '../api/client'; 
 import { CLOUDINARY_CONFIG } from '../config/cloudinary';
-
-// Data Imports
 import { BAD_WORDS } from '../data/badWords'; 
 
-// Components
 import Header from '../components/Header';
 import BottomNavBar from '../components/BottomNavBar';
 import Sidebar from '../components/Sidebar';
 import FloatingChatbot from '../components/FloatingChatbot';
 
-// --- 1. HELPER: ESCAPE REGEX CHARACTERS (THE FIX) ---
 const escapeRegExp = (string) => {
-  // This replaces special Regex characters (*, $, ., etc.) with a backslash version
-  // e.g., "f**k" becomes "f\*\*k"
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
 };
 
-// --- 2. HELPER: PROFANITY MASKING (UPDATED) ---
 const maskProfanity = (text) => {
   if (!text) return "";
   let cleanText = text;
-
-  // We sort by length (longest first) to avoid partial replacement issues
-  // e.g., Replace "asshole" before "ass"
   const sortedBadWords = [...BAD_WORDS].sort((a, b) => b.length - a.length);
 
   sortedBadWords.forEach(word => {
     const escapedWord = escapeRegExp(word);
-    
-    // We try to match with word boundaries (\b) first
-    // If the word contains symbols (like * or $), \b might fail, so we fallback to non-boundary check for those
     const hasSymbols = /[^a-zA-Z0-9]/.test(word);
     
     let regex;
     if (hasSymbols) {
-      // If word has symbols (f*ck), match literally without strict boundaries
       regex = new RegExp(escapedWord, 'gi');
     } else {
-      // If word is standard letters, use word boundaries (prevents masking "class" for "ass")
       regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
     }
-
     cleanText = cleanText.replace(regex, '*'.repeat(word.length));
   });
   return cleanText;
 };
 
-// --- HELPER: TIME FORMATTER ---
 const formatTimeAgo = (dateInput) => {
   if (!dateInput) return '';
   const date = new Date(dateInput);
@@ -78,11 +61,11 @@ const { width, height } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.9; 
 const CARD_HEIGHT = height * 0.68; 
 
-export default function CommunityScreen({ navigation }) {
+export default function CommunityScreen({ navigation, route }) {
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); 
   
-  // --- STATE ---
+  // --- POST STATE ---
   const [postText, setPostText] = useState('');
   const [mediaList, setMediaList] = useState([]); 
   const [uploading, setUploading] = useState(false); 
@@ -90,10 +73,13 @@ export default function CommunityScreen({ navigation }) {
   const [isGuest, setIsGuest] = useState(false);
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
 
-  // --- EDITING POST STATE ---
+  // --- MARKETPLACE STATE ---
+  const [isForSale, setIsForSale] = useState(false);
+  const [price, setPrice] = useState('');
+  const [isSold, setIsSold] = useState(false); // <-- NEW: State for "Already Sold"
+
   const [editingPostId, setEditingPostId] = useState(null); 
 
-  // --- MODAL STATES (NEW & EDIT COMMENT) ---
   const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [editCommentModalVisible, setEditCommentModalVisible] = useState(false); 
   
@@ -103,7 +89,6 @@ export default function CommunityScreen({ navigation }) {
   const [commentDraft, setCommentDraft] = useState(''); 
   const [editCommentDraft, setEditCommentDraft] = useState(''); 
 
-  // --- MENUS & DELETE STATES ---
   const [optionsVisible, setOptionsVisible] = useState(false);        
   const [deleteModalVisible, setDeleteModalVisible] = useState(false); 
   const [deleteCommentModalVisible, setDeleteCommentModalVisible] = useState(false); 
@@ -111,7 +96,6 @@ export default function CommunityScreen({ navigation }) {
   const [selectedPostForOptions, setSelectedPostForOptions] = useState(null);
   const [commentToDelete, setCommentToDelete] = useState(null); 
 
-  // User Info
   const [currentUserInfo, setCurrentUserInfo] = useState({
     name: "Researcher",
     profilePic: null,
@@ -119,13 +103,36 @@ export default function CommunityScreen({ navigation }) {
     following: [] 
   });
   
-  // --- TOAST STATE ---
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState({ title: '', body: '', type: 'info' });
   const toastAnim = useRef(new Animated.Value(-100)).current; 
   const scrollViewRef = useRef(); 
 
-  // --- 1. KEYBOARD LISTENER ---
+  // --- CATCH PREFILL DATA FROM RESULTS SCREEN ---
+  useEffect(() => {
+    if (route.params?.prefillImage || route.params?.prefillCaption) {
+      if (route.params.prefillCaption) {
+        setPostText(route.params.prefillCaption);
+      }
+      
+      if (route.params.prefillImage) {
+        setMediaList(prev => {
+          const exists = prev.some(m => m.uri === route.params.prefillImage);
+          if (!exists) {
+            return [...prev, { uri: route.params.prefillImage, type: 'image' }];
+          }
+          return prev;
+        });
+      }
+
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      }, 300);
+      
+      navigation.setParams({ prefillImage: undefined, prefillCaption: undefined });
+    }
+  }, [route.params?.prefillImage, route.params?.prefillCaption]);
+
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
@@ -139,7 +146,6 @@ export default function CommunityScreen({ navigation }) {
     };
   }, []);
 
-  // --- 2. INITIAL LOAD ---
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -165,7 +171,6 @@ export default function CommunityScreen({ navigation }) {
     fetchUser();
   }, []);
 
-  // --- 3. FEED LISTENER ---
   useEffect(() => {
     const fetchFeed = async () => {
       try {
@@ -181,7 +186,6 @@ export default function CommunityScreen({ navigation }) {
     return () => clearInterval(interval);
   }, []);
 
-  // --- TOAST FUNCTION ---
   const showToast = (title, body, type = 'info') => {
     setToastMessage({ title, body, type });
     setToastVisible(true);
@@ -200,13 +204,12 @@ export default function CommunityScreen({ navigation }) {
   };
 
   const handleLogout = async () => {
-  await AsyncStorage.multiRemove(['userToken', 'userInfo', 'alertsCount']);
-  setCurrentUser(null);
-  setSidebarVisible(false);
-  navigation.navigate('Login'); 
-};
+    await AsyncStorage.multiRemove(['userToken', 'userInfo', 'alertsCount']);
+    setCurrentUser(null);
+    setSidebarVisible(false);
+    navigation.navigate('Login'); 
+  };
 
-  // --- POST OPTIONS ---
   const openPostOptions = (post) => {
     setSelectedPostForOptions(post);
     setOptionsVisible(true);
@@ -244,7 +247,6 @@ export default function CommunityScreen({ navigation }) {
     setSelectedPostForOptions(null);
   };
 
-  // --- POST ACTIONS ---
   const handleDeletePost = async (postId) => {
     try {
       await client.delete(`/posts/${postId}`);
@@ -259,6 +261,12 @@ export default function CommunityScreen({ navigation }) {
     setPostText(post.content);
     setMediaList(post.media || []); 
     setEditingPostId(post._id);
+    
+    // PREFILL MARKETPLACE DATA
+    setIsForSale(post.isForSale || false);
+    setPrice(post.price ? String(post.price) : '');
+    setIsSold(post.isSold || false); // <-- Grab existing sold status
+
     scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     showToast("Edit Mode", "Update your post at the top.", 'info');
   };
@@ -267,6 +275,10 @@ export default function CommunityScreen({ navigation }) {
     if (checkGuestAction("post updates")) return;
     if (!postText.trim() && mediaList.length === 0) return;
     
+    if (isForSale && (!price || isNaN(parseFloat(price)))) {
+      return showToast("Price Required", "Please enter a valid price.", 'error');
+    }
+
     setUploading(true);
     Keyboard.dismiss();
     
@@ -281,36 +293,49 @@ export default function CommunityScreen({ navigation }) {
         }
       }
       
+      const payload = {
+        content: postText,
+        media: mediaUrls,
+        isForSale: isForSale,
+        price: isForSale ? parseFloat(price) : 0,
+        isSold: isSold // <-- INCLUDE SOLD STATUS IN PAYLOAD
+      };
+
       if (editingPostId) {
-        const res = await client.put(`/posts/${editingPostId}`, { content: postText, media: mediaUrls });
+        const res = await client.put(`/posts/${editingPostId}`, payload);
         if (res.data?.post) {
           setCommunityPosts(prev => prev.map(p => p._id === editingPostId ? { ...p, ...res.data.post, showComments: p.showComments } : p));
           showToast("Updated", "Post updated successfully.", 'success');
         }
       } else {
-        const res = await client.post('/posts/create', { content: postText, media: mediaUrls });
+        const res = await client.post('/posts/create', payload);
         if (res.data?.post) {
           setCommunityPosts([{ ...res.data.post, showComments: true, commentsData: [] }, ...communityPosts]);
           showToast("Success", "Your post is live!", 'success');
         }
       }
+      
+      // RESET ALL STATE
       setPostText('');
       setMediaList([]);
       setEditingPostId(null);
+      setIsForSale(false);
+      setPrice('');
+      setIsSold(false);
+
     } catch (error) { 
       console.error(error); 
       showToast("Error", "Operation failed.", 'error'); 
     } finally { setUploading(false); }
   };
 
-  // --- MEDIA HELPERS ---
   const pickMedia = async () => {
     if (checkGuestAction("upload photos")) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') return showToast("Permission Required", "Gallery access needed.", 'error');
     
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All, 
+      mediaTypes: ['images', 'videos'], 
       allowsMultipleSelection: true, selectionLimit: 5, quality: 0.8,
     });
     if (!result.canceled) setMediaList(prev => [...prev, ...result.assets]);
@@ -329,7 +354,6 @@ export default function CommunityScreen({ navigation }) {
     return data.secure_url ? { uri: data.secure_url, mediaType: file.type } : null;
   };
 
-  // --- SOCIAL ACTIONS ---
   const handleLike = async (post) => {
     if (checkGuestAction("like posts")) return;
     try {
@@ -366,7 +390,6 @@ export default function CommunityScreen({ navigation }) {
     });
   };
 
-  // --- 1. NEW COMMENT LOGIC (MODAL) ---
   const openCommentModal = (postId) => {
     if (checkGuestAction("comment")) return;
     setActivePostId(postId);
@@ -398,7 +421,6 @@ export default function CommunityScreen({ navigation }) {
     } catch (error) { showToast("Error", "Could not post comment.", 'error'); }
   };
 
-  // --- 2. EDIT COMMENT LOGIC (MODAL) ---
   const openEditCommentModal = (post, comment) => {
     if (checkGuestAction("edit comment")) return;
     setActivePostId(post._id);
@@ -439,7 +461,6 @@ export default function CommunityScreen({ navigation }) {
     } catch (error) { showToast("Error", "Failed to edit comment.", 'error'); }
   };
 
-  // --- 3. DELETE COMMENT LOGIC (WITH CONFIRMATION) ---
   const promptDeleteComment = (post, commentId) => {
     setCommentToDelete({ post, commentId });
     setDeleteCommentModalVisible(true);
@@ -462,7 +483,6 @@ export default function CommunityScreen({ navigation }) {
       }
     } catch (error) { showToast("Error", "Failed to delete comment.", 'error'); }
     
-    // Close modal and reset state
     setDeleteCommentModalVisible(false);
     setCommentToDelete(null);
   };
@@ -482,7 +502,6 @@ export default function CommunityScreen({ navigation }) {
     else navigation.navigate('Profile', { userId: targetUserId });
   };
 
-  // --- RENDER POST CARD ---
   const renderCard = ({ item }) => {
     const rawUserId = item.userId;
     const postUserId = (rawUserId && typeof rawUserId === 'object') ? rawUserId._id : rawUserId;
@@ -542,7 +561,16 @@ export default function CommunityScreen({ navigation }) {
           )}
 
           <View style={styles.cardBody}>
-            {/* APPLY MASK */}
+            {/* --- NEW: MARKETPLACE TAG RENDERING W/ SOLD STATE --- */}
+            {item.isForSale && item.price > 0 && (
+                <View style={[styles.priceTagBadge, item.isSold && { backgroundColor: '#95A5A6' }]}>
+                  <MaterialCommunityIcons name={item.isSold ? "check-circle" : "tag"} size={14} color="#FFF" />
+                  <Text style={styles.priceTagText}>
+                    {item.isSold ? `Already Sold` : `For Sale: ₱${item.price}`}
+                  </Text>
+                </View>
+            )}
+            
             <Text style={styles.contentText}>{maskProfanity(item.content)}</Text>
           </View>
 
@@ -604,7 +632,6 @@ export default function CommunityScreen({ navigation }) {
                                 )}
                             </View>
                           </View>
-                          {/* APPLY MASK TO COMMENTS */}
                           <Text style={styles.commentText}>{maskProfanity(comment.text)}</Text>
                         </View>
                       </View>
@@ -619,7 +646,6 @@ export default function CommunityScreen({ navigation }) {
                 <View style={styles.addCommentRow}>
                   <Image source={currentUserInfo.profilePic ? { uri: currentUserInfo.profilePic } : require('../../assets/profile-icon.png')} style={styles.commentUserAvatarInput} />
                   
-                  {/* FAKE INPUT -> TRIGGERS MODAL */}
                   <TouchableOpacity 
                     style={styles.fakeCommentInput} 
                     onPress={() => openCommentModal(item._id)}
@@ -652,10 +678,12 @@ export default function CommunityScreen({ navigation }) {
             style={styles.mainScrollView} 
             contentContainerStyle={styles.mainScrollContent}
         >
+          {/* CREATE / EDIT POST CONTAINER */}
           <View style={[styles.createPostContainer, styles.shadow, editingPostId && { borderColor: '#3D5A80', borderWidth: 2 }]}>
             {editingPostId && <Text style={styles.editModeLabel}>Editing Post...</Text>}
             <View style={styles.createPostTopRow}>
               <Image source={currentUserInfo.profilePic ? { uri: currentUserInfo.profilePic } : require('../../assets/profile-icon.png')} style={styles.userBarAvatar} />
+              
               <TextInput 
                 placeholder={isGuest ? "Log in to post..." : "Share your discovery..."}
                 placeholderTextColor="#95A5A6"
@@ -664,9 +692,63 @@ export default function CommunityScreen({ navigation }) {
                 onChangeText={setPostText}
                 editable={!isGuest}
                 onPressIn={() => checkGuestAction("post updates")}
+                multiline={true}          
               />
               <TouchableOpacity style={styles.attachBtn} onPress={pickMedia}><Ionicons name="images-outline" size={22} color="#7F8C8D" /></TouchableOpacity>
             </View>
+
+            {/* MARKETPLACE TOGGLE AREA */}
+            {!isGuest && (
+              <View style={styles.marketplaceToggleContainer}>
+                
+                {/* FOR SALE TOGGLE */}
+                <View style={styles.marketplaceToggleRow}>
+                  <View style={styles.marketplaceToggleLeft}>
+                    <MaterialCommunityIcons name="tag-outline" size={18} color="#7F8C8D" />
+                    <Text style={styles.marketplaceLabel}>List this for sale?</Text>
+                    <Switch
+                      value={isForSale}
+                      onValueChange={setIsForSale}
+                      trackColor={{ false: '#E0E7ED', true: '#2A9D8F' }}
+                      thumbColor={Platform.OS === 'ios' ? '#FFF' : (isForSale ? '#FFF' : '#F4F6F7')}
+                      style={Platform.OS === 'ios' ? { transform: [{ scaleX: 0.7 }, { scaleY: 0.7 }] } : {}}
+                    />
+                  </View>
+
+                  {isForSale && (
+                    <View style={styles.priceInputContainer}>
+                      <Text style={styles.currencySymbol}>₱</Text>
+                      <TextInput
+                        style={styles.priceInput}
+                        placeholder="0.00"
+                        placeholderTextColor="#95A5A6"
+                        keyboardType="numeric"
+                        value={price}
+                        onChangeText={setPrice}
+                      />
+                    </View>
+                  )}
+                </View>
+
+                {/* --- NEW: "ALREADY SOLD" TOGGLE (Only appears if Editing and marked For Sale) --- */}
+                {editingPostId && isForSale && (
+                  <View style={[styles.marketplaceToggleRow, { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderColor: '#F0F3F4' }]}>
+                     <View style={styles.marketplaceToggleLeft}>
+                        <MaterialCommunityIcons name="check-circle-outline" size={18} color="#7F8C8D" />
+                        <Text style={styles.marketplaceLabel}>Mark as Sold?</Text>
+                        <Switch
+                          value={isSold}
+                          onValueChange={setIsSold}
+                          trackColor={{ false: '#E0E7ED', true: '#E76F51' }}
+                          thumbColor={Platform.OS === 'ios' ? '#FFF' : (isSold ? '#FFF' : '#F4F6F7')}
+                          style={Platform.OS === 'ios' ? { transform: [{ scaleX: 0.7 }, { scaleY: 0.7 }] } : {}}
+                        />
+                     </View>
+                  </View>
+                )}
+
+              </View>
+            )}
 
             {mediaList.length > 0 && (
               <View style={styles.mediaPreviewContainer}>
@@ -683,7 +765,17 @@ export default function CommunityScreen({ navigation }) {
 
             {(postText || mediaList.length > 0) && (
               <View style={styles.sendRow}>
-                {editingPostId && <TouchableOpacity onPress={() => { setEditingPostId(null); setPostText(''); setMediaList([]); }} style={{marginRight: 15}}><Text style={{color: '#E74C3C', fontWeight: '700'}}>Cancel</Text></TouchableOpacity>}
+                {editingPostId && (
+                  <TouchableOpacity 
+                    onPress={() => { 
+                      setEditingPostId(null); setPostText(''); setMediaList([]); 
+                      setIsForSale(false); setPrice(''); setIsSold(false); 
+                    }} 
+                    style={{marginRight: 15}}
+                  >
+                    <Text style={{color: '#E74C3C', fontWeight: '700'}}>Cancel</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity style={styles.sendButtonFull} onPress={handleSubmitPost} disabled={uploading}>{uploading ? <ActivityIndicator size="small" color="#FFF" /> : <><Text style={styles.sendButtonText}>{editingPostId ? "Update" : "Post"}</Text><Ionicons name={editingPostId ? "checkmark" : "arrow-forward"} size={16} color="#FFF" /></>}</TouchableOpacity>
               </View>
             )}
@@ -704,7 +796,6 @@ export default function CommunityScreen({ navigation }) {
           <View style={{ height: 200 }} /> 
         </ScrollView>
 
-        {/* FOOTER & OVERLAYS */}
         {!isKeyboardVisible && (
           <>
               <BottomNavBar navigation={navigation} activeTab="Community" />
@@ -729,7 +820,7 @@ export default function CommunityScreen({ navigation }) {
           </Animated.View>
         )}
 
-        {/* --- 1. NEW COMMENT MODAL --- */}
+        {/* MODALS */}
         <Modal visible={commentModalVisible} transparent animationType="slide" onRequestClose={closeCommentModal}>
           <TouchableWithoutFeedback onPress={closeCommentModal}>
               <View style={styles.modalOverlay}>
@@ -767,7 +858,6 @@ export default function CommunityScreen({ navigation }) {
           </TouchableWithoutFeedback>
         </Modal>
 
-        {/* --- 2. EDIT COMMENT MODAL (NEW) --- */}
         <Modal visible={editCommentModalVisible} transparent animationType="slide" onRequestClose={closeEditCommentModal}>
           <TouchableWithoutFeedback onPress={closeEditCommentModal}>
               <View style={styles.modalOverlay}>
@@ -805,7 +895,6 @@ export default function CommunityScreen({ navigation }) {
           </TouchableWithoutFeedback>
         </Modal>
 
-        {/* --- 3. DELETE COMMENT CONFIRMATION MODAL (NEW) --- */}
         <Modal animationType="fade" transparent={true} visible={deleteCommentModalVisible} onRequestClose={cancelDeleteComment}>
           <View style={styles.deleteModalOverlay}>
             <View style={styles.deleteModalContent}>
@@ -820,7 +909,6 @@ export default function CommunityScreen({ navigation }) {
           </View>
         </Modal>
 
-        {/* MANAGE POST MODAL */}
         <Modal animationType="fade" transparent={true} visible={optionsVisible} onRequestClose={closePostOptions}>
           <TouchableWithoutFeedback onPress={closePostOptions}>
             <View style={styles.modalOverlay}>
@@ -843,7 +931,6 @@ export default function CommunityScreen({ navigation }) {
           </TouchableWithoutFeedback>
         </Modal>
 
-        {/* DELETE POST CONFIRM MODAL */}
         <Modal animationType="fade" transparent={true} visible={deleteModalVisible} onRequestClose={cancelDeletePost}>
           <View style={styles.deleteModalOverlay}>
             <View style={styles.deleteModalContent}>
@@ -865,19 +952,14 @@ export default function CommunityScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7F9' },
-  
-  // --- UPDATED TOAST STYLES ---
   toastContainer: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 20, left: 20, right: 20, zIndex: 9999, alignItems: 'center' },
   toastBar: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 },
   toastWarning: { backgroundColor: '#E76F51' }, 
   toastSuccess: { backgroundColor: '#2A9D8F' }, 
   toastInfo: { backgroundColor: '#3D5A80' },    
   toastText: { color: '#FFF', fontWeight: '700', fontSize: 13, marginLeft: 10, flex: 1 },
-
   mainScrollView: { flex: 1 },
   mainScrollContent: { paddingBottom: 20 },
-  
-  // --- MODAL COMMENT STYLES ---
   keyboardAvoidModal: { flex: 1, justifyContent: 'flex-end' },
   modalCommentContainer: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 15, paddingBottom: 30 },
   modalCommentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
@@ -885,10 +967,7 @@ const styles = StyleSheet.create({
   modalInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F4F6F7', borderRadius: 25, paddingHorizontal: 5, paddingVertical: 5 },
   modalTextInput: { flex: 1, maxHeight: 100, paddingHorizontal: 15, paddingVertical: 10, fontSize: 15, color: '#2C3E50' },
   modalSendBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#3D5A80', justifyContent: 'center', alignItems: 'center' },
-
-  // --- POST CARD STYLES ---
   fakeCommentInput: { flex: 1, height: 36, justifyContent: 'center' },
-
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 25, paddingBottom: 40 },
   modalHandle: { width: 40, height: 5, backgroundColor: '#E0E7ED', borderRadius: 3, alignSelf: 'center', marginBottom: 20 },
@@ -898,7 +977,6 @@ const styles = StyleSheet.create({
   modalOptionText: { fontSize: 16, fontWeight: '600', color: '#34495E' },
   modalCancelBtn: { marginTop: 20, paddingVertical: 12, alignItems: 'center', backgroundColor: '#F8F9F9', borderRadius: 12 },
   modalCancelText: { fontSize: 15, fontWeight: '700', color: '#7F8C8D' },
-  
   deleteModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   deleteModalContent: { width: '85%', backgroundColor: '#FFF', borderRadius: 25, padding: 25, alignItems: 'center', elevation: 10 },
   deleteIconCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#FDEDEC', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
@@ -909,11 +987,23 @@ const styles = StyleSheet.create({
   deleteConfirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#E74C3C', alignItems: 'center' },
   deleteCancelText: { color: '#7F8C8D', fontWeight: '700', fontSize: 14 },
   deleteConfirmText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+  
   createPostContainer: { marginHorizontal: 15, marginTop: 20, marginBottom: 10, backgroundColor: '#FFF', borderRadius: 20, padding: 12, borderWidth: 1, borderColor: '#E0E7ED' },
-  createPostTopRow: { flexDirection: 'row', alignItems: 'center' },
-  userBarAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 10, backgroundColor: '#F0F3F4' },
-  createInput: { flex: 1, height: 40, fontSize: 15, color: '#2C3E50' },
-  attachBtn: { padding: 8, backgroundColor: '#F4F7F9', borderRadius: 20 },
+  createPostTopRow: { flexDirection: 'row', alignItems: 'flex-start' }, 
+  userBarAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 10, backgroundColor: '#F0F3F4', marginTop: 4 }, 
+  createInput: { flex: 1, minHeight: 40, maxHeight: 150, fontSize: 15, color: '#2C3E50', textAlignVertical: 'top', paddingTop: 10, paddingBottom: 10 }, 
+  attachBtn: { padding: 8, backgroundColor: '#F4F7F9', borderRadius: 20, marginTop: 4 }, 
+
+  marketplaceToggleContainer: { marginTop: 10 },
+  marketplaceToggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTopWidth: 1, borderColor: '#F0F3F4' },
+  marketplaceToggleLeft: { flexDirection: 'row', alignItems: 'center' },
+  marketplaceLabel: { fontSize: 13, fontWeight: '600', color: '#546E7A', marginLeft: 6, marginRight: 5 },
+  priceInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F4F7F9', borderRadius: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: '#E0E7ED' },
+  currencySymbol: { fontWeight: '800', color: '#2A9D8F', marginRight: 4, fontSize: 15 },
+  priceInput: { height: 35, width: 70, fontSize: 14, fontWeight: '700', color: '#2C3E50' },
+  priceTagBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#2A9D8F', alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginBottom: 10 },
+  priceTagText: { color: '#FFF', fontWeight: '800', fontSize: 12, marginLeft: 6 },
+  
   editModeLabel: { color: '#3D5A80', fontWeight: '800', fontSize: 12, marginBottom: 5, marginLeft: 5 },
   mediaPreviewContainer: { marginTop: 12, height: 90 },
   largePreviewWrapper: { marginRight: 10, position: 'relative' },

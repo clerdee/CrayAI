@@ -9,7 +9,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 
-// Using LineChart and BarChart for the dynamic new UI
 import { LineChart, BarChart } from "react-native-chart-kit"; 
 
 import client from '../api/client'; 
@@ -20,6 +19,7 @@ import FloatingChatbot from '../components/FloatingChatbot';
 import ScanDetailsModal from '../components/ScanDetailsModal'; 
 
 const { width } = Dimensions.get('window');
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export default function HomeScreen({ navigation }) {
   const [sidebarVisible, setSidebarVisible] = useState(false);
@@ -32,7 +32,10 @@ export default function HomeScreen({ navigation }) {
   const [recentScans, setRecentScans] = useState([]); 
   const [stats, setStats] = useState({ total: 0, warnings: 0, berried: 0 });
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [marketMonthIndex, setMarketMonthIndex] = useState(0); 
+  
+  // --- REAL DYNAMIC MARKET DATA STATE ---
+  const [marketProjections, setMarketProjections] = useState(MONTH_NAMES.map(m => ({ month: m, price: 0 })));
+  const [marketMonthIndex, setMarketMonthIndex] = useState(new Date().getMonth()); // Default to current month
 
   // --- MODAL STATE ---
   const [selectedScan, setSelectedScan] = useState(null);
@@ -83,10 +86,10 @@ export default function HomeScreen({ navigation }) {
 
   const fetchDashboardData = async () => {
     try {
-        const res = await client.get('/scans/me');
-        if (res.data?.success) {
-            const records = res.data.records || [];
-
+        // 1. FETCH PERSONAL SCANS
+        const scanRes = await client.get('/scans/me');
+        if (scanRes.data?.success) {
+            const records = scanRes.data.records || [];
             const activeRecords = records.filter(r => !r.isDeleted);
             setRecentScans(activeRecords);
             
@@ -98,7 +101,54 @@ export default function HomeScreen({ navigation }) {
             });
             setStats({ total, warnings, berried: 0 }); 
         }
-    } catch (error) { console.error("Failed to fetch scan records:", error); }
+
+        // 2. FETCH COMMUNITY POSTS TO CALCULATE MARKET VALUE
+        const feedRes = await client.get('/posts/feed');
+        if (feedRes.data?.posts) {
+            // Find all posts that are listed for sale with a valid price
+            const sales = feedRes.data.posts.filter(p => p.isForSale && p.price > 0);
+            
+            let baseData = MONTH_NAMES.map(m => ({ month: m, price: 0 }));
+            
+            if (sales.length > 0) {
+                const monthlyTotals = {};
+                const monthlyCounts = {};
+
+                // Group prices by month
+                sales.forEach(sale => {
+                    const monthIdx = new Date(sale.createdAt).getMonth();
+                    if (!monthlyTotals[monthIdx]) {
+                        monthlyTotals[monthIdx] = 0;
+                        monthlyCounts[monthIdx] = 0;
+                    }
+                    monthlyTotals[monthIdx] += sale.price;
+                    monthlyCounts[monthIdx] += 1;
+                });
+
+                // Find the first known price so we can carry it over empty months
+                let lastKnownPrice = 0;
+                for (let i = 0; i < 12; i++) {
+                    if (monthlyCounts[i]) {
+                        lastKnownPrice = Math.round(monthlyTotals[i] / monthlyCounts[i]);
+                        break;
+                    }
+                }
+
+                // Populate the 12-month array
+                for (let i = 0; i < 12; i++) {
+                    if (monthlyCounts[i]) {
+                        const avg = Math.round(monthlyTotals[i] / monthlyCounts[i]);
+                        baseData[i].price = avg;
+                        lastKnownPrice = avg;
+                    } else {
+                        // Carry over the last known average if a month had no sales
+                        baseData[i].price = lastKnownPrice; 
+                    }
+                }
+            }
+            setMarketProjections(baseData);
+        }
+    } catch (error) { console.error("Failed to fetch dashboard data:", error); }
   };
 
   const onRefresh = React.useCallback(() => {
@@ -132,7 +182,7 @@ export default function HomeScreen({ navigation }) {
     navigation.navigate('Login');
   };
 
-  // --- EXACT BACKEND DEMOGRAPHICS LOGIC ---
+  // --- DEMOGRAPHICS LOGIC ---
   const categories = ['Gender', 'Size', 'Age'];
   const getAnalyticsData = () => {
     if (recentScans.length === 0) return { total: 0, items: [ { label: 'No Data', value: 0, pct: '0%', color: '#BDC3C7', icon: 'remove-outline' } ] };
@@ -205,7 +255,7 @@ export default function HomeScreen({ navigation }) {
   };
   const algaeBarData = getAlgaeBarData();
 
-  // --- VISUAL DIVERSITY CONFIGS ---
+  // --- CHART CONFIGS ---
   const darkLineConfig = {
     backgroundGradientFrom: "#293241", backgroundGradientTo: "#293241",
     color: (opacity = 1) => `rgba(138, 180, 248, ${opacity})`, 
@@ -228,12 +278,8 @@ export default function HomeScreen({ navigation }) {
     strokeWidth: 2, decimalPlaces: 0, fillShadowGradient: '#3D5A80', fillShadowGradientOpacity: 0.1
   };
 
-  const marketProjections = [
-    { month: 'Jan', price: 350 }, { month: 'Feb', price: 380 }, { month: 'Mar', price: 410 },
-    { month: 'Apr', price: 400 }, { month: 'May', price: 450 }, { month: 'Jun', price: 480 },
-    { month: 'Jul', price: 510 }, { month: 'Aug', price: 530 }, { month: 'Sep', price: 550 },
-    { month: 'Oct', price: 600 }, { month: 'Nov', price: 650 }, { month: 'Dec', price: 720 },
-  ];
+  // Check if we actually have market data to display
+  const hasMarketData = marketProjections.some(m => m.price > 0);
 
   const handleNextMonth = () => setMarketMonthIndex((prev) => (prev + 1) % 12);
   const handlePrevMonth = () => setMarketMonthIndex((prev) => (prev - 1 + 12) % 12);
@@ -369,7 +415,6 @@ export default function HomeScreen({ navigation }) {
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carouselContainer}>
             {recentScans.slice(0, 5).map((scan) => (
-                // TRIGGER MODAL ON PRESS
                 <TouchableOpacity 
                     key={scan._id} 
                     style={[styles.scanCard, styles.shadow]}
@@ -483,46 +528,57 @@ export default function HomeScreen({ navigation }) {
           />
       </View>
 
-      {/* 7. ASYMMETRICAL CARD (Economics) */}
+      {/* 7. ASYMMETRICAL CARD (Economics - REAL DATA NOW!) */}
       <View style={styles.sectionHeader}>
          <Text style={styles.sectionTitle}>Economics</Text>
       </View>
       <View style={styles.asymmetricalCard}>
         <View style={styles.cardHeaderWithNav}>
             <View>
-                <Text style={styles.sectionTitle}>Market Value Forecast</Text>
-                <Text style={styles.cardSubTitle}>Random Forest Projection</Text>
+                <Text style={styles.sectionTitle}>Market Value Trend</Text>
+                <Text style={styles.cardSubTitle}>Real-time community average</Text>
             </View>
             <View style={styles.moneyBadge}>
                 <Feather name="trending-up" size={16} color="#0FA958" />
             </View>
         </View>
 
-        <LineChart
-            data={{
-                labels: ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"],
-                datasets: [{ data: marketProjections.map(m => m.price) }]
-            }}
-            width={width - 70} 
-            height={180}
-            chartConfig={marketChartConfig}
-            withDots={false}
-            bezier
-            style={{ marginVertical: 10, alignSelf: 'center' }}
-        />
-
-        <View style={styles.monthNavRow}>
-            <TouchableOpacity onPress={handlePrevMonth} style={styles.navBtn}>
-                <Feather name="chevron-left" size={20} color="#3D5A80" />
-            </TouchableOpacity>
-            <View style={{alignItems:'center'}}>
-                <Text style={styles.monthNavLabel}>{marketProjections[marketMonthIndex].month} Projection</Text>
-                <Text style={styles.monthNavValue}>₱ {marketProjections[marketMonthIndex].price} / kg</Text>
+        {hasMarketData ? (
+          <>
+            <LineChart
+                data={{
+                    labels: ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"],
+                    datasets: [{ data: marketProjections.map(m => m.price) }]
+                }}
+                width={width - 70} 
+                height={180}
+                chartConfig={marketChartConfig}
+                withDots={false}
+                bezier
+                style={{ marginVertical: 10, alignSelf: 'center' }}
+            />
+            <View style={styles.monthNavRow}>
+                <TouchableOpacity onPress={handlePrevMonth} style={styles.navBtn}>
+                    <Feather name="chevron-left" size={20} color="#3D5A80" />
+                </TouchableOpacity>
+                <View style={{alignItems:'center'}}>
+                    <Text style={styles.monthNavLabel}>{marketProjections[marketMonthIndex].month} Average</Text>
+                    <Text style={styles.monthNavValue}>₱ {marketProjections[marketMonthIndex].price} / kg</Text>
+                </View>
+                <TouchableOpacity onPress={handleNextMonth} style={styles.navBtn}>
+                    <Feather name="chevron-right" size={20} color="#3D5A80" />
+                </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={handleNextMonth} style={styles.navBtn}>
-                <Feather name="chevron-right" size={20} color="#3D5A80" />
-            </TouchableOpacity>
-        </View>
+          </>
+        ) : (
+          <View style={[styles.emptyStateContainer, { borderWidth: 0, marginTop: 10, padding: 15 }]}>
+              <View style={[styles.emptyIconBg, { backgroundColor: '#F0F3F4' }]}>
+                  <MaterialCommunityIcons name="tag-off-outline" size={28} color="#95A5A6" />
+              </View>
+              <Text style={styles.emptyTitle}>No Market Data Yet</Text>
+              <Text style={styles.emptySub}>When users post items for sale, the average prices will map here.</Text>
+          </View>
+        )}
       </View>
 
     </View>
@@ -612,22 +668,18 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#2C3E50' },
   viewLink: { fontSize: 12, color: '#3D5A80', fontWeight: '700' },
 
-  // Standard Card (Demographics)
   statCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#EAECEE' },
   statCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   statTotalLabel: { fontSize: 11, color: '#95A5A6', fontWeight: '600', textTransform: 'uppercase' },
   statTotalValue: { fontSize: 22, fontWeight: '900', color: '#2C3E50' },
   
-  // Full Bleed Dark Section (Turbidity)
   darkBleedSection: { backgroundColor: '#293241', marginHorizontal: -20, paddingVertical: 25, marginTop: 15 },
   bleedHeader: { paddingHorizontal: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   bleedTitle: { fontSize: 18, fontWeight: '800', color: '#FFF' },
   bleedSub: { fontSize: 12, color: '#8AB4F8', fontWeight: '500', marginTop: 2 },
 
-  // Flat Inset Panel (Algae)
   flatInsetPanel: { backgroundColor: '#F4F6F7', borderRadius: 24, padding: 20, marginTop: 10, borderWidth: 1, borderColor: '#EAECEE' },
 
-  // Asymmetrical Card (Economics)
   asymmetricalCard: {
     backgroundColor: '#FFF', borderTopLeftRadius: 40, borderBottomRightRadius: 40, borderTopRightRadius: 12, borderBottomLeftRadius: 12,
     padding: 20, marginTop: 5, elevation: 4, shadowColor: '#3D5A80', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 12, borderWidth: 1, borderColor: '#EAECEE'
@@ -663,7 +715,6 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 16, fontWeight: '700', color: '#2C3E50', marginBottom: 4 },
   emptySub: { fontSize: 12, color: '#95A5A6', textAlign: 'center' },
 
-  // GUEST MODE STYLES
   guestContainer: { marginTop: 5, paddingBottom: 20 },
   heroCard: { height: 220, borderRadius: 24, marginBottom: 25, overflow: 'hidden', backgroundColor: '#293241' },
   heroImage: { width: '100%', height: '100%', opacity: 0.9 },
@@ -684,11 +735,6 @@ const styles = StyleSheet.create({
   mockBotText: { color: '#2C3E50', fontSize: 13 },
   tryBotBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF', paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: '#3D5A80', gap: 8 },
   tryBotText: { color: '#3D5A80', fontWeight: '700', fontSize: 13 },
-  featureGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 },
-  gridItem: { width: '31%', backgroundColor: '#FFF', borderRadius: 20, padding: 15, alignItems: 'center' },
-  gridIcon: { width: 45, height: 45, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  gridTitle: { fontSize: 13, fontWeight: '800', color: '#2C3E50', marginBottom: 2 },
-  gridSub: { fontSize: 10, color: '#95A5A6', textAlign: 'center' },
   modernCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', padding: 20, borderRadius: 24, borderWidth: 1, borderColor: '#E0E7ED' },
   ctaHeading: { fontSize: 16, fontWeight: '800', color: '#3D5A80' },
   ctaSub: { fontSize: 12, color: '#98C1D9', fontWeight: '600' },

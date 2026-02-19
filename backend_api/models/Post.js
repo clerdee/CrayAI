@@ -16,6 +16,11 @@ const postSchema = new mongoose.Schema({
       mediaType: String
     }
   ],
+  
+  isForSale: { type: Boolean, default: false },
+  price: { type: Number, default: 0 },
+  isSold: { type: Boolean, default: false },
+
   likes: [
     {
       type: mongoose.Schema.Types.ObjectId,

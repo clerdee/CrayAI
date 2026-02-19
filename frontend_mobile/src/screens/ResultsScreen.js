@@ -10,7 +10,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, G, Polygon, Line, Rect } from 'react-native-svg';
 import client from '../api/client'; 
 
-// Import your secure environment variables
 import { CLOUDINARY_CONFIG } from '../config/cloudinary';
 
 const { width, height } = Dimensions.get('window');
@@ -77,13 +76,14 @@ export default function ResultsScreen({ route, navigation }) {
   
   const [activeTab, setActiveTab] = useState('specimen'); 
   const [isSaving, setIsSaving] = useState(false);
+  const [isPosting, setIsPosting] = useState(false);
   const [userLocation, setUserLocation] = useState('Unknown Location');
   const [scanTimestamp] = useState(new Date()); 
 
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
   const toastAnim = useRef(new Animated.Value(-100)).current;
 
-  const showToastAndNavigate = (message, type = 'success') => {
+  const showToastAndNavigate = (message, type = 'success', targetScreen = 'Home') => {
     setToast({ visible: true, message, type });
     
     Animated.timing(toastAnim, {
@@ -99,8 +99,8 @@ export default function ResultsScreen({ route, navigation }) {
         useNativeDriver: true,
       }).start(() => {
         setToast(prev => ({ ...prev, visible: false }));
-        if(type === 'success') {
-          navigation.navigate('Home');
+        if(type === 'success' && targetScreen) {
+          navigation.navigate(targetScreen);
         }
       });
     }, 2000);
@@ -203,61 +203,87 @@ export default function ResultsScreen({ route, navigation }) {
 
   const handleDiscard = () => navigation.navigate('Camera', { resetScan: Date.now() });
 
+  // --- CORE FUNCTION: UPLOAD AND SAVE TO RECENT SCANS ---
+  const uploadAndSaveScan = async () => {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: 'scan_result.jpg',
+    });
+
+    formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset); 
+    formData.append('cloud_name', CLOUDINARY_CONFIG.cloudName); 
+    formData.append('folder', 'scanrecords');
+    
+    const cloudinaryRes = await fetch(CLOUDINARY_CONFIG.apiUrl, {
+      method: 'POST',
+      body: formData
+    });
+    const cloudinaryData = await cloudinaryRes.json();
+    
+    const uploadedImageUrl = cloudinaryData.secure_url;
+    const uploadedPublicId = cloudinaryData.public_id;
+
+    if (!uploadedImageUrl) throw new Error("Cloudinary upload failed");
+
+    const scanDataPayload = {
+      scanId: scan_id,
+      imageUrl: uploadedImageUrl,
+      imagePublicId: uploadedPublicId,
+      width_cm: parseFloat(cmW),
+      height_cm: parseFloat(cmH),
+      estimated_age: results.age,
+      algae_label: currentAlgae.label,
+      turbidity_level: parseInt(turbidity_level),
+      location: userLocation,
+      processing_time: processing_time,
+      model_version: model_version
+    };
+
+    // This creates the record in your database (Recent Scans)
+    await client.post('/scans/create', scanDataPayload);
+    
+    // Return the URL so the feed can use it without re-uploading
+    return uploadedImageUrl; 
+  };
+
+  // --- ACTION 1: ONLY SAVE RECORD ---
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const formData = new FormData();
-      formData.append('file', {
-        uri: imageUri,
-        type: 'image/jpeg',
-        name: 'scan_result.jpg',
-      });
-
-      formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset); 
-      formData.append('cloud_name', CLOUDINARY_CONFIG.cloudName); 
-      formData.append('folder', 'scanrecords');
-      
-      const cloudinaryRes = await fetch(CLOUDINARY_CONFIG.apiUrl, {
-        method: 'POST',
-        body: formData
-      });
-      const cloudinaryData = await cloudinaryRes.json();
-      
-      const uploadedImageUrl = cloudinaryData.secure_url;
-      const uploadedPublicId = cloudinaryData.public_id;
-
-      if (!uploadedImageUrl) throw new Error("Cloudinary upload failed");
-
-      const scanDataPayload = {
-        scanId: scan_id,
-        imageUrl: uploadedImageUrl,
-        imagePublicId: uploadedPublicId,
-        width_cm: parseFloat(cmW),
-        height_cm: parseFloat(cmH),
-        estimated_age: results.age,
-        algae_label: currentAlgae.label,
-        turbidity_level: parseInt(turbidity_level),
-        location: userLocation,
-        processing_time: processing_time,
-        model_version: model_version
-      };
-
-      await client.post('/scans/create', scanDataPayload);
-      showToastAndNavigate("Record saved to database!", "success");
-
+      await uploadAndSaveScan();
+      showToastAndNavigate("Record saved to database!", "success", "Home");
     } catch (error) {
       console.error("Save Error:", error);
-      showToastAndNavigate("Failed to save. Please try again.", "error");
+      showToastAndNavigate("Failed to save. Please try again.", "error", null);
     } finally { 
       setIsSaving(false); 
     }
   };
 
-  // --- NEW: POST TO FEED ACTION ---
-  const handlePostToFeed = () => {
-    // Navigate straight to Community screen.
-    // If you want to pass image data in the future, you can add it as params: { imageUri }
-    navigation.navigate('Community');
+  // --- ACTION 2: SAVE RECORD & POST TO FEED ---
+  const handlePostToFeed = async () => {
+    setIsPosting(true);
+    try {
+      // 1. Save it to "Recent Scans" database first
+      const uploadedImageUrl = await uploadAndSaveScan();
+
+      // 2. Format the auto-caption
+      const autoCaption = `Just scanned an Australian Red Claw Crayfish! 🦞\n\n📏 Size: ${results.sizeCm}\n🎂 Est. Age: ${results.age}\n💧 Water Turbidity: Level ${turbidity_level}\n🌿 Algae: ${currentAlgae.label}`;
+
+      // 3. Navigate to Community passing the Cloudinary URL (so it doesn't upload again)
+      navigation.navigate('Community', {
+        prefillImage: uploadedImageUrl,
+        prefillCaption: autoCaption
+      });
+
+    } catch (error) {
+      console.error("Post Error:", error);
+      showToastAndNavigate("Failed to process. Please try again.", "error", null);
+    } finally {
+      setIsPosting(false);
+    }
   };
 
   return (
@@ -388,29 +414,28 @@ export default function ResultsScreen({ route, navigation }) {
             </>
           )}
 
-          {/* --- UPDATED: ACTION BUTTONS IN A ROW --- */}
+          {/* ACTION BUTTONS */}
           <View style={styles.actionContainer}>
             <View style={styles.actionRowContainer}>
               
               {/* Button 1: Save Record */}
-              <TouchableOpacity style={[styles.primaryActionBtn, styles.shadow]} onPress={handleSave} disabled={isSaving}>
+              <TouchableOpacity style={[styles.primaryActionBtn, styles.shadow]} onPress={handleSave} disabled={isSaving || isPosting}>
                 <LinearGradient colors={['#293241', '#3D5A80']} style={styles.btnGradient}>
                   {isSaving ? <ActivityIndicator color="#FFF"/> : <><Feather name="save" size={18} color="#FFF" /><Text style={styles.btnText}>Save</Text></>}
                 </LinearGradient>
               </TouchableOpacity>
 
               {/* Button 2: Post to Feed */}
-              <TouchableOpacity style={[styles.primaryActionBtn, styles.shadow]} onPress={handlePostToFeed}>
+              <TouchableOpacity style={[styles.primaryActionBtn, styles.shadow]} onPress={handlePostToFeed} disabled={isSaving || isPosting}>
                 <LinearGradient colors={['#E76F51', '#D65A31']} style={styles.btnGradient}>
-                  <Feather name="share-2" size={18} color="#FFF" />
-                  <Text style={styles.btnText}>Post to Feed</Text>
+                  {isPosting ? <ActivityIndicator color="#FFF"/> : <><Feather name="share-2" size={18} color="#FFF" /><Text style={styles.btnText}>Post to Feed</Text></>}
                 </LinearGradient>
               </TouchableOpacity>
 
             </View>
 
             {/* Button 3: Discard */}
-            <TouchableOpacity style={styles.secondaryBtn} onPress={handleDiscard}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={handleDiscard} disabled={isSaving || isPosting}>
                 <Text style={styles.secondaryText}>Discard Result</Text>
             </TouchableOpacity>
           </View>
@@ -502,14 +527,11 @@ const styles = StyleSheet.create({
   activeLabelText: { fontWeight: '800', color: '#3D5A80' },
   turbidityInfo: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FDF8F3', padding: 12, borderRadius: 12, marginTop: 15, gap: 10 },
   turbidityStatusText: { fontSize: 12, color: '#5D4037', flex: 1, fontWeight: '600' },
-  
-  // --- UPDATED LAYOUT STYLES ---
   actionContainer: { marginTop: 5, paddingBottom: 20 },
   actionRowContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   primaryActionBtn: { flex: 1, borderRadius: 15, overflow: 'hidden' },
   btnGradient: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 16, gap: 8 },
   btnText: { color: '#FFF', fontSize: 15, fontWeight: '800' },
-  
   secondaryBtn: { paddingVertical: 15, alignItems: 'center', marginTop: 15 },
   secondaryText: { color: '#AAA', fontWeight: '700', fontSize: 15 }
 });

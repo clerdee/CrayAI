@@ -32,6 +32,9 @@ export default function ProfileScreen({ navigation, route }) {
   const [followLoading, setFollowLoading] = useState(false); 
   const [messageLoading, setMessageLoading] = useState(false); 
 
+  // --- NEW: Store logged-in user's ID to pass to the modal ---
+  const [loggedInUserId, setLoggedInUserId] = useState(null);
+
   // --- MODAL STATE ---
   const [selectedPost, setSelectedPost] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -49,13 +52,18 @@ export default function ProfileScreen({ navigation, route }) {
       let profileId = targetUserId;
       let profileData = null;
 
+      // FIRST: Always fetch my own profile to know who "I" am (for the edit button)
+      const myRes = await client.get('/auth/profile');
+      if (myRes.data.success) {
+         setLoggedInUserId(myRes.data.user._id || myRes.data.user.id);
+      }
+
       // A. FETCH PROFILE DATA
       if (isViewingSelf) {
         // View Own Profile
-        const res = await client.get('/auth/profile');
-        if (res.data.success) {
-          profileData = res.data.user;
-          profileId = res.data.user._id || res.data.user.id; 
+        if (myRes.data.success) {
+          profileData = myRes.data.user;
+          profileId = myRes.data.user._id || myRes.data.user.id; 
           
           setUserData(profileData);
           setStats({ 
@@ -247,7 +255,6 @@ export default function ProfileScreen({ navigation, route }) {
             {userData?.fullName || `${userData?.firstName || ''} ${userData?.lastName || ''}`.trim() || 'Researcher'}
           </Text>
           
-          {/* --- UPDATED LOCATION ROW WITH STREET --- */}
           <View style={styles.locationRow}>
             <Ionicons name="location" size={14} color="#98C1D9" />
             <Text style={styles.userLocation} numberOfLines={1} ellipsizeMode="tail">
@@ -319,9 +326,9 @@ export default function ProfileScreen({ navigation, route }) {
       {/* --- SCANS GRID --- */}
       <View style={styles.gridHeader}>
         <Text style={styles.gridTitle}>
-          {isViewingSelf ? "My Scans" : "Recent Contributions"}
+          {isViewingSelf ? "My Posts" : "Recent Contributions"}
         </Text>
-        <Text style={styles.scanCount}>{userPosts.length} Scans</Text>
+        <Text style={styles.scanCount}>{userPosts.length} Posts</Text>
       </View>
 
       {userPosts.length === 0 ? (
@@ -339,10 +346,16 @@ export default function ProfileScreen({ navigation, route }) {
         />
       )}
 
-      {/* --- MODAL FOR POST DETAILS --- */}
+      {/* --- 🚨 UPDATED MODAL CALL WITH CURRENT USER ID & ONUPDATE --- */}
       <PostDetailModal 
         visible={modalVisible} 
         post={selectedPost} 
+        currentUserId={loggedInUserId}
+        onUpdate={(updatedPost) => {
+          // Updates the grid immediately so changes reflect without refreshing
+          setUserPosts(prev => prev.map(p => p._id === updatedPost._id ? updatedPost : p));
+          setSelectedPost(updatedPost);
+        }}
         onClose={() => setModalVisible(false)} 
       />
 
