@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, LayoutGrid, Search } from 'lucide-react';
+import { Plus, Users, LayoutGrid, CheckCircle2, AlertCircle } from 'lucide-react';
 import client from '../../../api/client';
 import PostCard from './PostCard';
 import CreatePostModal from './CreatePostModal';
 import PostDetailModal from './PostDetailModal';
+import EditPostModal from './EditPostModal';
 
 const CommunityPage = () => {
   const [currentUser, setCurrentUser] = useState(null);
@@ -12,9 +13,12 @@ const CommunityPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState('All');
   
-  // Modal States
+  // Modal & Notification States
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
+  const [postToEdit, setPostToEdit] = useState(null); // Tracks which post to edit
+  
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
 
   useEffect(() => {
     fetchData();
@@ -24,11 +28,9 @@ const CommunityPage = () => {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      // Fetch Profile to get current user info
       const userRes = await client.get('/auth/profile', { headers: { Authorization: `Bearer ${token}` } });
       if (userRes.data?.success) setCurrentUser(userRes.data.user);
 
-      // Fetch Feed
       const postRes = await client.get('/posts/feed', { headers: { Authorization: `Bearer ${token}` } });
       if (postRes.data?.success) {
         setPosts(postRes.data.posts);
@@ -40,10 +42,28 @@ const CommunityPage = () => {
     }
   };
 
+  const showToast = (message, type = 'success') => {
+    setToast({ visible: true, message, type });
+    setTimeout(() => {
+      setToast({ visible: false, message: '', type: 'success' });
+    }, 3000);
+  };
+
   const handlePostCreated = (newPost) => {
-    // Append the user object manually so it immediately shows up with avatar
     const completePost = { ...newPost, user: currentUser };
     setPosts([completePost, ...posts]);
+    showToast("Post created successfully!", "success");
+  };
+
+  // NEW: Handle updating the state locally after an Edit
+  const handlePostUpdated = (updatedPost) => {
+    setPosts(prev => prev.map(p => p._id === updatedPost._id ? { ...p, ...updatedPost } : p));
+    
+    // Also update the selected post in the detail modal if it's open
+    if (selectedPost && selectedPost._id === updatedPost._id) {
+        setSelectedPost({ ...selectedPost, ...updatedPost });
+    }
+    showToast("Post updated successfully!", "success");
   };
 
   const handleLikeUpdate = (postId) => {
@@ -58,7 +78,6 @@ const CommunityPage = () => {
       return p;
     }));
     
-    // Also update selected post if it's currently open in the modal
     if (selectedPost && selectedPost._id === postId) {
         const hasLiked = selectedPost.likes.includes(currentUser._id);
         const updatedLikes = hasLiked 
@@ -68,7 +87,6 @@ const CommunityPage = () => {
     }
   };
 
-  // NEW: Handle Delete Post
   const handleDeletePost = async (postId) => {
     try {
       const token = localStorage.getItem('token');
@@ -77,17 +95,14 @@ const CommunityPage = () => {
       });
       
       if (res.data?.success) {
-        // Remove the post from the UI instantly
         setPosts(prev => prev.filter(p => p._id !== postId));
-        
-        // If the post was open in the modal, close the modal
         if (selectedPost && selectedPost._id === postId) {
           setSelectedPost(null);
         }
+        showToast("Post deleted successfully", "success");
       }
     } catch (error) {
-      console.error("Failed to delete post", error);
-      alert("Failed to delete post. Please try again.");
+      showToast("Failed to delete post. Please try again.", "error");
     }
   };
 
@@ -108,9 +123,29 @@ const CommunityPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F7F9] font-sans pb-24">
+    <div className="min-h-screen bg-[#F4F7F9] font-sans pb-24 relative">
       
-      {/* Header Area */}
+      {/* Custom Toast Notification */}
+      <AnimatePresence>
+        {toast.visible && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className={`fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-white font-bold tracking-wider uppercase text-xs backdrop-blur-md ${
+              toast.type === 'success' ? 'bg-[#293241]/95' : 'bg-[#E76F51]/95'
+            }`}
+          >
+            {toast.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-[#0FA958]" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-white" />
+            )}
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="bg-white border-b border-slate-100 sticky top-0 z-20 shadow-sm">
         <div className="max-w-[90rem] mx-auto px-4 md:px-8 py-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -131,7 +166,6 @@ const CommunityPage = () => {
 
       <div className="max-w-[90rem] mx-auto px-4 md:px-8 py-8">
         
-        {/* Filters */}
         <div className="flex gap-2 mb-8 bg-white w-fit p-1.5 rounded-2xl shadow-sm border border-slate-100">
           {['All', 'General', 'For Sale'].map(tab => (
             <button
@@ -144,7 +178,6 @@ const CommunityPage = () => {
           ))}
         </div>
 
-        {/* Feed Grid */}
         {filteredPosts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm border border-slate-100">
@@ -163,7 +196,8 @@ const CommunityPage = () => {
                   currentUser={currentUser} 
                   onLike={handleLikeUpdate}
                   onClick={setSelectedPost}
-                  onDelete={handleDeletePost} // Passed Delete Prop
+                  onDelete={handleDeletePost}
+                  onEdit={setPostToEdit} // Opens the Edit Modal
                 />
               ))}
             </AnimatePresence>
@@ -171,7 +205,6 @@ const CommunityPage = () => {
         )}
       </div>
 
-      {/* Modals */}
       <CreatePostModal 
         isOpen={isCreateOpen} 
         onClose={() => setIsCreateOpen(false)} 
@@ -183,7 +216,16 @@ const CommunityPage = () => {
         currentUser={currentUser}
         isOpen={!!selectedPost} 
         onClose={() => setSelectedPost(null)} 
-        onDelete={handleDeletePost} // Passed Delete Prop
+        onDelete={handleDeletePost} 
+        onEdit={setPostToEdit} // Opens the Edit Modal from inside the Details Modal
+      />
+
+      {/* NEW: Edit Post Modal */}
+      <EditPostModal 
+        isOpen={!!postToEdit}
+        post={postToEdit}
+        onClose={() => setPostToEdit(null)}
+        onPostUpdated={handlePostUpdated}
       />
 
     </div>

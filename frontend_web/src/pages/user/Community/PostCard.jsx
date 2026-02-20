@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, MessageCircle, Tag, MoreHorizontal, User, ChevronLeft, ChevronRight, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Heart, MessageCircle, Tag, MoreHorizontal, User, ChevronLeft, ChevronRight, Image as ImageIcon, Trash2, Pencil } from 'lucide-react';
 import client from '../../../api/client';
 
-// HELPER: Fixes Apple HEIC images by telling Cloudinary to serve them as JPGs
 const formatWebImage = (url) => {
   if (!url) return null;
   if (url.includes('cloudinary.com') && url.toLowerCase().endsWith('.heic')) {
@@ -12,18 +11,16 @@ const formatWebImage = (url) => {
   return url;
 };
 
-const PostCard = ({ post, currentUser, onLike, onClick, onDelete }) => {
+const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showOptions, setShowOptions] = useState(false);
   
   const hasLiked = post.likes?.includes(currentUser?._id);
   
-  // Follow & Ownership Logic
   const postAuthorId = post.userId?._id || post.userId;
   const currentUserId = currentUser?._id || currentUser?.id;
   const isMyPost = postAuthorId === currentUserId;
   
-  // Track follow state locally for instant UI updates
   const [isFollowing, setIsFollowing] = useState(currentUser?.following?.includes(postAuthorId));
 
   const handleLikeClick = async (e) => {
@@ -42,7 +39,6 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete }) => {
   const handleFollowClick = async (e) => {
     e.stopPropagation();
     try {
-      // Optimistic UI Update
       setIsFollowing(!isFollowing);
       const token = localStorage.getItem('token');
       const res = await client.post(`/auth/follow/${postAuthorId}`, {}, {
@@ -52,8 +48,7 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete }) => {
         setIsFollowing(res.data.isFollowing);
       }
     } catch (error) {
-      setIsFollowing(!isFollowing); // Revert on fail
-      console.error("Failed to follow user", error);
+      setIsFollowing(!isFollowing); 
     }
   };
 
@@ -61,6 +56,13 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete }) => {
     e.stopPropagation();
     setShowOptions(false);
     if (onDelete) onDelete(post._id);
+  };
+
+  // NEW: Edit Click Handler
+  const handleEditClick = (e) => {
+    e.stopPropagation();
+    setShowOptions(false);
+    if (onEdit) onEdit(post);
   };
 
   const authorName = post.userId ? `${post.userId.firstName} ${post.userId.lastName}` : (post.user || 'Unknown User');
@@ -77,9 +79,7 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete }) => {
       post.media.forEach(m => {
         if (!m) return;
         let link = typeof m === 'string' ? m : (m.uri || m.url || m.src || m.link);
-        if (link && !link.startsWith('file://') && !link.startsWith('blob:')) {
-          urls.push(formatWebImage(link));
-        }
+        if (link && !link.startsWith('file://') && !link.startsWith('blob:')) urls.push(formatWebImage(link));
       });
     } else if (typeof post.media === 'string') {
       if (!post.media.startsWith('file://')) urls.push(formatWebImage(post.media));
@@ -133,7 +133,6 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete }) => {
           </div>
         </div>
 
-        {/* Action Button Logic (Own Post = Dots, Other = Follow) */}
         {isMyPost ? (
           <div className="relative">
             <button 
@@ -146,12 +145,12 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete }) => {
               {showOptions && (
                 <motion.div 
                   initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-                  className="absolute right-0 mt-2 w-36 bg-white border border-slate-100 shadow-xl rounded-xl z-20 overflow-hidden"
+                  className="absolute right-0 mt-2 w-40 bg-white border border-slate-100 shadow-xl rounded-xl z-20 overflow-hidden flex flex-col"
                 >
-                  <button 
-                    onClick={handleDeleteClick}
-                    className="w-full flex items-center gap-2 px-4 py-3 text-sm font-bold text-[#E76F51] hover:bg-red-50 transition-colors"
-                  >
+                  <button onClick={handleEditClick} className="w-full flex items-center gap-2 px-4 py-3 text-sm font-bold text-[#3D5A80] hover:bg-slate-50 transition-colors border-b border-slate-50">
+                    <Pencil className="w-4 h-4" /> Edit Post
+                  </button>
+                  <button onClick={handleDeleteClick} className="w-full flex items-center gap-2 px-4 py-3 text-sm font-bold text-[#E76F51] hover:bg-red-50 transition-colors">
                     <Trash2 className="w-4 h-4" /> Delete Post
                   </button>
                 </motion.div>
@@ -182,7 +181,7 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete }) => {
             src={validImageUrls[currentImageIndex]} 
             alt="Post Media" 
             className="w-full h-full object-cover opacity-95 group-hover:opacity-100 transition-opacity" 
-            onError={(e) => console.error("Web still failed to load:", e.target.src)}
+            onError={(e) => console.error("Web failed to load:", e.target.src)}
           />
           {validImageUrls.length > 1 && (
             <>
@@ -220,9 +219,11 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete }) => {
         </div>
 
         {post.isForSale && (
-          <div className="flex items-center gap-1.5 bg-[#0FA958]/10 text-[#0FA958] px-3 py-1.5 rounded-xl border border-[#0FA958]/20">
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border ${post.isSold ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-[#0FA958]/10 text-[#0FA958] border-[#0FA958]/20'}`}>
             <Tag className="w-3.5 h-3.5" />
-            <span className="text-[11px] font-black uppercase tracking-widest">₱{post.price}</span>
+            <span className="text-[11px] font-black uppercase tracking-widest">
+              {post.isSold ? 'SOLD' : `₱${post.price}`}
+            </span>
           </div>
         )}
       </div>

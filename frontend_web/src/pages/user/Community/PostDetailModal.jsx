@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, User, Tag, Heart, MessageCircle, ChevronLeft, ChevronRight, Image as ImageIcon, MoreHorizontal, Trash2 } from 'lucide-react';
+import { X, Send, User, Tag, Heart, MessageCircle, ChevronLeft, ChevronRight, Image as ImageIcon, MoreHorizontal, Trash2, Pencil } from 'lucide-react';
 import client from '../../../api/client';
 
 const formatWebImage = (url) => {
@@ -9,20 +9,17 @@ const formatWebImage = (url) => {
   return url;
 };
 
-const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete }) => {
-  // 1. ALL HOOKS MUST BE AT THE VERY TOP
+const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit }) => {
   const [commentText, setCommentText] = useState('');
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showOptions, setShowOptions] = useState(false);
 
-  // Safely calculate IDs for the following state BEFORE the early return
   const postAuthorId = post?.userId?._id || post?.userId;
   const currentUserId = currentUser?._id || currentUser?.id;
   const isMyPost = postAuthorId === currentUserId;
   
-  // Hook for following status moved up!
   const [isFollowing, setIsFollowing] = useState(false);
 
   useEffect(() => {
@@ -30,12 +27,10 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete }) => {
       setComments(post.commentsData || []);
       setCurrentImageIndex(0);
       setShowOptions(false);
-      // Update following status when the post changes
       setIsFollowing(currentUser?.following?.includes(postAuthorId));
     }
   }, [post, currentUser, postAuthorId]);
 
-  // 2. EARLY RETURN MOVED BELOW ALL HOOKS
   if (!isOpen || !post) return null;
 
   const handleFollowClick = async (e) => {
@@ -54,7 +49,16 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete }) => {
     e.stopPropagation();
     if (onDelete) {
         onDelete(post._id);
-        onClose(); // close modal after deletion
+        onClose(); 
+    }
+  };
+
+  const handleEditClick = (e) => {
+    e.stopPropagation();
+    setShowOptions(false);
+    if (onEdit) {
+      onEdit(post);
+      onClose(); // Close details modal when opening edit modal
     }
   };
 
@@ -160,7 +164,6 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete }) => {
             {/* RIGHT SIDE: AUTHOR & COMMENTS */}
             <div className="w-full md:w-[400px] lg:w-[450px] flex flex-col bg-white border-l border-slate-100 flex-shrink-0 h-full max-h-[60vh] md:max-h-full">
               
-              {/* Header inside Modal */}
               <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white z-10 shadow-sm">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-[#E0FBFC] border border-slate-200 overflow-hidden flex-shrink-0">
@@ -180,7 +183,10 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete }) => {
                       </button>
                       <AnimatePresence>
                         {showOptions && (
-                          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="absolute right-0 mt-2 w-36 bg-white border border-slate-100 shadow-xl rounded-xl z-20 overflow-hidden">
+                          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="absolute right-0 mt-2 w-40 bg-white border border-slate-100 shadow-xl rounded-xl z-20 overflow-hidden flex flex-col">
+                            <button onClick={handleEditClick} className="w-full flex items-center gap-2 px-4 py-3 text-sm font-bold text-[#3D5A80] hover:bg-slate-50 transition-colors border-b border-slate-50">
+                              <Pencil className="w-4 h-4" /> Edit Post
+                            </button>
                             <button onClick={handleDeleteClick} className="w-full flex items-center gap-2 px-4 py-3 text-sm font-bold text-[#E76F51] hover:bg-red-50 transition-colors">
                               <Trash2 className="w-4 h-4" /> Delete Post
                             </button>
@@ -204,11 +210,16 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete }) => {
                   </div>
                   <div>
                     <p className="text-sm text-[#293241] leading-relaxed"><span className="font-black mr-2 hover:underline cursor-pointer">{authorName}</span>{post.content}</p>
+                    
                     {post.isForSale && (
-                      <div className="mt-2 inline-flex items-center gap-1.5 bg-[#0FA958]/10 text-[#0FA958] px-2.5 py-1 rounded-lg">
-                        <Tag className="w-3.5 h-3.5" /><span className="text-[11px] font-black uppercase tracking-widest">₱{post.price}</span>
+                      <div className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg ${post.isSold ? 'bg-slate-200 text-slate-500' : 'bg-[#0FA958]/10 text-[#0FA958]'}`}>
+                        <Tag className="w-3.5 h-3.5" />
+                        <span className="text-[11px] font-black uppercase tracking-widest">
+                           {post.isSold ? 'SOLD' : `₱${post.price}`}
+                        </span>
                       </div>
                     )}
+
                     <p className="text-[10px] font-bold text-slate-400 mt-1.5 uppercase tracking-wider">{new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>
@@ -235,7 +246,7 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete }) => {
                         </div>
                         <div>
                           <p className="text-sm text-slate-700 leading-relaxed"><span className="font-black text-[#293241] mr-2 hover:underline cursor-pointer">{cName}</span>{c.text}</p>
-                          <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">{new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                          <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">{new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                         </div>
                       </div>
                     );

@@ -45,21 +45,25 @@ const teamMembers = [
     name: "Mallo, GH.", 
     role: "Backend Engineer", 
     initials: "GH",
-    gradient: 'linear-gradient(135deg, #1A2980 0%, #26D0CE 100%)'
+    gradient: 'linear-gradient(135deg, #1A2980 0%, #26D0CE 100%)',
+    github: "https://github.com/nethanmcqinn",
   },
   { 
     id: 3, 
     name: "Laceda, J.", 
-    role: "Research Specialist", 
+    role: "Research Specialist",
     initials: "J",
-    gradient: 'linear-gradient(135deg, #FF512F 0%, #DD2476 100%)'
+    gradient: 'linear-gradient(135deg, #FF512F 0%, #DD2476 100%)',
+    github: "https://github.com/jasonrys25", 
   },
   { 
     id: 4, 
     name: "Cortez, DD.", 
     role: "Data Handler", 
     initials: "DD",
-    gradient: 'linear-gradient(135deg, #4776E6 0%, #8E54E9 100%)'
+    gradient: 'linear-gradient(135deg, #4776E6 0%, #8E54E9 100%)',
+    github: "https://github.com/drew18-it",
+    email: "cortezdrew99@gmail.com"
   },
 ];
 
