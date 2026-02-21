@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, MapPin, Calendar, LayoutGrid, ChevronLeft, Edit2, ScanSearch } from 'lucide-react';
+import { 
+  User, MapPin, Calendar, LayoutGrid, ChevronLeft, 
+  Edit2, ScanSearch, MessageSquare, AlignLeft 
+} from 'lucide-react';
 import client from '../../api/client';
 import PostCard from './Community/PostCard';
 import PostDetailModal from './Community/PostDetailModal';
+import EditProfileModal from './EditProfileModal'; 
 
 const ProfilePage = () => {
   const { userId } = useParams(); 
@@ -12,15 +16,13 @@ const ProfilePage = () => {
   
   const [profileUser, setProfileUser] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
-  
-  // Data States
   const [userPosts, setUserPosts] = useState([]);
   const [userScans, setUserScans] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Tab State: 'posts' | 'scans'
+  const [isFollowing, setIsFollowing] = useState(false);
   const [activeTab, setActiveTab] = useState('posts'); 
   const [selectedPost, setSelectedPost] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false); 
 
   useEffect(() => {
     fetchProfileData();
@@ -31,18 +33,16 @@ const ProfilePage = () => {
     try {
       const token = localStorage.getItem('token');
       
-      // 1. Fetch current logged-in user
       const myRes = await client.get('/auth/profile', { headers: { Authorization: `Bearer ${token}` } });
       const me = myRes.data?.user;
       if (me) setCurrentUser(me);
 
-      // 2. Fetch the target profile's info
       let targetUser = me;
-      const targetId = userId || me?._id;
+      const targetId = userId || me?._id || me?.id;
 
-      if (userId && userId !== me?._id) {
+      if (userId && userId !== String(me?._id || me?.id)) {
         try {
-          const userRes = await client.get(`/auth/user/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
+          const userRes = await client.get(`/auth/users/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
           if (userRes.data?.success) targetUser = userRes.data.user;
         } catch (e) {
           console.warn("Falling back to basic info from posts.");
@@ -51,37 +51,25 @@ const ProfilePage = () => {
       }
       setProfileUser(targetUser);
 
-      // 3. 🌍 FETCH COMMUNITY POSTS (Public)
-      try {
-        const postRes = await client.get('/posts/feed', { headers: { Authorization: `Bearer ${token}` } });
-        if (postRes.data?.success) {
-          const filtered = postRes.data.posts.filter(p => 
-            (p.userId?._id === targetId) || (p.userId === targetId)
-          );
-          setUserPosts(filtered);
-          
-          if (filtered.length > 0 && targetUser.firstName === 'Community') {
-             setProfileUser(filtered[0].userId); 
-          }
-        }
-      } catch (postErr) {
-        console.error("Failed to fetch user posts", postErr);
+      if (me && String(targetId) !== String(me._id || me.id)) {
+         const myFollowing = me.following || [];
+         setIsFollowing(myFollowing.some(id => String(id) === String(targetId)));
       }
 
-      // 4. 🔒 FETCH PRIVATE SCANS (Only if viewing your OWN profile)
-      if (targetId === me?._id) {
-        try {
-          const scanRes = await client.get('/scans/me', { headers: { Authorization: `Bearer ${token}` } });
+      const postRes = await client.get('/posts/feed', { headers: { Authorization: `Bearer ${token}` } });
+      if (postRes.data?.success) {
+        const targetStr = String(targetId);
+        const filtered = postRes.data.posts.filter(p => {
+          const authorId = String(p.userId?._id || p.userId?.id || p.userId);
+          return authorId === targetStr;
+        });
+        setUserPosts(filtered);
+      }
 
-          console.log("👀 RAW SCAN DATA:", scanRes.data);
-          
-          if (scanRes.data?.success) {
-            setUserScans(scanRes.data.records || []);
-          } else if (Array.isArray(scanRes.data)) {
-            setUserScans(scanRes.data);
-          }
-        } catch (scanErr) {
-          console.warn("Could not fetch private scans:", scanErr);
+      if (String(targetId) === String(me?._id || me?.id)) {
+        const scanRes = await client.get('/scans/me', { headers: { Authorization: `Bearer ${token}` } });
+        if (scanRes.data?.success) {
+          setUserScans(scanRes.data.records || []);
         }
       }
 
@@ -92,17 +80,49 @@ const ProfilePage = () => {
     }
   };
 
-  const handleLikeUpdate = (postId) => {
-    setUserPosts(prev => prev.map(p => {
-      if (p._id === postId) {
-        const hasLiked = p.likes.includes(currentUser._id);
-        const updatedLikes = hasLiked 
-            ? p.likes.filter(id => id !== currentUser._id) 
-            : [...p.likes, currentUser._id];
-        return { ...p, likes: updatedLikes };
+  const handleFollowClick = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const targetId = String(profileUser._id || profileUser.id);
+      const myId = String(currentUser._id || currentUser.id);
+      const wasFollowing = isFollowing;
+      
+      setIsFollowing(!wasFollowing);
+
+      setProfileUser(prev => {
+        if (!prev) return prev;
+        const currentFollowers = prev.followers || [];
+        const newFollowers = wasFollowing
+          ? currentFollowers.filter(id => String(id) !== myId)
+          : [...currentFollowers, myId];
+        return { ...prev, followers: newFollowers };
+      });
+
+      setCurrentUser(prev => {
+        if (!prev) return prev;
+        const currentFollowing = prev.following || [];
+        const newFollowing = wasFollowing
+          ? currentFollowing.filter(id => String(id) !== targetId) 
+          : [...currentFollowing, targetId]; 
+        return { ...prev, following: newFollowing };
+      });
+
+      const res = await client.post(`/auth/follow/${targetId}`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.data?.success) {
+        setIsFollowing(res.data.isFollowing);
       }
-      return p;
-    }));
+    } catch (error) {
+      console.error("Failed to follow/unfollow user", error);
+      setIsFollowing(isFollowing); 
+    }
+  };
+
+  // Navigates to chat/message route
+  const handleMessageClick = () => {
+    navigate(`/messages/${profileUser._id || profileUser.id}`);
   };
 
   if (isLoading) {
@@ -115,11 +135,12 @@ const ProfilePage = () => {
     );
   }
 
-  const isMyProfile = currentUser?._id === profileUser?._id;
+  const isMyProfile = String(currentUser?._id || currentUser?.id) === String(profileUser?._id || profileUser?.id);
+  const profileName = profileUser?.fullName || `${profileUser?.firstName || ''} ${profileUser?.lastName || ''}`.trim() || 'Unknown User';
+  const displayLocation = [profileUser?.city, profileUser?.country].filter(Boolean).join(', ') || 'Location not set';
 
   return (
     <div className="min-h-screen bg-[#F4F7F9] font-sans pb-24">
-      {/* --- PROFILE HEADER --- */}
       <div className="bg-white border-b border-slate-100 shadow-sm pt-8 pb-12">
         <div className="max-w-[90rem] mx-auto px-4 md:px-8">
           
@@ -128,7 +149,6 @@ const ProfilePage = () => {
           </button>
 
           <div className="flex flex-col md:flex-row items-center md:items-start gap-8">
-            {/* Avatar */}
             <div className="w-32 h-32 md:w-40 md:h-40 rounded-full bg-[#E0FBFC] border-4 border-white shadow-xl overflow-hidden flex-shrink-0 relative">
               {profileUser?.profilePic ? (
                 <img src={profileUser.profilePic} alt="Profile" className="w-full h-full object-cover" />
@@ -137,16 +157,15 @@ const ProfilePage = () => {
               )}
             </div>
 
-            {/* User Info */}
             <div className="flex-1 text-center md:text-left pt-2">
               <h1 className="text-4xl font-black text-[#293241] tracking-tight mb-2">
-                {profileUser?.firstName} {profileUser?.lastName}
+                {profileName}
               </h1>
               
-              <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-sm font-bold text-slate-400 uppercase tracking-widest mb-6">
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">
                 <span className="flex items-center gap-1.5">
                   <MapPin className="w-4 h-4" /> 
-                  {profileUser?.location || 'Philippines'}
+                  {displayLocation}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Calendar className="w-4 h-4" /> 
@@ -154,7 +173,13 @@ const ProfilePage = () => {
                 </span>
               </div>
 
-              {/* Stats */}
+              {/* BIO SECTION */}
+              <div className="max-w-xl mb-6">
+                <p className="text-slate-600 italic leading-relaxed">
+                   {profileUser?.bio ? `"${profileUser.bio}"` : "No bio provided yet."}
+                </p>
+              </div>
+
               <div className="flex items-center justify-center md:justify-start gap-8">
                 <div className="text-center">
                   <span className="block text-2xl font-black text-[#3D5A80]">{userPosts.length}</span>
@@ -171,19 +196,35 @@ const ProfilePage = () => {
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="pt-2">
+            <div className="pt-2 flex flex-col gap-3">
               {isMyProfile ? (
                 <button 
-                  onClick={() => alert("Edit Profile component coming soon!")} 
+                  onClick={() => setIsEditModalOpen(true)} 
                   className="flex items-center gap-2 px-6 py-3 bg-slate-100 hover:bg-slate-200 text-[#293241] font-black uppercase tracking-widest text-xs rounded-full transition-colors shadow-sm"
                 >
                   <Edit2 className="w-4 h-4" /> Edit Profile
                 </button>
               ) : (
-                <button className="px-8 py-3 bg-[#3D5A80] hover:bg-[#293241] text-white font-black uppercase tracking-widest text-xs rounded-full transition-colors shadow-lg shadow-[#3D5A80]/20">
-                  Follow
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button 
+                    onClick={handleFollowClick}
+                    className={`px-8 py-3 font-black uppercase tracking-widest text-xs rounded-full transition-colors shadow-lg ${
+                      isFollowing 
+                        ? 'bg-slate-100 text-slate-500 hover:bg-slate-200 shadow-none' 
+                        : 'bg-[#3D5A80] hover:bg-[#293241] text-white shadow-[#3D5A80]/20'
+                    }`}
+                  >
+                    {isFollowing ? 'Following' : 'Follow'}
+                  </button>
+                  
+                  {/* MESSAGE BUTTON FOR OTHERS */}
+                  <button 
+                    onClick={handleMessageClick}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-white border-2 border-[#3D5A80] text-[#3D5A80] hover:bg-[#3D5A80] hover:text-white font-black uppercase tracking-widest text-xs rounded-full transition-all shadow-md"
+                  >
+                    <MessageSquare className="w-4 h-4" /> Message
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -191,8 +232,7 @@ const ProfilePage = () => {
       </div>
 
       <div className="max-w-[90rem] mx-auto px-4 md:px-8 py-8">
-        
-        {/* --- TABS --- */}
+        {/* TABS & POSTS LOGIC (Rest of your existing code remains unchanged) */}
         <div className="flex gap-8 border-b border-slate-200 mb-8">
           <button 
             onClick={() => setActiveTab('posts')} 
@@ -211,7 +251,6 @@ const ProfilePage = () => {
           )}
         </div>
 
-        {/* --- PUBLIC POSTS GRID --- */}
         {activeTab === 'posts' && (
           userPosts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
@@ -226,7 +265,7 @@ const ProfilePage = () => {
                     key={post._id} 
                     post={post} 
                     currentUser={currentUser} 
-                    onLike={handleLikeUpdate}
+                    onLike={fetchProfileData}
                     onClick={setSelectedPost}
                   />
                 ))}
@@ -235,13 +274,11 @@ const ProfilePage = () => {
           )
         )}
 
-        {/* --- PRIVATE SCANS GRID --- */}
         {activeTab === 'scans' && isMyProfile && (
           userScans.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
               <ScanSearch className="w-12 h-12 text-slate-300 mb-4" />
               <p className="text-sm font-bold text-slate-400 tracking-widest uppercase">No private scans yet.</p>
-              <p className="text-xs text-slate-400 mt-2">Your AI measurements will appear here securely.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -252,38 +289,33 @@ const ProfilePage = () => {
                     key={scan._id} 
                     className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col gap-4 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all cursor-pointer"
                   >
-                    {/* Scan Image */}
                     <div className="w-full h-40 bg-[#E0FBFC] rounded-2xl overflow-hidden relative border border-slate-50">
                        <img 
-                          src={scan.imageUrl || scan.image || '/crayfish.png'} 
+                          src={scan.image?.url || scan.image || '/crayfish.png'} 
                           alt="Crayfish Scan" 
                           className="w-full h-full object-cover" 
                        />
                        <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm text-white text-[10px] font-black uppercase px-2 py-1 rounded-full">
-                          {scan.gender || 'Unknown'}
+                          {scan.environment?.algae_label || 'Normal'}
                        </div>
                     </div>
-                    
-                    {/* Scan Header */}
                     <div>
-                        <h4 className="font-black text-[#293241] truncate">Red Claw Record</h4>
+                        <h4 className="font-black text-[#293241] truncate">{scan.scanId || 'Scan Record'}</h4>
                         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                          {new Date(scan.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                          {new Date(scan.createdAt).toLocaleDateString()}
                         </p>
                     </div>
-
-                    {/* Scan Metrics */}
                     <div className="flex justify-between items-center pt-3 border-t border-slate-50">
                         <div className="flex flex-col">
-                           <span className="text-[10px] text-slate-400 uppercase font-black">Weight</span>
+                           <span className="text-[10px] text-slate-400 uppercase font-black">Dimensions</span>
                            <span className="text-sm font-bold text-[#E76F51]">
-                              {scan.weight ? `${scan.weight} g` : '--'}
+                              {scan.morphometrics?.width_cm || 0}W × {scan.morphometrics?.height_cm || 0}H
                            </span>
                         </div>
                         <div className="flex flex-col text-right">
-                           <span className="text-[10px] text-slate-400 uppercase font-black">Length</span>
+                           <span className="text-[10px] text-slate-400 uppercase font-black">Est. Age</span>
                            <span className="text-sm font-bold text-[#3D5A80]">
-                              {scan.length ? `${scan.length} cm` : '--'}
+                              {scan.morphometrics?.estimated_age || '--'}
                            </span>
                         </div>
                     </div>
@@ -300,6 +332,16 @@ const ProfilePage = () => {
         currentUser={currentUser}
         isOpen={!!selectedPost} 
         onClose={() => setSelectedPost(null)} 
+      />
+
+      <EditProfileModal 
+        isOpen={isEditModalOpen} 
+        onClose={() => setIsEditModalOpen(false)} 
+        user={currentUser} 
+        onProfileUpdated={(updatedUser) => {
+          setCurrentUser(updatedUser);
+          setProfileUser(updatedUser);
+        }}
       />
     </div>
   );

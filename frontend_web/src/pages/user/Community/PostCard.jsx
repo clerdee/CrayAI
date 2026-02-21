@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, MessageCircle, Tag, MoreHorizontal, User, ChevronLeft, ChevronRight, Image as ImageIcon, Trash2, Pencil } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import client from '../../../api/client';
 
 const formatWebImage = (url) => {
@@ -12,9 +13,10 @@ const formatWebImage = (url) => {
 };
 
 const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
+  const navigate = useNavigate();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showOptions, setShowOptions] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // 🚨 New State for the Modal
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   const hasLiked = post.likes?.includes(currentUser?._id);
   const postAuthorId = post.userId?._id || post.userId;
@@ -55,7 +57,7 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
   const handleDeleteClick = (e) => {
     e.stopPropagation();
     setShowOptions(false);
-    setShowDeleteConfirm(true); // 🚨 Opens the custom modal instead of deleting instantly
+    setShowDeleteConfirm(true); 
   };
 
   const handleEditClick = (e) => {
@@ -116,8 +118,14 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
       className="bg-white rounded-3xl p-6 shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-slate-100 cursor-pointer flex flex-col transition-shadow hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] h-full min-h-[250px]"
     >
       <div className="flex justify-between items-start mb-4 relative">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-[#E0FBFC] overflow-hidden flex-shrink-0 border border-slate-100 shadow-inner">
+        <div 
+          className="flex items-center gap-3 cursor-pointer group"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/profile/${postAuthorId}`); 
+          }}
+        >
+          <div className="w-10 h-10 rounded-full bg-[#E0FBFC] overflow-hidden flex-shrink-0 border border-slate-100 shadow-inner group-hover:border-[#98C1D9] transition-colors">
             {profilePicUrl ? (
               <img src={profilePicUrl} alt={authorName} className="w-full h-full object-cover" />
             ) : (
@@ -125,7 +133,7 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
             )}
           </div>
           <div>
-            <h4 className="text-sm font-black text-[#293241] leading-none hover:underline">
+            <h4 className="text-sm font-black text-[#293241] leading-none group-hover:text-[#E76F51] transition-colors">
               {authorName}
             </h4>
             <p className="text-[10px] font-bold text-slate-400 mt-1.5 uppercase tracking-widest">
@@ -240,7 +248,7 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               className="bg-white rounded-[2rem] w-full max-w-sm shadow-2xl overflow-hidden p-6 text-center"
-              onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside modal
+              onClick={(e) => e.stopPropagation()} 
             >
               <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
                 <Trash2 className="w-8 h-8 text-[#E76F51]" />
@@ -260,7 +268,7 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowDeleteConfirm(false);
-                    if (onDelete) onDelete(post._id); // Proceed with deletion
+                    if (onDelete) onDelete(post._id); 
                   }}
                   className="flex-1 py-3.5 bg-[#E76F51] hover:bg-red-600 text-white font-bold rounded-xl transition-colors shadow-lg shadow-[#E76F51]/20"
                 >
