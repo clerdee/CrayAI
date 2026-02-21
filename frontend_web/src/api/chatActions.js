@@ -1,24 +1,29 @@
 import client from './client';
 
 const chatActions = {
-  // GET /chats/chats
+  // GET /chat/chats
   getUserChats: async () => {
-    return await client.get('/chats/chats');
+    return await client.get('/chat/chats');
   },
 
-  // GET /chats/messages/:partnerId
+  // GET /chat/messages/:partnerId
   getMessages: async (partnerId) => {
-    return await client.get(`/chats/messages/${partnerId}`);
+    return await client.get(`/chat/messages/${partnerId}`);
   },
 
-  // POST /chats/send
+  // POST /chat/send
   sendMessage: async (receiverId, text) => {
-    return await client.post('/chats/send', { receiverId, text });
+    return await client.post('/chat/send', { receiverId, text });
   },
 
-  // POST /chats/accept
+  // POST /chat/accept
   acceptChatRequest: async (chatId) => {
-    return await client.post('/chats/accept', { chatId });
+    return await client.post('/chat/accept', { chatId });
+  },
+
+  // POST /chat/decline (Added to match logic)
+  declineChatRequest: async (chatId) => {
+    return await client.post('/chat/decline', { chatId });
   }
 };
 
