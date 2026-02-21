@@ -20,6 +20,8 @@ import UserDashboard from './pages/user/UserDashboard';
 import UserLayout from './layouts/UserLayout';
 import CommunityPage from './pages/user/Community/CommunityPage';
 import ProfilePage from './pages/user/ProfilePage';
+import ChatPage from './pages/user/ChatPage';
+import NotificationPage from './pages/user/NotificationPage';
 
 axios.interceptors.response.use(
   (response) => response, 
@@ -73,6 +75,8 @@ const App = () => {
       <Route path="/community" element={<ProtectedRoute allowedRoles={['user']}><UserLayout><CommunityPage /></UserLayout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute allowedRoles={['user']}><UserLayout><ProfilePage /></UserLayout></ProtectedRoute>} />
       <Route path="/profile/:userId" element={<ProtectedRoute allowedRoles={['user']}><UserLayout><ProfilePage /></UserLayout></ProtectedRoute>} />
+      <Route path="/chats" element={<ProtectedRoute allowedRoles={['user']}><UserLayout><ChatPage /></UserLayout></ProtectedRoute>} />
+      <Route path="/notifications" element={<ProtectedRoute allowedRoles={['user']}><UserLayout><NotificationPage /></UserLayout></ProtectedRoute>} />
 
       {/* ADMIN ROUTES (System Management) */}
       <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />

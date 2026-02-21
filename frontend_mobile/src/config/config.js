@@ -1,7 +1,7 @@
 // config.js
 
 const config = {
-  NETWORK_IP: "https://viridescent-nerissa-candidly.ngrok-free.dev",
+  NETWORK_IP: "http://192.168.1.24:5000",
 
   GOOGLE: {
     WEB_CLIENT_ID:

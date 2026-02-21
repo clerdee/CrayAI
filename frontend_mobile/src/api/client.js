@@ -26,8 +26,15 @@ export const aiClient = axios.create({
 // 3. REQUEST INTERCEPTOR (Kept the crucial Auth Token injection, removed all logs)
 client.interceptors.request.use(
   async (requestConfig) => {
+    const skipAuth = requestConfig.url && (
+      requestConfig.url.endsWith('/auth/login') ||
+      requestConfig.url.endsWith('/auth/social-login')
+    );
+    if (skipAuth) {
+      return requestConfig;
+    }
     try {
-      const token = await AsyncStorage.getItem('userToken');
+      const token = await AsyncStorage.getItem('token');
       if (token) {
         requestConfig.headers.Authorization = `Bearer ${token}`;
       }

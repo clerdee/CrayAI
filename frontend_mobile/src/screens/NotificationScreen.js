@@ -47,7 +47,7 @@ export default function NotificationScreen({ navigation }) {
   // --- FETCH DATA ---
   const fetchData = async () => {
     try {
-      const token = await AsyncStorage.getItem('userToken');
+      const token = await AsyncStorage.getItem('token');
       
       if (!token) {
         setIsGuest(true);
@@ -114,7 +114,7 @@ export default function NotificationScreen({ navigation }) {
 
   const handleLogout = async () => {
     try {
-      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('token');
       await AsyncStorage.removeItem('userInfo');
       await AsyncStorage.removeItem('alertsCount');
       navigation.reset({ index: 0, routes: [{ name: 'Login' }] });

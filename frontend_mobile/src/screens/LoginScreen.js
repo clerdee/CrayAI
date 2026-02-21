@@ -79,7 +79,7 @@ export default function LoginScreen({ navigation }) {
 
       if (res.status === 200 && res.data.success) {
         // Save Session
-        await AsyncStorage.setItem('userToken', res.data.token);
+        await AsyncStorage.setItem('token', res.data.token);
         await AsyncStorage.setItem('userInfo', JSON.stringify(res.data.user));
 
         showNotification(`Welcome back, ${res.data.user.firstName}!`, "success");
@@ -105,9 +105,14 @@ export default function LoginScreen({ navigation }) {
       return;
     }
 
+    // Remove any old token before login
+    await AsyncStorage.removeItem('token');
+    await AsyncStorage.removeItem('userInfo');
+
     setLoading(true);
 
     try {
+      console.log('[LoginScreen] Sending login request to:', '/auth/login');
       const response = await client.post('/auth/login', {
         email: email,
         password: password
@@ -131,7 +136,7 @@ export default function LoginScreen({ navigation }) {
         }
 
         // Success Flow
-        await AsyncStorage.setItem('userToken', response.data.token);
+        await AsyncStorage.setItem('token', response.data.token);
         await AsyncStorage.setItem('userInfo', JSON.stringify(userData));
         
         showNotification(`Welcome back, ${userData.firstName}!`, "success");

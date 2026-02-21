@@ -11,9 +11,16 @@ const client = axios.create({
 
 // 2. Intercept requests to attach the Token
 client.interceptors.request.use(
-  async (config) => {
-    // WEB SPECIFIC: Use localStorage instead of AsyncStorage
-    const token = localStorage.getItem('crayai_token');
+  (config) => {
+    // Skip adding Authorization for login and social-login endpoints
+    const skipAuth = config.url && (
+      config.url.endsWith('/auth/login') ||
+      config.url.endsWith('/auth/social-login')
+    );
+    if (skipAuth) {
+      return config;
+    }
+    const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

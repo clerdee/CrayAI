@@ -72,7 +72,7 @@ export default function VerifyOtpScreen({ route, navigation }) {
         // Success! Save token to AsyncStorage
         const { token, user } = response.data;
         
-        await AsyncStorage.setItem('userToken', token);
+        await AsyncStorage.setItem('token', token);
         await AsyncStorage.setItem('userInfo', JSON.stringify(user));
         
         Alert.alert("Success", "Account Verified! Logging you in...");

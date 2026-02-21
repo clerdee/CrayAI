@@ -17,7 +17,7 @@ const BottomNavBar = ({ activeTab }) => {
       const fetchCounts = async () => {
         try {
           // 1. SAFETY CHECK: Ensure Token Exists
-          const token = await AsyncStorage.getItem('userToken');
+          const token = await AsyncStorage.getItem('token');
           
           if (!token) {
             setIsGuest(true);

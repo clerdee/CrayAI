@@ -16,7 +16,7 @@ const Sidebar = ({ user, isMobileOpen, setIsMobileOpen }) => {
     { name: 'Community', path: '/community', icon: Users },
     { name: 'Scan', path: '/scan', icon: Camera },
     { name: 'History', path: '/history', icon: Clock },
-    { name: 'Chat', path: '/chat', icon: MessageSquare },
+    { name: 'Chat', path: '/chats', icon: MessageSquare },
     { name: 'Notifications', path: '/notifications', icon: Bell },
   ];
 

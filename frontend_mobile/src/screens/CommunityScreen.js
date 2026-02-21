@@ -149,7 +149,7 @@ export default function CommunityScreen({ navigation, route }) {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const token = await AsyncStorage.getItem('userToken');
+        const token = await AsyncStorage.getItem('token');
         if (!token) {
           setIsGuest(true);
           return;
@@ -204,7 +204,7 @@ export default function CommunityScreen({ navigation, route }) {
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.multiRemove(['userToken', 'userInfo', 'alertsCount']);
+    await AsyncStorage.multiRemove(['token', 'userInfo', 'alertsCount']);
     setCurrentUser(null);
     setSidebarVisible(false);
     navigation.navigate('Login'); 

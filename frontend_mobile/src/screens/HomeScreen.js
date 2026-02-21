@@ -56,7 +56,7 @@ export default function HomeScreen({ navigation }) {
 
   useEffect(() => {
     const loadAlertBadge = async () => {
-      const token = await AsyncStorage.getItem('userToken');
+      const token = await AsyncStorage.getItem('token');
       if (token) {
         const value = await AsyncStorage.getItem('alertsCount');
         setAlertsCount(Number(value || 0));
@@ -72,7 +72,7 @@ export default function HomeScreen({ navigation }) {
   const checkLoginStatus = async () => {
     setIsLoadingUser(true);
     try {
-      const token = await AsyncStorage.getItem('userToken');
+      const token = await AsyncStorage.getItem('token');
       if (token) {
         const res = await client.get('/auth/profile');
         if (res.data?.success) {
@@ -176,7 +176,7 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.multiRemove(['userToken', 'userInfo', 'alertsCount']);
+    await AsyncStorage.multiRemove(['token', 'userInfo', 'alertsCount']);
     setCurrentUser(null);
     setSidebarVisible(false);
     navigation.navigate('Login');

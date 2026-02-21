@@ -2,12 +2,12 @@ import React from 'react';
 import { 
   LayoutDashboard, 
   Users, 
-  BrainCircuit, // For AI
-  MessageSquareWarning, // For Moderation
-  Database, // For Dataset
+  BrainCircuit, 
+  MessageSquareWarning, 
+  Database, 
   Settings, 
   LogOut,
-  Activity // For System Health
+  Activity 
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 

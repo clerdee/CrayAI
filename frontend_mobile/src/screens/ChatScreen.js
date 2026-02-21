@@ -24,7 +24,7 @@ export default function ChatScreen({ navigation, route }) {
   const [sendingImage, setSendingImage] = useState(false);
   const [stagedImage, setStagedImage] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
-  const [isGuest, setIsGuest] = useState(false); // New State
+  const [isGuest, setIsGuest] = useState(false); 
 
   const [myChats, setMyChats] = useState([]); 
   const [requests, setRequests] = useState([]); 
@@ -50,7 +50,7 @@ export default function ChatScreen({ navigation, route }) {
     let mounted = true;
     const checkAuth = async () => {
       try {
-        const token = await AsyncStorage.getItem('userToken');
+        const token = await AsyncStorage.getItem('token');
         
         // --- SAFETY CHECK ---
         if (!token) {
@@ -205,7 +205,7 @@ export default function ChatScreen({ navigation, route }) {
   }, [activeChatUser, currentUser]);
 
   const handleLogout = async () => {
-    await AsyncStorage.multiRemove(['userToken', 'userInfo', 'alertsCount']);
+    await AsyncStorage.multiRemove(['token', 'userInfo', 'alertsCount']);
     setCurrentUser(null);
     setSidebarVisible(false);
     navigation.navigate('Login');
