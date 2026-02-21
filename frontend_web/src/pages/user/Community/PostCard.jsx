@@ -14,9 +14,9 @@ const formatWebImage = (url) => {
 const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showOptions, setShowOptions] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // 🚨 New State for the Modal
   
   const hasLiked = post.likes?.includes(currentUser?._id);
-  
   const postAuthorId = post.userId?._id || post.userId;
   const currentUserId = currentUser?._id || currentUser?.id;
   const isMyPost = postAuthorId === currentUserId;
@@ -55,17 +55,16 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
   const handleDeleteClick = (e) => {
     e.stopPropagation();
     setShowOptions(false);
-    if (onDelete) onDelete(post._id);
+    setShowDeleteConfirm(true); // 🚨 Opens the custom modal instead of deleting instantly
   };
 
-  // NEW: Edit Click Handler
   const handleEditClick = (e) => {
     e.stopPropagation();
     setShowOptions(false);
     if (onEdit) onEdit(post);
   };
 
-  const authorName = post.userId ? `${post.userId.firstName} ${post.userId.lastName}` : (post.user || 'Unknown User');
+  const authorName = post.userId?.firstName ? `${post.userId.firstName} ${post.userId.lastName}` : (post.user || 'Unknown User');
 
   let profilePicUrl = post.userId?.profilePic || post.userAvatar;
   if (profilePicUrl && typeof profilePicUrl !== 'string') {
@@ -94,14 +93,16 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
   const validImageUrls = getValidImages();
   const commentCount = post.commentsCount || post.commentsData?.length || 0;
 
+  const safeImageIndex = currentImageIndex >= validImageUrls.length ? Math.max(0, validImageUrls.length - 1) : currentImageIndex;
+
   const nextImage = (e) => {
     e.stopPropagation();
-    setCurrentImageIndex((prev) => (prev + 1) % validImageUrls.length);
+    setCurrentImageIndex((safeImageIndex + 1) % validImageUrls.length);
   };
 
   const prevImage = (e) => {
     e.stopPropagation();
-    setCurrentImageIndex((prev) => (prev === 0 ? validImageUrls.length - 1 : prev - 1));
+    setCurrentImageIndex((safeImageIndex === 0 ? validImageUrls.length - 1 : safeImageIndex - 1));
   };
 
   return (
@@ -178,7 +179,7 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
       {validImageUrls.length > 0 && (
         <div className="w-full rounded-2xl overflow-hidden mb-4 bg-slate-100 border border-slate-200 mt-auto shadow-sm relative group h-48 flex items-center justify-center">
           <img 
-            src={validImageUrls[currentImageIndex]} 
+            src={validImageUrls[safeImageIndex]} 
             alt="Post Media" 
             className="w-full h-full object-cover opacity-95 group-hover:opacity-100 transition-opacity" 
             onError={(e) => console.error("Web failed to load:", e.target.src)}
@@ -192,7 +193,7 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
                 <ChevronRight className="w-4 h-4" />
               </button>
               <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/30 px-2 py-1 rounded-full backdrop-blur-sm">
-                {validImageUrls.map((_, idx) => <div key={idx} className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentImageIndex ? 'w-3 bg-white' : 'w-1.5 bg-white/50'}`} />)}
+                {validImageUrls.map((_, idx) => <div key={idx} className={`h-1.5 rounded-full transition-all duration-300 ${idx === safeImageIndex ? 'w-3 bg-white' : 'w-1.5 bg-white/50'}`} />)}
               </div>
             </>
           )}
@@ -227,6 +228,49 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <div 
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#293241]/60 backdrop-blur-sm cursor-default" 
+            onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(false); }}
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-[2rem] w-full max-w-sm shadow-2xl overflow-hidden p-6 text-center"
+              onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside modal
+            >
+              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+                <Trash2 className="w-8 h-8 text-[#E76F51]" />
+              </div>
+              <h3 className="text-xl font-black text-[#293241] mb-2">Delete Post?</h3>
+              <p className="text-sm text-slate-500 mb-6 px-2 leading-relaxed">
+                Are you sure you want to permanently delete this post? This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(false); }}
+                  className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowDeleteConfirm(false);
+                    if (onDelete) onDelete(post._id); // Proceed with deletion
+                  }}
+                  className="flex-1 py-3.5 bg-[#E76F51] hover:bg-red-600 text-white font-bold rounded-xl transition-colors shadow-lg shadow-[#E76F51]/20"
+                >
+                  Yes, Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

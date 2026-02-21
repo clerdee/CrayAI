@@ -7,6 +7,7 @@ dotenv.config();
 const connectDB = require('./config/db'); 
 
 // Route Imports
+const { createProxyMiddleware } = require('http-proxy-middleware');
 const authRoutes = require('./routes/authRoutes');
 const postRoutes = require('./routes/postRoutes');
 const chatRoutes = require('./routes/chatRoutes');
@@ -19,12 +20,14 @@ const app = express();
 connectDB().then(async () => {
   try {
     await mongoose.connection.collection('chats').dropIndex('chatId_1');
-    console.log("✅ SUCCESS: 'chatId_1' index dropped!");
   } catch (err) {
     console.log("ℹ️ Index info:", err.message);
   }
 });
-app.use(express.json());
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
 app.use(cors());
 
 app.use('/api/auth', authRoutes);
@@ -34,11 +37,19 @@ app.use('/api/notification', notificationRoutes);
 app.use('/api/chatbot', chatbotProxy);
 app.use('/api/scans', scanRoutes);
 
+app.use('/api/measure', createProxyMiddleware({ 
+    target: 'http://127.0.0.1:5001',
+    changeOrigin: true,
+    pathRewrite: function (path, req) {
+        return '/api/measure'; 
+    }
+}));
+
 app.get('/', (req, res) => {
   res.send('CRAYAI Backend is Running!');
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT,"0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });

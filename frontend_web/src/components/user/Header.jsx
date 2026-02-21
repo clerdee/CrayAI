@@ -37,8 +37,9 @@ const Header = ({ user, toggleMobileMenu }) => {
               <HelpCircle className="w-5 h-5" />
             </button>
 
+            {/* 🚨 UPDATED LINK HERE: Dynamically uses user ID */}
             <Link 
-              to="/profile"
+              to={`/profile/${user?._id || ''}`}
               className="flex items-center gap-2 p-1.5 pr-4 bg-[#293241] rounded-full border border-[#98C1D9]/30 hover:border-[#98C1D9] transition-all focus:outline-none shadow-sm"
             >
               <div className="w-9 h-9 rounded-full bg-[#E0FBFC] overflow-hidden">

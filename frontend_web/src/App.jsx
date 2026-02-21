@@ -19,6 +19,7 @@ import Settings from './pages/admin/Settings';
 import UserDashboard from './pages/user/UserDashboard';
 import UserLayout from './layouts/UserLayout';
 import CommunityPage from './pages/user/Community/CommunityPage';
+import ProfilePage from './pages/user/ProfilePage';
 
 axios.interceptors.response.use(
   (response) => response, 
@@ -70,6 +71,8 @@ const App = () => {
       {/* USER ROUTES (Researchers) */}
       <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['user']}><UserLayout><UserDashboard /></UserLayout></ProtectedRoute>} />
       <Route path="/community" element={<ProtectedRoute allowedRoles={['user']}><UserLayout><CommunityPage /></UserLayout></ProtectedRoute>} />
+      <Route path="/profile" element={<ProtectedRoute allowedRoles={['user']}><UserLayout><ProfilePage /></UserLayout></ProtectedRoute>} />
+      <Route path="/profile/:userId" element={<ProtectedRoute allowedRoles={['user']}><UserLayout><ProfilePage /></UserLayout></ProtectedRoute>} />
 
       {/* ADMIN ROUTES (System Management) */}
       <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />

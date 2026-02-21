@@ -1,55 +1,61 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
+import config from '../config/config';
 
-// 1. Get the IP Address automatically
-const debuggerHost = Constants.expoConfig?.hostUri || Constants.manifest?.debuggerHost;
-const localhost = debuggerHost?.split(':')[0] || 'localhost';
+const { NETWORK_IP } = config;
 
-// --- URL 1: MAIN BACKEND (Node.js / MongoDB) ---
-// This stays on Port 5000
-const API_URL = process.env.EXPO_PUBLIC_API_URL || `http://${localhost}:5000/api`;
+if (!NETWORK_IP) {
+  console.warn('⚠️ WARNING: NETWORK_IP is missing in config.js!');
+}
 
-// --- URL 2: AI BACKEND (Python / Vision / Chatbot) ---
-// This points to Port 5001
-const AI_URL = process.env.EXPO_PUBLIC_AI_URL || `http://${localhost}:5001/api`;
+// 1. URLs (Cleaned up the console logs)
+const API_URL = `${NETWORK_IP}/api/`;
+const AI_URL = `${NETWORK_IP}/api/`;
 
-console.log('[Client] Main API:', API_URL);
-console.log('[Client] AI API:', AI_URL);
-
-// --- CLIENT 1: For Standard App Features ---
+// 2. AXIOS CLIENTS
 const client = axios.create({
   baseURL: API_URL,
+  timeout: 15000, 
 });
 
-// --- CLIENT 2: For AI Features ---
 export const aiClient = axios.create({
   baseURL: AI_URL,
+  timeout: 20000,
 });
 
-// ... Keep your existing Interceptors for the main client ...
+// 3. REQUEST INTERCEPTOR (Kept the crucial Auth Token injection, removed all logs)
 client.interceptors.request.use(
-  async (config) => {
+  async (requestConfig) => {
     try {
       const token = await AsyncStorage.getItem('userToken');
       if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+        requestConfig.headers.Authorization = `Bearer ${token}`;
       }
     } catch (error) {
       console.error('[Axios] Error reading token:', error);
     }
-    return config;
+    return requestConfig;
   },
   (error) => Promise.reject(error)
 );
 
+// 4. RESPONSE INTERCEPTOR (Removed the massive success/error logs, kept a simple error catch)
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error('[Axios Error]', error.config?.url, error.response?.status);
+    // Only prints a single line if something goes wrong, instead of 10 lines
+    console.error('🚨 API ERROR:', error.response?.data?.message || error.message);
     return Promise.reject(error);
   }
 );
 
-// Export 'client' as default, but also export 'aiClient'
+// (Optional) Add a tiny error interceptor for your AI client so you aren't blind if it fails
+aiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    console.error('🤖 AI SCAN ERROR:', error.response?.status || error.message);
+    return Promise.reject(error);
+  }
+);
+
 export default client;

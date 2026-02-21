@@ -106,7 +106,7 @@ export default function CameraScreen({ navigation, route }) {
       formData.append('photo', { uri: photo.uri, type: 'image/jpeg', name: 'scan.jpg' });
 
       const startTimeMs = Date.now();
-      const response = await aiClient.post('/measure', formData, {
+      const response = await aiClient.post('measure', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         transformRequest: (data) => data, 
       });
@@ -198,7 +198,7 @@ export default function CameraScreen({ navigation, route }) {
       formData.append('photo', { uri: photo.uri, type: 'image/jpeg', name: 'photo.jpg' });
 
       const startTimeMs = Date.now();
-      const response = await aiClient.post('/measure', formData, {
+      const response = await aiClient.post('measure', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         transformRequest: (data) => data, 
       });
@@ -263,7 +263,7 @@ export default function CameraScreen({ navigation, route }) {
         formData.append('photo', { uri: result.assets[0].uri, type: 'image/jpeg', name: 'gallery.jpg' });
 
         const startTimeMs = Date.now();
-        const response = await aiClient.post('/measure', formData, {
+        const response = await aiClient.post('measure', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
           transformRequest: (data) => data, 
         });

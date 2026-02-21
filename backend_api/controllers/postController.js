@@ -182,19 +182,29 @@ exports.updatePost = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    post.content = content || post.content;
-    if (media) post.media = media;
+    // Update text
+    if (typeof content !== 'undefined') post.content = content;
+    
+    // If media is passed (even as an empty array []), overwrite it
+    if (typeof media !== 'undefined') {
+        post.media = media;
+        if (media.length === 0 && post.image) {
+            post.image = null; 
+        }
+    }
     
     if (typeof isForSale !== 'undefined') post.isForSale = isForSale;
     if (typeof isSold !== 'undefined') post.isSold = isSold;
     if (typeof price !== 'undefined') post.price = price;
 
     await post.save();
-    await post.populate('user', 'firstName lastName profilePic email')
-    await post.populate('comments.user', 'firstName lastName profilePic')
-    .sort({ createdAt: -1 });
 
-    res.json({ success: true, message: "Post updated", post });
+    // 🚨 FIX: Re-fetch the post cleanly to get the User data without breaking Mongoose
+    const updatedPost = await Post.findById(post._id)
+        .populate('userId', 'firstName lastName profilePic')
+        .lean();
+
+    res.json({ success: true, message: "Post updated", post: updatedPost });
   } catch (error) {
     console.error("Update Error:", error);
     res.status(500).json({ message: "Server Error" });

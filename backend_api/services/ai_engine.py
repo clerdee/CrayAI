@@ -3,7 +3,7 @@ import numpy as np
 
 # Load a lightweight, high-speed model (runs offline!)
 # 'all-MiniLM-L6-v2' is fast and accurate for chatbots
-print("⏳ Loading AI Model... (This happens only once)")
+# print("⏳ Loading AI Model... (This happens only once)")
 model = SentenceTransformer('all-MiniLM-L6-v2')
 print("✅ AI Model Loaded!")
 
