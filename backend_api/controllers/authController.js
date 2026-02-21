@@ -2,6 +2,7 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const transport = require('../config/mailtrap'); 
+const Notification = require('../models/Notification'); 
 const { createNotification } = require('../utils/notificationHelper');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
@@ -10,21 +11,17 @@ exports.registerUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Check if user already exists
     let user = await User.findOne({ email });
     if (user) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Hash the password (Security!)
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = Date.now() + 10 * 60 * 1000; 
 
-    // Create the user in MongoDB
     user = new User({
       email,
       password: hashedPassword,
@@ -34,7 +31,6 @@ exports.registerUser = async (req, res) => {
 
     await user.save();
 
-    // Send Email using Mailtrap
     await transport.sendMail({
       from: '"CrayAI Team" <no-reply@crayai.com>',
       to: email,
@@ -66,13 +62,11 @@ exports.verifyOTP = async (req, res) => {
       return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
 
-    // Success! Update User Status
     user.isVerified = true;
     user.accountStatus = 'Active';
     user.otpCode = null;
     user.otpExpires = null;
 
-    // Save the extra profile data if provided
     if (profileData) {
       user.firstName = profileData.firstName;
       user.lastName = profileData.lastName;
@@ -86,7 +80,6 @@ exports.verifyOTP = async (req, res) => {
 
     await user.save();
 
-    // Generate JWT Token for Auto-Login
     const token = jwt.sign(
       { userId: user._id, email: user.email },
       JWT_SECRET,
@@ -132,16 +125,13 @@ exports.resendOTP = async (req, res) => {
       return res.status(400).json({ message: 'Account is already verified. Please Login.' });
     }
 
-    // Generate NEW OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 Minutes
 
-    // Update Database
     user.otpCode = otp;
     user.otpExpires = otpExpiry;
     await user.save();
 
-    // Send Email Again
     await transport.sendMail({
       from: '"CrayAI Team" <no-reply@crayai.com>',
       to: email,
@@ -157,12 +147,12 @@ exports.resendOTP = async (req, res) => {
     res.status(500).json({ message: 'Server Error' });
   }
 };
+
 // 4. LOGIN USER
 exports.loginUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // 1. Find user
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({ message: 'Invalid email or password' });
@@ -174,25 +164,21 @@ exports.loginUser = async (req, res) => {
       });
     }
 
-    // 2. Check Password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid email or password' });
     }
 
-    // 3. Check Verified Status
     if (!user.isVerified) {
       return res.status(400).json({ message: 'Please verify your email first.' });
     }
 
-    // 4. Generate JWT Token
     const token = jwt.sign(
       { userId: user._id, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    // 5. Success
     res.status(200).json({
       message: 'Login successful',
       success: true,
@@ -222,7 +208,6 @@ exports.loginUser = async (req, res) => {
 // 5. GET CURRENT USER PROFILE (Protected Route)
 exports.getMe = async (req, res) => {
   try {
-    // JWT middleware should attach userId to req.user
     const userId = req.user?.userId;
     
     if (!userId) {
@@ -265,7 +250,7 @@ exports.getMe = async (req, res) => {
 // 6. JWT MIDDLEWARE (Helper function)
 exports.authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const token = authHeader && authHeader.split(' ')[1]; 
 
   if (!token) {
     return res.status(401).json({ message: 'No token provided' });
@@ -346,13 +331,11 @@ exports.changePassword = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Verify current password
     const isMatch = await bcrypt.compare(currentPassword, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Current password is incorrect' });
     }
 
-    // Hash new password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
@@ -388,19 +371,16 @@ exports.updateEmail = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Verify password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Password is incorrect' });
     }
 
-    // Check if email already exists
     const existingUser = await User.findOne({ email: newEmail });
     if (existingUser && existingUser._id.toString() !== userId) {
       return res.status(400).json({ message: 'Email already in use' });
     }
 
-    // Update email
     user.email = newEmail;
     await user.save();
 
@@ -414,7 +394,7 @@ exports.updateEmail = async (req, res) => {
   }
 };
 
-// 10. GET PUBLIC PROFILE (Fixed)
+// 10. GET PUBLIC PROFILE 
 exports.getUserPublicProfile = async (req, res) => {
   try {
     const { id } = req.params;
@@ -449,7 +429,7 @@ exports.getUserPublicProfile = async (req, res) => {
   }
 };
 
-// 11. FOLLOW / UNFOLLOW TOGGLE (New)
+// 11. FOLLOW / UNFOLLOW TOGGLE
 exports.followUser = async (req, res) => {
   try {
     const currentUserId = req.user.userId;
@@ -466,7 +446,6 @@ exports.followUser = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check if already following
     const isFollowing = currentUser.following.includes(targetUserId);
 
     if (isFollowing) {
@@ -476,6 +455,12 @@ exports.followUser = async (req, res) => {
       
       await currentUser.save();
       await targetUser.save();
+
+      // 🚨 NOTIFICATION CLEANUP: Remove the follow notification when unfollowed
+      await Notification.findOneAndDelete(
+        { type: 'follow', sender: currentUserId, recipient: targetUserId },
+        { sort: { createdAt: -1 } }
+      );
 
       return res.json({ 
         success: true, 
@@ -492,7 +477,6 @@ exports.followUser = async (req, res) => {
       await currentUser.save();
       await targetUser.save();
 
-      // Trigger Notification
       await createNotification({
         recipient: targetUserId,
         sender: currentUserId,
@@ -516,8 +500,6 @@ exports.followUser = async (req, res) => {
 // 12. GET ALL USERS (Admin Only)
 exports.getAllUsers = async (req, res) => {
   try {
-    // Fetch all users, sort by newest first
-    // .select('-password') hides the password from the result for security
     const users = await User.find().select('-password -otpCode -otpExpires').sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -536,7 +518,6 @@ exports.deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Check if trying to delete self (Optional safety)
     if (req.user.userId === id) {
         return res.status(400).json({ message: "You cannot delete your own admin account." });
     }
@@ -562,8 +543,6 @@ exports.socialLogin = async (req, res) => {
     let user = await User.findOne({ email });
 
     if (!user) {
-      // 2. IF USER DOES NOT EXIST -> CREATE THEM
-      // Since Firebase verified them, we set isVerified to true and Status to Active
       user = await User.create({
         email,
         firstName,
@@ -576,24 +555,14 @@ exports.socialLogin = async (req, res) => {
         accountStatus: 'Active',
         role: 'user'
       });
-    } else {
-      // 3. IF USER EXISTS -> UPDATE INFO (Optional)
-      // If they logged in before with email/pass, we might want to link the provider
-      if (user.provider === 'local') {
-        // You can choose to update their provider or keep it as is.
-        // For now, we just let them log in.
-      }
     }
 
-    // 4. GENERATE JWT TOKEN
-    // Ensure you use the same secret as your normal login
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    // 5. Send Response
     res.status(200).json({
       success: true,
       token,

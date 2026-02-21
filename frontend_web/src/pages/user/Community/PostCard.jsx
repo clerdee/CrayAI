@@ -26,10 +26,10 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
   const [isFollowing, setIsFollowing] = useState(currentUser?.following?.includes(postAuthorId));
 
   const handleLikeClick = async (e) => {
-    e.stopPropagation();
+    e.stopPropagation(); 
     try {
       const token = localStorage.getItem('token');
-      await client.put(`/posts/${post._id}/like`, {}, {
+      await client.post(`/posts/${post._id}/like`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       onLike(post._id); 
@@ -221,10 +221,17 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
             <Heart className={`w-5 h-5 ${hasLiked ? 'fill-current scale-110' : ''} transition-transform`} />
             {post.likes?.length || 0}
           </button>
-          <div className="flex items-center gap-2 text-sm font-bold text-slate-400">
+          
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick(post);
+            }} 
+            className="flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-[#3D5A80] transition-colors"
+          >
             <MessageCircle className="w-5 h-5" />
             {commentCount}
-          </div>
+          </button>
         </div>
 
         {post.isForSale && (

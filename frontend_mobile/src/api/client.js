@@ -15,7 +15,7 @@ const AI_URL = `${NETWORK_IP}/api/`;
 // 2. AXIOS CLIENTS
 const client = axios.create({
   baseURL: API_URL,
-  timeout: 15000, 
+  timeout: 60000, 
 });
 
 export const aiClient = axios.create({

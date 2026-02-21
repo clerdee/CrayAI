@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Post = require('../models/Post');
 const Comment = require('../models/Comment'); 
+const Notification = require('../models/Notification'); 
 const { createNotification } = require('../utils/notificationHelper'); 
 
 // 1. CREATE POST
@@ -9,7 +10,6 @@ exports.createPost = async (req, res) => {
     const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-    // 🚨 UPDATED: Destructure isForSale and price from req.body
     const { content, media, isForSale, price } = req.body;
 
     if (!content && (!media || media.length === 0)) {
@@ -25,7 +25,6 @@ exports.createPost = async (req, res) => {
       userAvatar: user.profilePic,
       content: content || '',
       media: media || [],
-      // 🚨 ADDED: Save marketplace data
       isForSale: isForSale || false,
       price: price || 0,
       likes: [],
@@ -94,8 +93,17 @@ exports.toggleLike = async (req, res) => {
     const hasLiked = post.likes.includes(userId);
 
     if (hasLiked) {
+      // --- UNLIKE LOGIC ---
       post.likes = post.likes.filter(id => id.toString() !== userId);
+      
+      // 🚨 NOTIFICATION CLEANUP: Remove the like notification when unliked
+      await Notification.findOneAndDelete(
+        { type: 'like', sender: userId, postId: post._id },
+        { sort: { createdAt: -1 } } // Grabs the most recent one just to be safe
+      );
+
     } else {
+      // --- LIKE LOGIC ---
       post.likes.push(userId);
       if (post.userId.toString() !== userId) {
         await createNotification({
@@ -182,10 +190,8 @@ exports.updatePost = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // Update text
     if (typeof content !== 'undefined') post.content = content;
     
-    // If media is passed (even as an empty array []), overwrite it
     if (typeof media !== 'undefined') {
         post.media = media;
         if (media.length === 0 && post.image) {
@@ -199,7 +205,6 @@ exports.updatePost = async (req, res) => {
 
     await post.save();
 
-    // 🚨 FIX: Re-fetch the post cleanly to get the User data without breaking Mongoose
     const updatedPost = await Post.findById(post._id)
         .populate('userId', 'firstName lastName profilePic')
         .lean();

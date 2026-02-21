@@ -46,7 +46,7 @@ exports.postComment = async (req, res) => {
         recipient: post.userId,
         sender: userId,
         type: 'comment',
-        post: post._id, // Ensure consistent field name with Notification model
+        postId: post._id, // Ensure this is saving exactly as 'postId'
         text: 'commented on your post.'
       });
     }
@@ -100,15 +100,11 @@ exports.deleteComment = async (req, res) => {
     }
 
     // 5. --- CLEANUP NOTIFICATION ---
-    // Remove the notification associated with this specific action to prevent ghost alerts
-    await Notification.findOneAndDelete({
-      type: 'comment',
-      sender: userId,
-      post: postId 
-      // Note: If a user comments multiple times, this might delete the wrong notification 
-      // if your schema doesn't link specific commentIDs. 
-      // For basic purposes, deleting the most recent match is usually acceptable.
-    });
+    // Finds the MOST RECENT notification created by this user on this post and deletes it.
+    await Notification.findOneAndDelete(
+      { type: 'comment', sender: userId, postId: postId },
+      { sort: { createdAt: -1 } } // Sorts by newest first so we grab the right one
+    );
 
     res.status(200).json({ success: true, message: 'Comment deleted' });
 

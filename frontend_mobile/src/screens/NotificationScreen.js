@@ -45,6 +45,8 @@ export default function NotificationScreen({ navigation }) {
   const [alertsCount, setAlertsCount] = useState(0);
 
   // --- FETCH DATA ---
+  // Notice we don't set loading=true here every time. 
+  // This allows the 30-second background fetch to happen "silently" without flashing a spinner!
   const fetchData = async () => {
     try {
       const token = await AsyncStorage.getItem('token');
@@ -65,7 +67,7 @@ export default function NotificationScreen({ navigation }) {
         setCurrentUser(profileRes.data.user);
       }
 
-      // 2. Fetch Notifications
+      // 2. Fetch Notifications (this will naturally drop any deleted notifications)
       const notiRes = await client.get('/notification'); 
       const rawNotis = notiRes.data?.notifications || [];
       
@@ -87,7 +89,19 @@ export default function NotificationScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
+      // 1. Fetch immediately when the tab comes into focus
       fetchData();
+
+      // 2. AUTO-CLEANUP SYNC:
+      // Set up a 30-second silent background poll.
+      // If a comment is deleted, or a post is unliked, this will automatically 
+      // pull the fresh list and remove the notification from the screen quietly.
+      const intervalId = setInterval(() => {
+        fetchData(); 
+      }, 10000);
+
+      // 3. Clear the interval when the user switches away from the Notification tab
+      return () => clearInterval(intervalId);
     }, [])
   );
 
@@ -154,19 +168,17 @@ export default function NotificationScreen({ navigation }) {
     }
   };
 
-  // --- HELPER: SECTIONS (UPDATED) ---
+  // --- HELPER: SECTIONS ---
   const getSections = () => {
     const now = new Date();
     const newNotis = [];
-    const moreNotis = []; // Renamed from oldNotis to moreNotis
+    const moreNotis = []; 
 
     notifications.forEach(item => {
       const date = new Date(item.createdAt);
       const diffHours = (now - date) / (1000 * 60 * 60);
 
-      // UPDATED LOGIC: 
       // It is only "New" if it is recent (< 24h) AND UNREAD.
-      // If refreshed (marked read), it moves to "More".
       if (diffHours < 24 && !item.isRead) {
         newNotis.push(item);
       } else {
@@ -279,7 +291,7 @@ export default function NotificationScreen({ navigation }) {
             </View>
           ) : (
             <>
-              {/* Only show "New" if there are unread items < 24h */}
+              {/* "New" Section */}
               {newNotis.length > 0 && (
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>New</Text>
@@ -287,7 +299,7 @@ export default function NotificationScreen({ navigation }) {
               )}
               {newNotis.map(renderNotificationItem)}
 
-              {/* Rename "Earlier" to "More" as requested */}
+              {/* "More" Section */}
               {moreNotis.length > 0 && (
                 <View style={[styles.sectionHeader, { marginTop: newNotis.length > 0 ? 25 : 0 }]}>
                   <Text style={styles.sectionTitle}>More</Text>

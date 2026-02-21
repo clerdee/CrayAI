@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, User, Tag, Heart, MessageCircle, ChevronLeft, ChevronRight, Image as ImageIcon, MoreHorizontal, Trash2, Pencil } from 'lucide-react';
+import { X, Send, User, Tag, Heart, MessageCircle, ChevronLeft, ChevronRight, Image as ImageIcon, MoreHorizontal, Trash2, Pencil, CheckCircle } from 'lucide-react';
 import client from '../../../api/client';
 
 const formatWebImage = (url) => {
@@ -9,12 +9,22 @@ const formatWebImage = (url) => {
   return url;
 };
 
-const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit }) => {
+const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit, onLike }) => {
   const [commentText, setCommentText] = useState('');
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showOptions, setShowOptions] = useState(false);
+
+  // States for Editing, Deleting Comments & Notifications
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editCommentText, setEditCommentText] = useState('');
+  const [commentToDelete, setCommentToDelete] = useState(null); 
+  const [notification, setNotification] = useState(null); 
+
+  // Optimistic UI States for Liking
+  const [isLiked, setIsLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
 
   const postAuthorId = post?.userId?._id || post?.userId;
   const currentUserId = currentUser?._id || currentUser?.id;
@@ -23,15 +33,54 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit 
   const [isFollowing, setIsFollowing] = useState(false);
 
   useEffect(() => {
-    if (post) {
+    if (isOpen && post) {
       setComments(post.commentsData || []);
       setCurrentImageIndex(0);
       setShowOptions(false);
       setIsFollowing(currentUser?.following?.includes(postAuthorId));
+      setEditingCommentId(null);
+      setEditCommentText('');
+      setCommentToDelete(null);
+      setNotification(null);
     }
-  }, [post, currentUser, postAuthorId]);
+  }, [isOpen, post?._id]);
+
+  // Sync like state when the post changes
+  useEffect(() => {
+    setIsLiked(post?.likes?.includes(currentUserId) || false);
+    setLikesCount(post?.likes?.length || 0);
+  }, [post?.likes, currentUserId]);
 
   if (!isOpen || !post) return null;
+
+  const showNotification = (message) => {
+    setNotification(message);
+    setTimeout(() => {
+      setNotification(null);
+    }, 3000); 
+  };
+
+  const handleLikeClick = async (e) => {
+    e.preventDefault();
+    
+    // 🚨 Optimistic UI Update: Instantly changes color to red and updates the number
+    const newlyLiked = !isLiked;
+    setIsLiked(newlyLiked);
+    setLikesCount(prev => newlyLiked ? prev + 1 : prev - 1);
+
+    try {
+      const token = localStorage.getItem('token');
+      await client.post(`/posts/${post._id}/like`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (onLike) onLike(post._id); 
+    } catch (error) {
+      console.error("Failed to like post", error);
+      // Revert if API fails
+      setIsLiked(!newlyLiked);
+      setLikesCount(prev => newlyLiked ? prev - 1 : prev + 1);
+    }
+  };
 
   const handleFollowClick = async (e) => {
     e.stopPropagation();
@@ -58,7 +107,7 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit 
     setShowOptions(false);
     if (onEdit) {
       onEdit(post);
-      onClose(); // Close details modal when opening edit modal
+      onClose();
     }
   };
 
@@ -69,22 +118,60 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit 
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await client.post(`/comments/post/${post._id}`, { text: commentText }, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await client.post(`/posts/${post._id}/comment`, { text: commentText }, { headers: { Authorization: `Bearer ${token}` } });
+      
       if (res.data.success) {
-        const newComment = {
-            _id: res.data.comment?._id || Date.now().toString(),
+        const newComment = res.data.newComment || {
+            _id: Date.now().toString(),
             text: commentText,
             user: `${currentUser.firstName} ${currentUser.lastName}`,
+            userId: currentUserId,
             userAvatar: currentUser.profilePic,
             createdAt: new Date()
         };
         setComments([...comments, newComment]);
         setCommentText('');
+        showNotification("Comment posted!");
       }
     } catch (error) {
       console.error("Failed to add comment", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const executeDeleteComment = async (commentId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await client.delete(`/posts/${post._id}/comment/${commentId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data.success) {
+        setComments(comments.filter(c => c._id !== commentId));
+        showNotification("Comment deleted."); 
+        setCommentToDelete(null); 
+      }
+    } catch (error) {
+      console.error("Failed to delete comment", error);
+    }
+  };
+
+  const handleEditCommentSubmit = async (commentId) => {
+    if (!editCommentText.trim()) return;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await client.put(`/posts/${post._id}/comment/${commentId}`, 
+        { text: editCommentText }, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.data.success) {
+        setComments(comments.map(c => c._id === commentId ? { ...c, text: editCommentText } : c));
+        setEditingCommentId(null);
+        setEditCommentText('');
+        showNotification("Comment updated!"); 
+      }
+    } catch (error) {
+      console.error("Failed to edit comment", error);
     }
   };
 
@@ -162,7 +249,7 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit 
             )}
 
             {/* RIGHT SIDE: AUTHOR & COMMENTS */}
-            <div className="w-full md:w-[400px] lg:w-[450px] flex flex-col bg-white border-l border-slate-100 flex-shrink-0 h-full max-h-[60vh] md:max-h-full">
+            <div className="w-full md:w-[400px] lg:w-[450px] flex flex-col bg-white border-l border-slate-100 flex-shrink-0 h-full max-h-[60vh] md:max-h-full relative">
               
               <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white z-10 shadow-sm">
                 <div className="flex items-center gap-3">
@@ -238,27 +325,85 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit 
                     if (cAvatar && typeof cAvatar !== 'string') cAvatar = cAvatar.url || cAvatar.uri;
                     cAvatar = formatWebImage(cAvatar);
                     const cName = c.user || (c.userId ? `${c.userId.firstName} ${c.userId.lastName}` : 'Unknown');
+                    
+                    const isMyComment = c.userId === currentUserId || c.userId?._id === currentUserId;
 
                     return (
-                      <div key={c._id || idx} className="flex gap-3">
+                      <div key={c._id || idx} className="flex gap-3 group relative">
                         <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden flex-shrink-0 mt-1">
                           {cAvatar ? <img src={cAvatar} alt="User" className="w-full h-full object-cover" /> : <User className="w-full h-full p-1.5 text-slate-400" />}
                         </div>
-                        <div>
-                          <p className="text-sm text-slate-700 leading-relaxed"><span className="font-black text-[#293241] mr-2 hover:underline cursor-pointer">{cName}</span>{c.text}</p>
-                          <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">{new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                        
+                        <div className="flex-1 min-w-0 pr-8">
+                          {editingCommentId === c._id ? (
+                            <div className="flex flex-col gap-2 mt-1">
+                              <input
+                                className="w-full bg-white border border-slate-200 shadow-inner rounded-xl px-3 py-2 text-sm outline-none focus:border-[#3D5A80] transition-colors"
+                                value={editCommentText}
+                                onChange={(e) => setEditCommentText(e.target.value)}
+                                autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <button onClick={() => handleEditCommentSubmit(c._id)} className="text-[10px] font-black uppercase tracking-widest text-white bg-[#3D5A80] hover:bg-[#293241] transition-colors px-3 py-1.5 rounded-lg">Save</button>
+                                <button onClick={() => setEditingCommentId(null)} className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-200 hover:bg-slate-300 transition-colors px-3 py-1.5 rounded-lg">Cancel</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <p className="text-sm text-slate-700 leading-relaxed"><span className="font-black text-[#293241] mr-2 hover:underline cursor-pointer">{cName}</span>{c.text}</p>
+                              <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">{new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                            </div>
+                          )}
                         </div>
+
+                        {/* Hover Actions for My Comments */}
+                        {isMyComment && editingCommentId !== c._id && (
+                          <div className="absolute right-0 top-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 bg-slate-50/90 backdrop-blur-sm px-2 py-1 rounded-xl border border-slate-100">
+                            <button 
+                              onClick={() => { setEditingCommentId(c._id); setEditCommentText(c.text); }} 
+                              className="p-1.5 text-slate-400 hover:text-[#3D5A80] bg-white rounded-lg shadow-sm transition-colors"
+                              title="Edit Comment"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                              onClick={() => setCommentToDelete(c._id)} 
+                              className="p-1.5 text-slate-400 hover:text-[#E76F51] bg-white rounded-lg shadow-sm transition-colors"
+                              title="Delete Comment"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })
                 )}
               </div>
 
-              <div className="bg-white border-t border-slate-100 flex-shrink-0">
-                <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-2">
-                  <Heart className={`w-5 h-5 ${post.likes?.includes(currentUser?._id) ? 'text-[#E76F51] fill-current' : 'text-slate-400'}`} />
-                  <span className="text-sm font-black text-[#293241]">{post.likes?.length || 0} likes</span>
-                </div>
+              {/* Notification Toast */}
+              <AnimatePresence>
+                {notification && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, x: '-50%' }}
+                    animate={{ opacity: 1, y: 0, x: '-50%' }}
+                    exit={{ opacity: 0, y: 10, x: '-50%' }}
+                    className="absolute bottom-[90px] left-1/2 flex items-center gap-2 bg-[#293241] text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl z-50 whitespace-nowrap"
+                  >
+                    <CheckCircle className="w-4 h-4 text-[#0FA958]" />
+                    {notification}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="bg-white border-t border-slate-100 flex-shrink-0 relative z-20">
+                <button 
+                  onClick={handleLikeClick} 
+                  className="w-full px-5 py-3 border-b border-slate-50 flex items-center gap-2 hover:bg-slate-50 transition-colors outline-none"
+                >
+                  <Heart className={`w-5 h-5 transition-transform ${isLiked ? 'text-[#E76F51] fill-current scale-110' : 'text-slate-400 hover:scale-110'}`} />
+                  <span className="text-sm font-black text-[#293241]">{likesCount} likes</span>
+                </button>
 
                 <form onSubmit={handleAddComment} className="flex items-center gap-3 p-4">
                   <div className="w-8 h-8 rounded-full bg-[#E0FBFC] overflow-hidden flex-shrink-0 border border-slate-200">
@@ -269,9 +414,45 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit 
                     )}
                   </div>
                   <input type="text" placeholder="Add a comment..." value={commentText} onChange={(e) => setCommentText(e.target.value)} className="flex-1 bg-transparent outline-none text-sm text-[#293241] placeholder:text-slate-400" />
-                  <button type="submit" disabled={!commentText.trim() || loading} className="text-[#3D5A80] hover:text-[#293241] disabled:text-slate-300 font-black text-sm uppercase tracking-widest transition-colors flex-shrink-0">Post</button>
+                  <button type="submit" disabled={!commentText.trim() || loading} className="text-[#3D5A80] hover:text-[#293241] disabled:text-slate-300 font-black text-sm uppercase tracking-widest transition-colors flex-shrink-0">
+                    {loading ? 'Posting...' : 'Post'}
+                  </button>
                 </form>
               </div>
+
+              {/* Custom Delete Comment Confirmation Modal */}
+              <AnimatePresence>
+                {commentToDelete && (
+                  <div className="absolute inset-0 z-[100] flex items-center justify-center p-4 bg-white/60 backdrop-blur-md md:rounded-r-[2rem]">
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                      className="bg-white rounded-3xl w-full max-w-[280px] shadow-2xl border border-slate-100 overflow-hidden p-6 text-center"
+                    >
+                      <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+                        <Trash2 className="w-6 h-6 text-[#E76F51]" />
+                      </div>
+                      <h3 className="text-lg font-black text-[#293241] mb-1">Delete Comment?</h3>
+                      <p className="text-xs font-bold text-slate-400 mb-6">This action cannot be undone.</p>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => setCommentToDelete(null)}
+                          className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs uppercase tracking-widest font-black rounded-xl transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          onClick={() => executeDeleteComment(commentToDelete)}
+                          className="flex-1 py-2.5 bg-[#E76F51] hover:bg-red-600 text-white text-xs uppercase tracking-widest font-black rounded-xl transition-colors shadow-lg shadow-[#E76F51]/20"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
 
             </div>
           </motion.div>
