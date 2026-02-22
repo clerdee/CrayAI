@@ -21,8 +21,10 @@ export default function ChatScreen({ navigation, route }) {
   const [activeChatUser, setActiveChatUser] = useState(null); 
   const [messages, setMessages] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(true);
+  
   const [sendingImage, setSendingImage] = useState(false);
   const [stagedImage, setStagedImage] = useState(null);
+  
   const [currentUser, setCurrentUser] = useState(null);
   const [isGuest, setIsGuest] = useState(false); 
 
@@ -52,17 +54,15 @@ export default function ChatScreen({ navigation, route }) {
       try {
         const token = await AsyncStorage.getItem('token');
         
-        // --- SAFETY CHECK ---
         if (!token) {
           if (mounted) { 
             setCurrentUser(null); 
             setLoadingContacts(false); 
-            setIsGuest(true); // Mark as guest
+            setIsGuest(true); 
           }
           return; 
         }
         
-        // Only fetch profile if token exists
         const res = await client.get('/auth/profile');
         if (mounted) {
             setCurrentUser(res.data.user || null);
@@ -71,7 +71,7 @@ export default function ChatScreen({ navigation, route }) {
       } catch (error) {
         if (mounted) {
             setCurrentUser(null);
-            setIsGuest(true); // Fallback to guest on error
+            setIsGuest(true); 
         }
       }
     };
@@ -81,7 +81,7 @@ export default function ChatScreen({ navigation, route }) {
 
   // --- REFRESH DATA ---
   const fetchListData = async () => {
-    if (!currentUser) return; // Prevent fetch if no user
+    if (!currentUser) return; 
     try {
       const [usersRes, chatsRes] = await Promise.all([
         client.get('/chat/users'),
@@ -99,7 +99,7 @@ export default function ChatScreen({ navigation, route }) {
             chatId: c._id,
             status: c.status,
             initiator: c.initiator,
-            text: c.lastMessage || (c.messages.length > 0 ? "Sent a file" : "No messages"),
+            text: c.lastMessage || (c.messages.length > 0 ? "📷 Image" : "No messages"),
             time: c.lastMessageTime
           };
         }
@@ -128,7 +128,7 @@ export default function ChatScreen({ navigation, route }) {
 
     } catch (error) { 
         if (error.response?.status !== 401) {
-            showToast("Error", "Could not load chats.", "error"); 
+            console.log("Error Loading Contacts");
         }
     } 
     finally { setLoadingContacts(false); }
@@ -138,15 +138,11 @@ export default function ChatScreen({ navigation, route }) {
       if(currentUser) fetchListData(); 
   }, [currentUser, activeTab]);
 
-  // --- 1. HANDLE NAVIGATION FROM COMMUNITY SCREEN (FIXED) ---
   useEffect(() => {
     if (route.params?.targetUser) {
         const target = route.params.targetUser;
-        
         let targetId = target.uid || target._id || target.id;
-        if (typeof targetId === 'object') {
-            targetId = targetId.toString(); 
-        }
+        if (typeof targetId === 'object') targetId = targetId.toString(); 
 
         const existingChat = myChats.find(u => String(u.uid) === String(targetId));
         const existingRequest = requests.find(u => String(u.uid) === String(targetId));
@@ -177,9 +173,7 @@ export default function ChatScreen({ navigation, route }) {
     const loadMessages = async () => {
       try {
         const targetId = String(activeChatUser.uid); 
-        
         const res = await client.get(`/chat/messages/${targetId}`);
-        
         const currentId = currentUser._id || currentUser.id;
 
         const fetched = (res.data?.messages || []).map(m => ({
@@ -192,16 +186,13 @@ export default function ChatScreen({ navigation, route }) {
         }));
         setMessages(fetched);
       } catch (err) { 
-        if (err.response?.status !== 401) {
-            console.log("Load Msg Error:", err); 
-        }
+        if (err.response?.status !== 401) console.log("Load Msg Error:", err); 
       }
     };
 
     loadMessages();
     const interval = setInterval(loadMessages, 5000);
     return () => clearInterval(interval);
-    
   }, [activeChatUser, currentUser]);
 
   const handleLogout = async () => {
@@ -213,26 +204,56 @@ export default function ChatScreen({ navigation, route }) {
 
   const handleSendMessage = async () => {
     if (!message.trim() && !stagedImage) return;
-    const currentMsg = message;
+    const currentMsg = message.trim();
     setMessage(''); 
     setSendingImage(true);
     let imageUrl = null;
+
     try {
         if (stagedImage) {
             const data = new FormData();
-            data.append('file', { uri: stagedImage, type: 'image/jpeg', name: 'chat.jpg' });
+            
+            // Extract the extension to safely format the file for Cloudinary
+            const extMatch = stagedImage.match(/\.(jpg|jpeg|png|gif|heic|heif)$/i);
+            const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+            const mimeType = ext === 'png' ? 'image/png' : (ext === 'gif' ? 'image/gif' : 'image/jpeg');
+
+            data.append('file', { uri: stagedImage, type: mimeType, name: `upload.${ext}` });
             data.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
             data.append('cloud_name', CLOUDINARY_CONFIG.cloudName); 
+            
             const res = await fetch(CLOUDINARY_CONFIG.apiUrl, { method: 'POST', body: data });
             const result = await res.json();
-            imageUrl = result.secure_url;
+            
+            if (result.secure_url) {
+               // 🚨 HEIC FIX: Web browsers can't render iPhone HEIC images. This forces Cloudinary to convert it to a JPG link!
+               imageUrl = result.secure_url.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
+            } else {
+               showToast("Upload Error", "Failed to upload image.", "error");
+               setSendingImage(false);
+               return; 
+            }
         }
         
-        await client.post('/chat/send', { 
+        const res = await client.post('/chat/send', { 
             receiverId: String(activeChatUser.uid), 
             text: currentMsg, 
             image: imageUrl 
         });
+
+        // 🚨 INSTANT REFRESH: Immediately add the message to the UI so you don't have to wait 5 seconds!
+        if (res.data?.message) {
+           const m = res.data.message;
+           const newMsgObj = {
+              id: m._id,
+              text: m.text || '',
+              sender: 'me',
+              time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              type: m.image ? 'image' : 'text',
+              image: m.image || null,
+           };
+           setMessages(prev => [...prev, newMsgObj]);
+        }
         
         if (activeChatUser.status === 'new') {
             fetchListData();
@@ -246,7 +267,7 @@ export default function ChatScreen({ navigation, route }) {
   const renderMessage = ({ item }) => (
     <View style={item.sender === 'me' ? styles.myMsgWrapper : styles.otherMsgWrapper}>
       <View style={[item.sender === 'me' ? styles.myBubble : styles.otherBubble]}>
-        {item.type === 'image' && <Image source={{ uri: item.image }} style={styles.sentImage} />}
+        {item.image && <Image source={{ uri: item.image }} style={styles.sentImage} />}
         {item.text !== '' && <Text style={item.sender === 'me' ? styles.myText : styles.otherText}>{item.text}</Text>}
       </View>
       <Text style={styles.timeLabel}>{item.time}</Text>
@@ -287,7 +308,7 @@ export default function ChatScreen({ navigation, route }) {
         </Animated.View>
       )}
 
-      {/* --- GUEST VIEW (If not logged in) --- */}
+      {/* --- GUEST VIEW --- */}
       {(!currentUser || isGuest) ? (
         <View style={styles.centerContainer}>
           <Ionicons name="chatbubbles-outline" size={80} color="#BDC3C7" style={{ marginBottom: 20 }} />
@@ -314,6 +335,7 @@ export default function ChatScreen({ navigation, route }) {
           <View style={[styles.contactsBar, activeTab === 'requests' && { backgroundColor: '#E76F51' }]}>
             <FlatList
               data={activeTab === 'requests' ? requests : myChats}
+              keyExtractor={(item, index) => item.uid ? item.uid.toString() : index.toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity style={styles.contactItem} onPress={() => setActiveChatUser(item)}>
                   <View style={[styles.avatarPlaceholder, activeChatUser?.uid === item.uid && { borderColor: '#FFF', borderWidth: 2 }]}>
@@ -406,15 +428,45 @@ export default function ChatScreen({ navigation, route }) {
                         </View>
                       </View>
                     ) : (
-                      <View style={styles.inputArea}>
-                        <TouchableOpacity onPress={async () => {
-                            let res = await ImagePicker.launchImageLibraryAsync({ quality: 0.5 });
-                            if (!res.canceled) setStagedImage(res.assets[0].uri);
-                        }}><Ionicons name="image" size={26} color="#3D5A80" /></TouchableOpacity>
-                        <TextInput style={styles.textInput} placeholder="Type a message..." value={message} onChangeText={setMessage} multiline />
-                        <TouchableOpacity style={styles.sendBtn} onPress={handleSendMessage}>
-                          <Ionicons name="send" size={18} color="#FFF" />
-                        </TouchableOpacity>
+                      <View style={styles.inputAreaWrapper}>
+                        
+                        {/* 🚨 NEW: Added Image Preview UI so the user knows they attached an image 🚨 */}
+                        {stagedImage && (
+                          <View style={styles.previewContainer}>
+                            <View style={styles.previewImageWrapper}>
+                              <Image source={{ uri: stagedImage }} style={styles.previewImage} />
+                              <TouchableOpacity 
+                                style={styles.previewCloseBtn} 
+                                onPress={() => setStagedImage(null)}
+                              >
+                                <Ionicons name="close-circle" size={24} color="#E74C3C" />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        )}
+
+                        <View style={styles.inputArea}>
+                          <TouchableOpacity onPress={async () => {
+                              let res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6 });
+                              if (!res.canceled) setStagedImage(res.assets[0].uri);
+                          }}>
+                            <Ionicons name="image" size={26} color="#3D5A80" />
+                          </TouchableOpacity>
+                          <TextInput 
+                            style={styles.textInput} 
+                            placeholder="Type a message..." 
+                            value={message} 
+                            onChangeText={setMessage} 
+                            multiline 
+                          />
+                          <TouchableOpacity 
+                            style={[styles.sendBtn, (!message.trim() && !stagedImage) && {opacity: 0.5}]} 
+                            onPress={handleSendMessage}
+                            disabled={(!message.trim() && !stagedImage) || sendingImage}
+                          >
+                            {sendingImage ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="send" size={18} color="#FFF" />}
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     )}
                     <View style={styles.navBarSpacer} />
@@ -434,7 +486,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7F9' },
   mainContent: { flex: 1 },
   
-  // --- TOAST ---
   toastContainer: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 20, left: 20, right: 20, zIndex: 9999, alignItems: 'center' },
   toastBar: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 },
   toastWarning: { backgroundColor: '#E76F51' }, 
@@ -442,14 +493,12 @@ const styles = StyleSheet.create({
   toastInfo: { backgroundColor: '#3D5A80' },    
   toastText: { color: '#FFF', fontWeight: '700', fontSize: 13, marginLeft: 10, flex: 1 },
 
-  // --- CENTER EMPTY STATES (GUEST & CHAT) ---
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
   largeTitle: { fontSize: 22, fontWeight: '800', color: '#293241', textAlign: 'center', marginBottom: 10 },
   subText: { fontSize: 14, color: '#7f8c8d', textAlign: 'center', lineHeight: 22, marginBottom: 30 },
   actionBtn: { backgroundColor: '#3D5A80', paddingHorizontal: 35, paddingVertical: 14, borderRadius: 30, elevation: 4 },
   actionBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
 
-  // --- MAIN CHAT EMPTY STATE ---
   emptyStateContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40, marginTop: -50 },
   emptyStateCircle: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#F0F4F8', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   emptyStateTitle: { fontSize: 18, fontWeight: '800', color: '#2C3E50', marginBottom: 10 },
@@ -457,12 +506,10 @@ const styles = StyleSheet.create({
   findUsersBtn: { flexDirection: 'row', backgroundColor: '#3D5A80', paddingHorizontal: 25, paddingVertical: 12, borderRadius: 25, alignItems: 'center', gap: 8 },
   findUsersText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
 
-  // --- HORIZONTAL LIST EMPTY STATE ---
   emptyListContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, marginLeft: 0 },
   emptyListIcon: { marginRight: 8 },
   emptyListText: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600' },
 
-  // Tab Bar
   tabContainer: { flexDirection: 'row', backgroundColor: '#FFF', paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: '#ECF0F1' },
   tabButton: { flex: 1, paddingVertical: 15, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
   activeTabButton: { borderBottomColor: '#3D5A80' },
@@ -471,7 +518,6 @@ const styles = StyleSheet.create({
   tabBadge: { position: 'absolute', top: 10, right: 30, backgroundColor: '#E74C3C', borderRadius: 10, paddingHorizontal: 5, paddingVertical: 1 },
   badgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
   
-  // Contacts Bar
   contactsBar: { backgroundColor: '#3D5A80', paddingVertical: 15, borderBottomRightRadius: 20, borderBottomLeftRadius: 20, minHeight: 90 },
   contactItem: { alignItems: 'center', marginRight: 15, width: 60 },
   avatarPlaceholder: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#FFF', overflow: 'hidden' },
@@ -479,14 +525,12 @@ const styles = StyleSheet.create({
   contactName: { fontSize: 10, color: '#FFF', marginTop: 5, fontWeight: '600' },
   pendingDot: { position: 'absolute', top: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#F1C40F', borderWidth: 1, borderColor: '#3D5A80' },
   
-  // Chat Engine
   chatEngine: { flex: 1 },
   chatLayer: { flex: 1, backgroundColor: '#FFF', borderTopLeftRadius: 25, borderTopRightRadius: 25, marginTop: -10, overflow: 'hidden' },
   chatPartnerHeader: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#F0F3F4', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   partnerName: { fontSize: 16, fontWeight: '800', color: '#2C3E50' },
   messagesList: { padding: 15, paddingBottom: 20 },
   
-  // Bubbles
   myMsgWrapper: { alignSelf: 'flex-end', marginBottom: 15, alignItems: 'flex-end', maxWidth: '80%' },
   otherMsgWrapper: { alignSelf: 'flex-start', marginBottom: 15, maxWidth: '80%' },
   myBubble: { backgroundColor: '#3D5A80', padding: 12, borderRadius: 15, borderBottomRightRadius: 2 },
@@ -496,7 +540,6 @@ const styles = StyleSheet.create({
   sentImage: { width: 200, height: 150, borderRadius: 10, marginBottom: 5 },
   timeLabel: { fontSize: 9, color: '#BDC3C7', marginTop: 4 },
 
-  // Action Area
   actionContainer: {
     backgroundColor: '#FFF',
     borderTopWidth: 1,
@@ -517,6 +560,12 @@ const styles = StyleSheet.create({
   ignoreText: { color: '#7F8C8D', fontWeight: '700' },
   acceptBtnText: { color: '#FFF', fontWeight: '700' },
 
+  inputAreaWrapper: { backgroundColor: '#FFF', flexDirection: 'column' },
+  previewContainer: { paddingHorizontal: 15, paddingTop: 10 },
+  previewImageWrapper: { position: 'relative', alignSelf: 'flex-start' },
+  previewImage: { width: 80, height: 80, borderRadius: 12, borderWidth: 1, borderColor: '#E0E7ED' },
+  previewCloseBtn: { position: 'absolute', top: -8, right: -8, backgroundColor: '#FFF', borderRadius: 12 },
+  
   inputArea: { flexDirection: 'row', padding: 15, alignItems: 'center' },
   textInput: { flex: 1, marginHorizontal: 12, backgroundColor: '#F8F9F9', borderRadius: 20, paddingHorizontal: 15, paddingVertical: 10, maxHeight: 100, color: '#2C3E50' },
   sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#3D5A80', justifyContent: 'center', alignItems: 'center' },

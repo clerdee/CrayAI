@@ -5,26 +5,32 @@ import {
   MoreVertical, Image as ImageIcon, MessageSquare,
   AlertCircle, Loader2, XCircle, Check, Inbox, ChevronLeft
 } from 'lucide-react';
+import axios from 'axios';
 import chatActions from '../../api/chatActions';
 import client from '../../api/client';
 
 const ChatPage = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [chats, setChats] = useState([]);
-  const [activeTab, setActiveTab] = useState('mutual'); // 'mutual' (Chats) or 'requests'
+  const [activeTab, setActiveTab] = useState('mutual'); 
   const [selectedChat, setSelectedChat] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
+  
+  // Image Upload States
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null); 
+  const [isSending, setIsSending] = useState(false);
+  const fileInputRef = useRef(null);
+
   const [isLoading, setIsLoading] = useState(true);
   const messagesEndRef = useRef(null);
 
-  // --- HELPER: DATE FORMATTING ---
   const formatSidebarDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
     const now = new Date();
     
-    // Create "start of day" objects for comparison
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -32,18 +38,14 @@ const ChatPage = () => {
     const msgDateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     
     if (msgDateOnly.getTime() === today.getTime()) {
-      // If today: 2:30 PM
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else if (msgDateOnly.getTime() === yesterday.getTime()) {
-      // If yesterday: Yesterday
       return 'Yesterday';
     } else {
-      // If older: Oct 12
       return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
   };
 
-  // Helper to safely compare IDs (Handles .id vs ._id and objects vs strings)
   const isMyId = (id) => {
     if (!id) return false;
     const currentId = currentUser?._id || currentUser?.id;
@@ -51,19 +53,34 @@ const ChatPage = () => {
     return String(targetId) === String(currentId);
   };
 
+  // Poll for Sidebar Chats (Every 10s)
   useEffect(() => {
     fetchInitialData();
-    // Background polling every 10 seconds to catch new messages/requests
     const interval = setInterval(fetchInitialData, 10000);
     return () => clearInterval(interval);
   }, []);
 
+  // 🚨 FIXED: Poll for Active Chat Messages (Every 10s) 🚨
   useEffect(() => {
+    let messageInterval;
+    
     if (selectedChat) {
+      // 1. Fetch immediately when a chat is clicked
       fetchMessages();
+      
+      // 2. Start polling every 10 seconds for new incoming messages
+      messageInterval = setInterval(() => {
+        fetchMessages();
+      }, 10000);
     }
+    
+    // 3. Clear the interval if the user closes the chat or switches to another user
+    return () => {
+      if (messageInterval) clearInterval(messageInterval);
+    };
   }, [selectedChat]);
 
+  // Scroll to bottom whenever messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -82,7 +99,6 @@ const ChatPage = () => {
       if (chatRes.data.success) {
         setChats(chatRes.data.chats);
         
-        // Sync selected chat status (in case someone accepts while you're looking at it)
         if (selectedChat) {
           const updated = chatRes.data.chats.find(c => c._id === selectedChat._id);
           if (updated && updated.status !== selectedChat.status) {
@@ -98,9 +114,7 @@ const ChatPage = () => {
   };
 
   const fetchMessages = async () => {
-    const myId = currentUser?._id || currentUser?.id;
     const partner = selectedChat.participants.find(p => !isMyId(p._id || p.id));
-    
     if (!partner) return;
 
     try {
@@ -113,27 +127,62 @@ const ChatPage = () => {
     }
   };
 
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedFile(file); 
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = () => {
+        setSelectedImage(reader.result); 
+      };
+    }
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedChat) return;
+    if ((!newMessage.trim() && !selectedImage) || !selectedChat) return;
     
+    setIsSending(true);
     const partner = selectedChat.participants.find(p => !isMyId(p._id || p.id));
     
     try {
-      const res = await chatActions.sendMessage(partner._id || partner.id, newMessage);
+      let finalImageUrl = null;
+
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('upload_preset', 'CrayAI');
+        formData.append('cloud_name', 'dvdrak5wl'); 
+
+        const cloudinaryRes = await axios.post(
+          'https://api.cloudinary.com/v1_1/dvdrak5wl/image/upload',
+          formData
+        );
+        finalImageUrl = cloudinaryRes.data.secure_url;
+      }
+
+      const res = await chatActions.sendMessage(partner._id || partner.id, newMessage, finalImageUrl);
+      
       if (res.data.success) {
+        // Optimistically add the message to the view immediately
         setMessages([...messages, res.data.message]);
         setNewMessage('');
+        setSelectedImage(null);
+        setSelectedFile(null); 
+        if (fileInputRef.current) fileInputRef.current.value = ""; 
         
         // Refresh sidebar instantly
         setChats(prev => prev.map(c => 
           c._id === selectedChat._id 
-            ? { ...c, lastMessage: newMessage, lastMessageTime: new Date() } 
+            ? { ...c, lastMessage: finalImageUrl ? '📷 Image' : newMessage, lastMessageTime: new Date() } 
             : c
         ));
       }
     } catch (err) {
       console.error("Failed to send message:", err);
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -163,7 +212,6 @@ const ChatPage = () => {
     }
   };
 
-  // --- FILTERING LOGIC ---
   const mutualChats = chats.filter(c => 
     c.status === 'accepted' || (c.status === 'pending' && isMyId(c.initiator))
   );
@@ -249,7 +297,6 @@ const ChatPage = () => {
                       <h4 className={`text-sm font-black truncate ${isActive ? 'text-[#3D5A80]' : 'text-[#293241]'}`}>
                         {partner?.firstName}
                       </h4>
-                      {/* 🚨 DATE/TIME IN SIDEBAR */}
                       <span className={`text-[9px] font-bold uppercase ml-2 whitespace-nowrap ${isActive ? 'text-[#3D5A80]/60' : 'text-slate-400'}`}>
                         {formatSidebarDate(chat.lastMessageTime || chat.updatedAt)}
                       </span>
@@ -322,11 +369,10 @@ const ChatPage = () => {
                 </motion.div>
               )}
 
-              {/* SENT STATUS FOR OUTGOING PENDING */}
               {selectedChat.status === 'pending' && isMyId(selectedChat.initiator) && (
                 <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl text-center mb-4 max-w-xs mx-auto">
                    <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest">
-                     Invitation Sent. Waiting for response...
+                      Invitation Sent. Waiting for response...
                    </p>
                 </div>
               )}
@@ -336,13 +382,20 @@ const ChatPage = () => {
                 return (
                   <div key={idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                     <div className="flex flex-col gap-1.5 max-w-[75%]">
-                      <div className={`p-5 rounded-[2rem] text-sm font-bold shadow-sm ${
+                      <div className={`p-4 rounded-[2rem] text-sm font-bold shadow-sm ${
                         isMe ? 'bg-[#3D5A80] text-white rounded-tr-none' : 'bg-white text-[#293241] rounded-tl-none border border-slate-100'
                       }`}>
-                        {msg.text}
+                        {msg.image && (
+                          <img 
+                            src={msg.image} 
+                            alt="Attached" 
+                            className="w-full max-w-[240px] h-auto object-cover rounded-xl mb-2 border border-black/10 shadow-sm"
+                          />
+                        )}
+                        {msg.text && <span className="leading-relaxed">{msg.text}</span>}
                       </div>
                       <span className={`text-[9px] font-black uppercase tracking-widest text-slate-300 px-2 ${isMe ? 'text-right' : 'text-left'}`}>
-                        {new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        {new Date(msg.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} • {new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                       </span>
                     </div>
                   </div>
@@ -355,23 +408,64 @@ const ChatPage = () => {
             <div className={`p-6 bg-white border-t border-slate-100 sticky bottom-0 ${
               (selectedChat.status === 'pending' && !isMyId(selectedChat.initiator)) ? 'opacity-30 pointer-events-none grayscale' : ''
             }`}>
-              <form onSubmit={handleSendMessage} className="flex items-center gap-4">
-                <button type="button" className="p-4 text-slate-400 hover:bg-[#F4F7F9] rounded-2xl transition-all">
+              <form onSubmit={handleSendMessage} className="flex items-end gap-4">
+                
+                {/* Hidden File Input */}
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  ref={fileInputRef} 
+                  onChange={handleImageChange} 
+                  className="hidden" 
+                />
+
+                <button 
+                  type="button" 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-4 mb-1 text-slate-400 hover:text-[#3D5A80] hover:bg-[#F4F7F9] rounded-2xl transition-all"
+                >
                   <ImageIcon size={22} />
                 </button>
-                <input 
-                  type="text" 
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder={selectedChat.status === 'pending' && isMyId(selectedChat.initiator) ? "Wait for response..." : "Type your message..."}
-                  className="flex-1 bg-[#F4F7F9] rounded-[1.5rem] py-5 px-8 text-sm font-bold outline-none border-2 border-transparent focus:border-[#E0FBFC]"
-                />
+
+                {/* Input Container */}
+                <div className="flex-1 flex flex-col bg-[#F4F7F9] rounded-[1.5rem] p-2 border-2 border-transparent focus-within:border-[#E0FBFC]">
+                  {/* Image Preview Container */}
+                  {selectedImage && (
+                    <div className="relative w-20 h-20 mb-2 ml-3 mt-2">
+                      <img 
+                        src={selectedImage} 
+                        alt="Preview" 
+                        className="w-full h-full object-cover rounded-xl border border-slate-200 shadow-sm" 
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setSelectedImage(null);
+                          setSelectedFile(null);
+                          if(fileInputRef.current) fileInputRef.current.value = "";
+                        }} 
+                        className="absolute -top-2 -right-2 bg-[#E76F51] text-white rounded-full p-0.5 shadow-md hover:scale-110 transition-transform"
+                      >
+                        <XCircle size={16} />
+                      </button>
+                    </div>
+                  )}
+
+                  <input 
+                    type="text" 
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder={selectedChat.status === 'pending' && isMyId(selectedChat.initiator) ? "Wait for response..." : "Type your message..."}
+                    className="w-full bg-transparent px-6 py-3 text-sm font-bold outline-none"
+                  />
+                </div>
+
                 <button 
                   type="submit"
-                  disabled={!newMessage.trim()}
-                  className="p-5 bg-[#3D5A80] text-white rounded-2xl hover:bg-[#293241] shadow-xl disabled:opacity-50"
+                  disabled={(!newMessage.trim() && !selectedImage) || isSending}
+                  className="p-5 mb-1 bg-[#3D5A80] text-white rounded-2xl hover:bg-[#293241] shadow-xl disabled:opacity-50 transition-all flex items-center justify-center"
                 >
-                  <Send size={22} />
+                  {isSending ? <Loader2 className="w-[22px] h-[22px] animate-spin" /> : <Send size={22} />}
                 </button>
               </form>
             </div>

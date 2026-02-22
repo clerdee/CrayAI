@@ -12,8 +12,8 @@ const chatActions = {
   },
 
   // POST /chat/send
-  sendMessage: async (receiverId, text) => {
-    return await client.post('/chat/send', { receiverId, text });
+  sendMessage: async (receiverId, text, image) => {
+    return await client.post('/chat/send', { receiverId, text, image });
   },
 
   // POST /chat/accept
