@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, MessageCircle, Tag, MoreHorizontal, User, ChevronLeft, ChevronRight, Image as ImageIcon, Trash2, Pencil } from 'lucide-react';
+import { Heart, MessageCircle, Tag, MoreHorizontal, User, ChevronLeft, ChevronRight, Image as ImageIcon, Trash2, Pencil, Send } from 'lucide-react'; // 🚨 Added Send icon for messages
 import { useNavigate } from 'react-router-dom';
 import client from '../../../api/client';
 
@@ -74,6 +74,20 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
   }
   profilePicUrl = formatWebImage(profilePicUrl);
 
+  // 🚨 NEW: Handle Message Click (Redirects to ChatPage with State)
+  const handleMessageClick = (e) => {
+    e.stopPropagation(); // Prevent opening the post details modal
+    navigate('/chats', { 
+      state: { 
+        targetUser: {
+          uid: postAuthorId,
+          name: authorName,
+          profilePic: profilePicUrl
+        } 
+      } 
+    });
+  };
+
   const getValidImages = () => {
     let urls = [];
     if (post.media && Array.isArray(post.media)) {
@@ -133,7 +147,7 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
             )}
           </div>
           <div>
-            <h4 className="text-sm font-black text-[#293241] leading-none group-hover:text-[#E76F51] transition-colors">
+            <h4 className="text-sm font-black text-[#293241] leading-none group-hover:text-[#E76F51] transition-colors truncate max-w-[120px]">
               {authorName}
             </h4>
             <p className="text-[10px] font-bold text-slate-400 mt-1.5 uppercase tracking-widest">
@@ -167,16 +181,27 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
             </AnimatePresence>
           </div>
         ) : (
-          <button 
-            onClick={handleFollowClick} 
-            className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest transition-colors ${
-              isFollowing 
-                ? 'bg-slate-100 text-slate-500 hover:bg-slate-200' 
-                : 'bg-[#3D5A80] text-white hover:bg-[#293241]'
-            }`}
-          >
-            {isFollowing ? 'Following' : 'Follow'}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* 🚨 NEW: Message Action Button */}
+            <button 
+              onClick={handleMessageClick}
+              className="p-1.5 text-slate-400 hover:text-[#3D5A80] hover:bg-[#F4F7F9] rounded-full transition-colors"
+              title={`Message ${authorName}`}
+            >
+              <Send className="w-4 h-4" />
+            </button>
+
+            <button 
+              onClick={handleFollowClick} 
+              className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-colors ${
+                isFollowing 
+                  ? 'bg-slate-100 text-slate-500 hover:bg-slate-200' 
+                  : 'bg-[#3D5A80] text-white hover:bg-[#293241]'
+              }`}
+            >
+              {isFollowing ? 'Following' : 'Follow'}
+            </button>
+          </div>
         )}
       </div>
 

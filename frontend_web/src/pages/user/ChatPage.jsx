@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, Send, User, Clock, CheckCircle2, 
@@ -16,6 +17,7 @@ const ChatPage = () => {
   const [selectedChat, setSelectedChat] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
+  const location = useLocation();
   
   // Image Upload States
   const [selectedImage, setSelectedImage] = useState(null);
@@ -53,34 +55,80 @@ const ChatPage = () => {
     return String(targetId) === String(currentId);
   };
 
-  // Poll for Sidebar Chats (Every 10s)
+  // Helper variables for filtering chats
+  const mutualChats = chats.filter(c => 
+    c.status === 'accepted' || (c.status === 'pending' && isMyId(c.initiator))
+  );
+
+  const requestChats = chats.filter(c => 
+    c.status === 'pending' && !isMyId(c.initiator)
+  );
+
+  const displayedChats = activeTab === 'mutual' ? mutualChats : requestChats;
+
+  // 1. Initial Load & Polling for Sidebar Chats (Every 10s)
   useEffect(() => {
     fetchInitialData();
     const interval = setInterval(fetchInitialData, 10000);
     return () => clearInterval(interval);
   }, []);
 
-  // 🚨 FIXED: Poll for Active Chat Messages (Every 10s) 🚨
+  // 2. Poll for Active Chat Messages (Every 10s)
   useEffect(() => {
     let messageInterval;
     
-    if (selectedChat) {
-      // 1. Fetch immediately when a chat is clicked
+    if (selectedChat && selectedChat._id !== 'new_chat_temp') {
       fetchMessages();
       
-      // 2. Start polling every 10 seconds for new incoming messages
       messageInterval = setInterval(() => {
         fetchMessages();
       }, 10000);
     }
     
-    // 3. Clear the interval if the user closes the chat or switches to another user
     return () => {
       if (messageInterval) clearInterval(messageInterval);
     };
   }, [selectedChat]);
 
-  // Scroll to bottom whenever messages change
+  // 3. 🚨 NEW: Handle Incoming Routing State from Profile Page
+  useEffect(() => {
+    if (location.state?.targetUser && currentUser && !isLoading) {
+      const target = location.state.targetUser;
+      const targetId = String(target.uid);
+
+      const existingChat = mutualChats.find(c => 
+        c.participants.some(p => String(p._id || p.id) === targetId)
+      );
+      const existingRequest = requestChats.find(c => 
+        c.participants.some(p => String(p._id || p.id) === targetId)
+      );
+
+      if (existingChat) {
+        setActiveTab('mutual');
+        setSelectedChat(existingChat);
+      } else if (existingRequest) {
+        setActiveTab('requests');
+        setSelectedChat(existingRequest);
+      } else {
+        // Create a temporary "new" chat state so the user can send the first message
+        setActiveTab('mutual');
+        setSelectedChat({
+          _id: 'new_chat_temp',
+          status: 'new',
+          participants: [
+            currentUser, 
+            { _id: targetId, firstName: target.name.split(' ')[0], lastName: target.name.split(' ')[1] || '', profilePic: target.profilePic } 
+          ]
+        });
+        setMessages([]); // Clear out any previous messages
+      }
+      
+      // Clear the location state so it doesn't trigger repeatedly
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, currentUser, isLoading, mutualChats, requestChats]);
+
+  // 4. Scroll to bottom whenever messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -99,7 +147,7 @@ const ChatPage = () => {
       if (chatRes.data.success) {
         setChats(chatRes.data.chats);
         
-        if (selectedChat) {
+        if (selectedChat && selectedChat._id !== 'new_chat_temp') {
           const updated = chatRes.data.chats.find(c => c._id === selectedChat._id);
           if (updated && updated.status !== selectedChat.status) {
             setSelectedChat(updated);
@@ -165,19 +213,28 @@ const ChatPage = () => {
       const res = await chatActions.sendMessage(partner._id || partner.id, newMessage, finalImageUrl);
       
       if (res.data.success) {
-        // Optimistically add the message to the view immediately
         setMessages([...messages, res.data.message]);
         setNewMessage('');
         setSelectedImage(null);
         setSelectedFile(null); 
         if (fileInputRef.current) fileInputRef.current.value = ""; 
         
-        // Refresh sidebar instantly
-        setChats(prev => prev.map(c => 
-          c._id === selectedChat._id 
-            ? { ...c, lastMessage: finalImageUrl ? '📷 Image' : newMessage, lastMessageTime: new Date() } 
-            : c
-        ));
+        // 🚨 NEW: If this was a brand new chat, fetch the official chat data to replace the temporary state
+        if (selectedChat._id === 'new_chat_temp') {
+          await fetchInitialData();
+          // Find the newly created chat with this user
+          const newOfficialChat = chats.find(c => c.participants.some(p => String(p._id || p.id) === String(partner._id || partner.id))) 
+                               || res.data.chat; 
+          
+          if (newOfficialChat) setSelectedChat(newOfficialChat);
+        } else {
+          // Refresh sidebar instantly for existing chats
+          setChats(prev => prev.map(c => 
+            c._id === selectedChat._id 
+              ? { ...c, lastMessage: finalImageUrl ? '📷 Image' : newMessage, lastMessageTime: new Date() } 
+              : c
+          ));
+        }
       }
     } catch (err) {
       console.error("Failed to send message:", err);
@@ -211,16 +268,6 @@ const ChatPage = () => {
       console.error("Failed to decline message request:", err);
     }
   };
-
-  const mutualChats = chats.filter(c => 
-    c.status === 'accepted' || (c.status === 'pending' && isMyId(c.initiator))
-  );
-
-  const requestChats = chats.filter(c => 
-    c.status === 'pending' && !isMyId(c.initiator)
-  );
-
-  const displayedChats = activeTab === 'mutual' ? mutualChats : requestChats;
 
   if (isLoading && !currentUser) {
     return (
@@ -332,7 +379,9 @@ const ChatPage = () => {
                   </h3>
                   <div className="flex items-center gap-1.5">
                     <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Active</span>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                      {selectedChat.status === 'new' ? 'New Message' : 'Active'}
+                    </span>
                   </div>
                 </div>
               </div>

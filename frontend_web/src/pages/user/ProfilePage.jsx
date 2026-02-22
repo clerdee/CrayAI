@@ -121,8 +121,16 @@ const ProfilePage = () => {
   };
 
   // Navigates to chat/message route
-  const handleMessageClick = () => {
-    navigate(`/messages/${profileUser._id || profileUser.id}`);
+const handleMessageClick = () => {
+    navigate('/chats', { 
+      state: { 
+        targetUser: {
+          uid: profileUser._id || profileUser.id,
+          name: profileName,
+          profilePic: profileUser.profilePic
+        } 
+      } 
+    });
   };
 
   if (isLoading) {
