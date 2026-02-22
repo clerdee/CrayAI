@@ -33,9 +33,13 @@ def find_best_match(user_query, db_records):
     best_score_index = np.argmax(scores.cpu().numpy())
     best_score = scores[best_score_index].item()
     
+    # Print the score in the terminal so you can monitor how confident the AI is
+    print(f"🧠 Local AI Match Score: {best_score:.2f} for query: '{user_query}'")
+    
     # 5. Threshold Check (Confidence Score)
-    # If similarity is too low (< 0.5), it means the bot is confused.
-    if best_score < 0.5:
+    # INCREASED TO 0.75: If it's not at least a 75% match, fallback to Gemini!
+    if best_score < 0.85:
+        print("⚠️ Match too low, falling back to Gemini...")
         return None  # "I don't know"
     
     # Return the full matching record

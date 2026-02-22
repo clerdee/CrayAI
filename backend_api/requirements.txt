@@ -4,3 +4,4 @@ Flask-PyMongo
 dnspython
 python-dotenv
 ultralytics
+google-genai

@@ -4,6 +4,13 @@ from bson.objectid import ObjectId
 from datetime import datetime
 from services.ai_engine import find_best_match 
 from better_profanity import profanity
+import os
+from google import genai
+from dotenv import load_dotenv
+
+# Load environment variables and initialize Gemini
+load_dotenv()
+gemini_client = genai.Client()
 
 chatbot_bp = Blueprint('chatbot_bp', __name__)
 
@@ -103,16 +110,18 @@ def ask_chatbot():
         if not user_query:
             return jsonify({"error": "No question provided"}), 400
 
-        # 🚨 1. SAFETY CHECK
+        # 🚨 1. SAFETY CHECK (Profanity)
         if profanity.contains_profanity(user_query):
+            response_text = "I cannot answer that. Please be respectful."
             mongo.db[LOGS_COLLECTION].insert_one({
                 "query": user_query,
+                "response": response_text,
                 "status": "Flagged",
                 "reason": "Offensive Content",
                 "timestamp": datetime.utcnow()
             })
             return jsonify({
-                "response": "I cannot answer that. Please be respectful.",
+                "response": response_text,
                 "topic": "System",
                 "confidence": "Low",
                 "is_flagged": True
@@ -122,27 +131,65 @@ def ask_chatbot():
         cursor = mongo.db[COLLECTION].find({"status": "Approved"})
         approved_data = list(cursor)
 
-        match = find_best_match(user_query, approved_data)
+        # 🚨 NEW FIX: Only attempt local search if there is actually data!
+        match = None
+        if len(approved_data) > 0:
+            try:
+                match = find_best_match(user_query, approved_data)
+            except Exception as e:
+                print(f"Local AI Match Error: {e}")
+                match = None
 
-        # ❌ 3. FAILED QUERY
+        # ❌ 3. FAILED LOCAL QUERY -> FALLBACK TO GEMINI
         if not match:
-            mongo.db[LOGS_COLLECTION].insert_one({
-                "query": user_query,
-                "status": "Failed",
-                "reason": "Low Confidence / Unknown",
-                "timestamp": datetime.utcnow()
-            })
-            return jsonify({
-                "response": "I'm sorry, I don't have information on that yet.",
-                "topic": "System",
-                "confidence": "Low"
-            }), 200
+            print("Local DB missed or empty. Asking Gemini...")
+            try:
+                # Ask Gemini 2.5 Flash
+                gemini_response = gemini_client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=f"You are CrayAI, an expert assistant for Australian Red Claw crayfish. Answer this question concisely: {user_query}"
+                )
+                
+                # Log the Gemini interaction
+                mongo.db[LOGS_COLLECTION].insert_one({
+                    "query": user_query,
+                    "response": gemini_response.text,
+                    "status": "Success (Gemini)",
+                    "reason": "Answered via Gemini API",
+                    "timestamp": datetime.utcnow()
+                })
 
-        # ✅ 4. SUCCESS QUERY
+                return jsonify({
+                    "response": gemini_response.text,
+                    "topic": "Gemini AI",
+                    "confidence": "High"
+                }), 200
+
+            except Exception as gemini_err:
+                print(f"Gemini Error: {gemini_err}")
+                
+                # Log the failed interaction if Gemini also fails
+                fail_response = "I'm sorry, my local database doesn't know this, and I couldn't reach my cloud brain right now."
+                mongo.db[LOGS_COLLECTION].insert_one({
+                    "query": user_query,
+                    "response": fail_response,
+                    "status": "Failed",
+                    "reason": f"Local DB Miss & Gemini Error: {str(gemini_err)}",
+                    "timestamp": datetime.utcnow()
+                })
+                
+                return jsonify({
+                    "response": fail_response,
+                    "topic": "System",
+                    "confidence": "Low"
+                }), 200
+
+        # ✅ 4. SUCCESS QUERY (Local Match)
         match_id_str = str(match['_id']) 
 
         mongo.db[LOGS_COLLECTION].insert_one({
             "query": user_query,
+            "response": match['response'],
             "status": "Success",
             "match_id": match_id_str, 
             "timestamp": datetime.utcnow()
@@ -155,8 +202,8 @@ def ask_chatbot():
         }), 200
 
     except Exception as e:
-        print(f"🔥 AI Error: {e}") 
-        return jsonify({"error": str(e)}), 500
+        print(f"🔥 Critical AI Error: {e}") 
+        return jsonify({"error": "Internal Server Error"}), 500
 
 # =========================================================
 # 6. GET STATS (Admin Dashboard)
@@ -166,18 +213,23 @@ def get_stats():
     try:
         total_logs = mongo.db[LOGS_COLLECTION].count_documents({})
         success_logs = mongo.db[LOGS_COLLECTION].count_documents({"status": "Success"})
+        success_gemini_logs = mongo.db[LOGS_COLLECTION].count_documents({"status": "Success (Gemini)"})
         failed_logs = mongo.db[LOGS_COLLECTION].count_documents({"status": "Failed"})
         flagged_logs = mongo.db[LOGS_COLLECTION].count_documents({"status": "Flagged"})
 
+        # Combine both local success and Gemini success for accuracy calculation
+        total_success = success_logs + success_gemini_logs
+        
         accuracy = 0
         if total_logs > 0:
-            accuracy = round((success_logs / total_logs) * 100)
+            accuracy = round((total_success / total_logs) * 100)
 
         return jsonify({
             "total_interactions": total_logs,
             "accuracy": accuracy,
             "failed_count": failed_logs,
-            "flagged_count": flagged_logs
+            "flagged_count": flagged_logs,
+            "gemini_fallback_count": success_gemini_logs # Added this to track how often Gemini is used
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
