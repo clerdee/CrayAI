@@ -1,7 +1,10 @@
-import React from 'react';
-import { X, MapPin, Download, Flag, AlertTriangle, User, Activity } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, MapPin, Download, Flag, AlertTriangle, User, Activity, Loader2 } from 'lucide-react';
+import { jsPDF } from "jspdf"; // Make sure jsPDF is imported
 
 const ScanDetailsModal = ({ log, onClose }) => {
+  const [isDownloading, setIsDownloading] = useState(false);
+
   if (!log) return null;
 
   const formattedDate = new Date(log.date).toLocaleString('en-US', {
@@ -13,6 +16,100 @@ const ScanDetailsModal = ({ log, onClose }) => {
   // Determine Confidence Color
   const confidence = log.confidence || 0;
   const confColor = confidence > 80 ? 'bg-emerald-500' : confidence > 50 ? 'bg-yellow-500' : 'bg-red-500';
+
+  // --- PDF GENERATION LOGIC ---
+  const handleDownloadReport = async () => {
+    setIsDownloading(true);
+    try {
+        const doc = new jsPDF();
+        
+        // 1. Helper to fetch image and convert to Base64
+        const getBase64Image = async (url) => {
+            const response = await fetch(url, { mode: 'cors' }); 
+            const blob = await response.blob();
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        };
+
+        // 2. Add Header
+        doc.setFillColor(41, 50, 65); // Dark Blue Header #293241
+        doc.rect(0, 0, 210, 30, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(22);
+        doc.setFont("helvetica", "bold");
+        doc.text("CrayAI Scan Report", 14, 20);
+        
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 150, 20, { align: 'right' });
+
+        // 3. Add Image (Left Side)
+        try {
+            doc.setTextColor(41, 50, 65);
+            doc.text("Scan Capture:", 14, 45);
+            
+            // Fetch image from URL (Must allow CORS)
+            const imgData = await getBase64Image(log.image);
+            // Add image: (data, format, x, y, width, height)
+            doc.addImage(imgData, 'JPEG', 14, 50, 90, 70); // 90x70mm image
+        } catch (err) {
+            console.error("Image load failed", err);
+            doc.setDrawColor(200);
+            doc.rect(14, 50, 90, 70); // Placeholder box
+            doc.text("Image not available", 59, 85, { align: 'center' });
+        }
+
+        // 4. Add Data (Right Side)
+        const startX = 120;
+        const startY = 50;
+        const lineHeight = 10;
+
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text("Analysis Data", startX, 45);
+
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(80);
+
+        const dataPoints = [
+            `ID: ${log.id}`,
+            `Date: ${formattedDate}`,
+            `User: ${log.user}`,
+            `Species: ${log.species}`,
+            `Gender: ${log.gender}`,
+            `Confidence: ${log.confidence}%`,
+            `Age Class: ${log.age.split(' ')[0]}`,
+            `Size: ${log.sizeCm}`,
+            `Algae: ${log.algae}`,
+            `Turbidity: Level ${log.turbidity}`
+        ];
+
+        dataPoints.forEach((text, index) => {
+            doc.text(text, startX, startY + (index * lineHeight));
+        });
+
+        // 5. Warning Footer (if applicable)
+        if (hasWarning) {
+            doc.setTextColor(225, 26, 34); // Red
+            doc.setFont("helvetica", "bold");
+            doc.text("⚠️ WARNING: Environmental risks detected in this scan.", 14, 135);
+        }
+
+        // 6. Save
+        doc.save(`Scan_Report_${log.id}.pdf`);
+
+    } catch (error) {
+        console.error("PDF Export Error:", error);
+        alert("Failed to generate PDF. Note: Images may fail if CORS is blocked by the server.");
+    } finally {
+        setIsDownloading(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -84,9 +181,6 @@ const ScanDetailsModal = ({ log, onClose }) => {
                       <p className="font-bold text-slate-900">{log.user}</p>
                       <p className="text-xs text-slate-500">{log.userEmail}</p>
                    </div>
-                   <button className="ml-auto text-xs font-bold text-teal-600 border border-teal-100 px-4 py-2 rounded-lg hover:bg-teal-50 transition-colors">
-                      View Profile
-                   </button>
                </div>
 
                 {/* AI Result Grid */}
@@ -158,8 +252,13 @@ const ScanDetailsModal = ({ log, onClose }) => {
                   <button className="flex-1 flex items-center justify-center gap-2 py-3.5 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
                       <Flag className="w-4 h-4" /> Flag as Incorrect
                   </button>
-                  <button className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-teal-600 transition-colors shadow-lg shadow-slate-200">
-                      <Download className="w-4 h-4" /> Download Report
+                  <button 
+                    onClick={handleDownloadReport} 
+                    disabled={isDownloading}
+                    className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-teal-600 transition-colors shadow-lg shadow-slate-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                      {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      {isDownloading ? 'Generating...' : 'Download Report'}
                   </button>
                </div>
 

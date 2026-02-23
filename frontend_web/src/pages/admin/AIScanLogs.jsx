@@ -3,9 +3,14 @@ import axios from 'axios';
 import AdminLayout from '../../layouts/AdminLayout';
 import { 
   Search, Filter, CheckCircle, AlertTriangle, Eye, MoreHorizontal, MapPin, 
-  Pencil, Database, Trash2, Loader, ChevronLeft, ChevronRight, ScanLine, RefreshCw, X
+  Pencil, Database, Trash2, Loader, ChevronLeft, ChevronRight, ScanLine, RefreshCw, X, FileText, FileSpreadsheet
 } from 'lucide-react';
 import ScanDetailsModal from './ScanDetailsModal';
+
+// --- FIXED IMPORTS FOR PDF ---
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable"; 
+import * as XLSX from 'xlsx'; 
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
@@ -65,10 +70,7 @@ const AIScanLogs = () => {
                 age: age, 
                 algae: algae,
                 turbidity: turbidity,
-                
-                // --- FIX: Map the real confidence from MongoDB ---
-                confidence: record.gender_confidence || 0, 
-                
+                confidence: record.gender_confidence || 0, // Mapped correctly
                 status: record.isDeleted ? 'Deleted' : 'Verified',
                 image: record.image?.url || 'https://via.placeholder.com/150',
                 date: record.createdAt,
@@ -132,6 +134,7 @@ const AIScanLogs = () => {
     }
   };
 
+  // --- FILTER LOGIC (Moved up so exports can use it) ---
   const filteredLogs = logs.filter(log => {
     const matchesFilter = filter === 'All' || 
                           (filter === 'Low Confidence' && log.confidence < 80) ||
@@ -145,6 +148,85 @@ const AIScanLogs = () => {
 
     return matchesFilter && matchesSearch;
   });
+
+  // --- EXPORT FUNCTIONS ---
+
+  const exportToPDF = () => {
+    try {
+        const doc = new jsPDF();
+        
+        // Add Title
+        doc.setFontSize(18);
+        doc.text('AI Scan Logs Report', 14, 22);
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+        doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+
+        // Prepare table data
+        const tableColumn = ["ID", "User", "Date", "Gender", "Age", "Size", "Algae", "Turbidity", "Conf."];
+        const tableRows = [];
+
+        filteredLogs.forEach(log => {
+            const logData = [
+                log.id,
+                log.user,
+                new Date(log.date).toLocaleDateString(),
+                log.gender,
+                log.age.split(' ')[0], 
+                log.sizeCm,
+                log.algae,
+                `Lvl ${log.turbidity}`,
+                `${log.confidence}%`
+            ];
+            tableRows.push(logData);
+        });
+
+        // Generate Table using correct autoTable import
+        autoTable(doc, {
+            head: [tableColumn],
+            body: tableRows,
+            startY: 40,
+            theme: 'grid',
+            styles: { fontSize: 8, cellPadding: 2 },
+            headStyles: { fillColor: [61, 90, 128] }, // Matches theme color
+        });
+
+        doc.save('CrayAI_Scan_Logs.pdf');
+        showToast("PDF Exported Successfully");
+    } catch (error) {
+        console.error("PDF Generation Error:", error);
+        showToast("Failed to generate PDF.", "error");
+    }
+  };
+
+  const exportToExcel = () => {
+    try {
+        const worksheetData = filteredLogs.map(log => ({
+            "Scan ID": log.id,
+            "User": log.user,
+            "User Email": log.userEmail,
+            "Date": new Date(log.date).toLocaleString(),
+            "Gender": log.gender,
+            "Estimated Age": log.age,
+            "Size (cm)": log.sizeCm,
+            "Size (in)": log.sizeIn,
+            "Algae Level": log.algae,
+            "Turbidity Level": log.turbidity,
+            "AI Confidence": `${log.confidence}%`,
+            "Status": log.status,
+            "Location": log.pond
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Scan Logs");
+        XLSX.writeFile(workbook, "CrayAI_Scan_Logs.xlsx");
+        showToast("Excel Exported Successfully");
+    } catch (error) {
+        console.error("Excel Export Error:", error);
+        showToast("Failed to export Excel.", "error");
+    }
+  };
 
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -195,6 +277,18 @@ const AIScanLogs = () => {
                     {f}
                 </button>
             ))}
+            
+            {/* Export Buttons */}
+            <div className="h-8 w-px bg-slate-200 mx-1"></div>
+            
+            <button onClick={exportToPDF} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors" title="Export PDF">
+                <FileText className="w-5 h-5" />
+            </button>
+            
+            <button onClick={exportToExcel} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-green-50 text-slate-500 hover:text-green-600 transition-colors" title="Export Excel">
+                <FileSpreadsheet className="w-5 h-5" />
+            </button>
+
             <button onClick={fetchLogs} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500" title="Refresh Data">
               <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
             </button>

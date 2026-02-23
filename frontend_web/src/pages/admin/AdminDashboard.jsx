@@ -6,7 +6,15 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend, BarChart, Bar 
 } from 'recharts';
-import { ScanEye, Users, Activity, Droplets, HelpCircle, ShieldAlert, Loader } from 'lucide-react';
+import { 
+  ScanEye, Users, Activity, Droplets, HelpCircle, ShieldAlert, Loader, 
+  FileText, FileSpreadsheet, Download 
+} from 'lucide-react';
+
+// --- IMPORTS FOR EXPORT ---
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable"; 
+import * as XLSX from 'xlsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'; 
 const CHATBOT_API_URL = 'http://localhost:5001/api/training/chatbot'; 
@@ -71,6 +79,182 @@ const AdminDashboard = () => {
     fetchStats();
   }, []);
 
+  // --- COMPREHENSIVE EXPORT FUNCTIONS ---
+
+  const exportToPDF = () => {
+    try {
+        const doc = new jsPDF();
+        let yPos = 25; // Track vertical position
+
+        // 1. Header
+        doc.setFillColor(41, 50, 65); // Dark Blue Header
+        doc.rect(0, 0, 210, 40, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(22);
+        doc.text('Full System Audit Report', 14, 25);
+        doc.setFontSize(10);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 33);
+        
+        yPos = 50;
+
+        // 2. Executive Summary (KPIs)
+        doc.setTextColor(0);
+        doc.setFontSize(14);
+        doc.text('1. Executive Summary', 14, yPos);
+        yPos += 5;
+
+        autoTable(doc, {
+            startY: yPos,
+            head: [['Total Scans', 'Total Users', 'Pending Moderation', 'Unanswered Queries']],
+            body: [[totalScans, userCount, moderationCount, chatbotStats.failed_count]],
+            theme: 'grid',
+            headStyles: { fillColor: [61, 90, 128], halign: 'center' },
+            bodyStyles: { halign: 'center', fontSize: 11, fontStyle: 'bold' }
+        });
+        
+        yPos = doc.lastAutoTable.finalY + 15;
+
+        // 3. Population Gender Stats (Pie Chart Data)
+        doc.text('2. Population Demographics', 14, yPos);
+        yPos += 5;
+
+        const genderBody = populationData.map(p => [p.name, p.value]);
+        autoTable(doc, {
+            startY: yPos,
+            head: [['Gender Group', 'Count']],
+            body: genderBody,
+            theme: 'striped',
+            headStyles: { fillColor: [41, 50, 65] },
+        });
+
+        yPos = doc.lastAutoTable.finalY + 15;
+
+        // 4. Scan Activity Trends (Area Chart Data)
+        doc.text('3. Scan Activity Trends', 14, yPos);
+        yPos += 5;
+
+        const activityBody = scanActivityData.map(a => [a.name, a.scans, a.detected_disease]);
+        autoTable(doc, {
+            startY: yPos,
+            head: [['Time Period', 'Total Scans', 'Disease Detected']],
+            body: activityBody,
+            theme: 'striped',
+            headStyles: { fillColor: [13, 148, 136] }, // Teal color
+        });
+
+        yPos = doc.lastAutoTable.finalY + 15;
+
+        // 5. Water Quality Data (Bar Chart Data)
+        // Check if we need a new page
+        if (yPos > 250) { doc.addPage(); yPos = 20; }
+        
+        doc.text('4. Water Quality Analysis', 14, yPos);
+        yPos += 5;
+
+        const waterBody = waterQualityData.map(w => [w.name, w.turbidity, w.algae]);
+        autoTable(doc, {
+            startY: yPos,
+            head: [['Location/User', 'Avg Turbidity (NTU)', 'Avg Algae Level']],
+            body: waterBody,
+            theme: 'striped',
+            headStyles: { fillColor: [59, 130, 246] }, // Blue color
+        });
+
+        yPos = doc.lastAutoTable.finalY + 15;
+
+        // 6. Detailed Logs Table
+        if (yPos > 250) { doc.addPage(); yPos = 20; }
+        doc.text('5. Recent Detailed Logs', 14, yPos);
+        yPos += 5;
+
+        const logsBody = recentLogs.map(log => {
+            const algae = log.environment?.algae_label || log.algae || 'N/A';
+            const turbidity = log.environment?.turbidity_level || log.turbidity || 'N/A';
+            return [
+                log.species,
+                log.user,
+                log.gender || 'Unknown',
+                log.health,
+                `${log.confidence}%`,
+                algae,
+                `Lvl ${turbidity}`
+            ];
+        });
+
+        autoTable(doc, {
+            startY: yPos,
+            head: [["Species", "User", "Gender", "Health", "Conf.", "Algae", "Turbidity"]],
+            body: logsBody,
+            theme: 'grid',
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [41, 50, 65] },
+        });
+
+        doc.save(`Full_System_Report.pdf`);
+    } catch (err) {
+        console.error("PDF Export Failed:", err);
+        alert("Failed to export PDF.");
+    }
+  };
+
+  const exportToExcel = () => {
+    try {
+        const workbook = XLSX.utils.book_new();
+
+        // 1. KPI Sheet
+        const kpiData = [
+            { Metric: "Total AI Scans", Value: totalScans },
+            { Metric: "Total Users", Value: userCount },
+            { Metric: "Pending Moderation", Value: moderationCount },
+            { Metric: "Unanswered Queries", Value: chatbotStats.failed_count }
+        ];
+        const kpiSheet = XLSX.utils.json_to_sheet(kpiData);
+        XLSX.utils.book_append_sheet(workbook, kpiSheet, "Executive Summary");
+
+        // 2. Gender Stats Sheet
+        const genderSheet = XLSX.utils.json_to_sheet(populationData);
+        XLSX.utils.book_append_sheet(workbook, genderSheet, "Gender Stats");
+
+        // 3. Activity Trends Sheet
+        const activityData = scanActivityData.map(item => ({
+            "Time Period": item.name,
+            "Total Scans": item.scans,
+            "Disease Detected": item.detected_disease
+        }));
+        const activitySheet = XLSX.utils.json_to_sheet(activityData);
+        XLSX.utils.book_append_sheet(workbook, activitySheet, "Activity Trends");
+
+        // 4. Water Quality Sheet
+        const waterData = waterQualityData.map(item => ({
+            "Location/User": item.name,
+            "Avg Turbidity": item.turbidity,
+            "Avg Algae": item.algae
+        }));
+        const waterSheet = XLSX.utils.json_to_sheet(waterData);
+        XLSX.utils.book_append_sheet(workbook, waterSheet, "Water Quality");
+
+        // 5. Detailed Logs Sheet
+        const logsData = recentLogs.map(log => ({
+            "Species": log.species,
+            "User": log.user,
+            "Email": log.email,
+            "Gender": log.gender || 'Unknown',
+            "Health Status": log.health,
+            "Confidence": `${log.confidence}%`,
+            "Algae Level": log.environment?.algae_label || log.algae || 'N/A',
+            "Turbidity": log.environment?.turbidity_level || log.turbidity || 'N/A',
+            "Scan Date": new Date(log.createdAt || Date.now()).toLocaleDateString()
+        }));
+        const logsSheet = XLSX.utils.json_to_sheet(logsData);
+        XLSX.utils.book_append_sheet(workbook, logsSheet, "Detailed Logs");
+
+        XLSX.writeFile(workbook, "Full_System_Report.xlsx");
+    } catch (err) {
+        console.error("Excel Export Failed:", err);
+        alert("Failed to export Excel.");
+    }
+  };
+
   const hasPopulationData = populationData.length > 0 && populationData.some(item => item.value > 0);
   const finalPopulationData = hasPopulationData 
     ? populationData 
@@ -89,6 +273,33 @@ const AdminDashboard = () => {
   return (
     <AdminLayout title="System Overview">
       
+      {/* --- HEADER ACTION BAR --- */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+            <h2 className="text-2xl font-bold text-slate-800">Dashboard</h2>
+            <p className="text-sm text-slate-500">Real-time monitoring and reporting</p>
+        </div>
+        
+        {/* EXPORT BUTTONS */}
+        <div className="flex gap-3 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
+            <button 
+                onClick={exportToPDF}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+            >
+                <FileText className="w-4 h-4" />
+                <span className="hidden sm:inline">Export PDF</span>
+            </button>
+            {/* <div className="w-px bg-slate-200 my-1"></div>
+            <button 
+                onClick={exportToExcel}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
+            >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span className="hidden sm:inline">Export Excel</span>
+            </button> */}
+        </div>
+      </div>
+
       {/* 1. KEY METRICS ROW */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatsCard 
@@ -98,7 +309,6 @@ const AdminDashboard = () => {
           icon={<ScanEye className="text-teal-600" />} 
           bg="bg-teal-50" 
         />
-        
         <StatsCard 
           title="Unanswered Queries" 
           value={chatbotStats.failed_count || 0} 
@@ -106,7 +316,6 @@ const AdminDashboard = () => {
           icon={<HelpCircle className={(chatbotStats.failed_count || 0) > 0 ? "text-orange-600" : "text-green-600"} />} 
           bg={(chatbotStats.failed_count || 0) > 0 ? "bg-orange-50" : "bg-green-50"} 
         />
-        
         <StatsCard 
           title="Total Users" 
           value={userCount} 
@@ -114,7 +323,6 @@ const AdminDashboard = () => {
           icon={<Users className="text-blue-600" />} 
           bg="bg-blue-50" 
         />
-        
         <StatsCard 
           title="Pending Moderation" 
           value={moderationCount} 
@@ -126,7 +334,6 @@ const AdminDashboard = () => {
 
       {/* 2. CHARTS ROW */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        
         {/* Main Chart: Scan Activity */}
         <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col min-h-[350px]">
             <div className="flex justify-between items-center mb-6">
@@ -149,17 +356,8 @@ const AdminDashboard = () => {
                             </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                        
                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 11}} dy={10} />
-                        
-                        <YAxis 
-                            allowDecimals={false} 
-                            domain={[0, dataMax => Math.max(dataMax, 1)]} 
-                            axisLine={false} 
-                            tickLine={false} 
-                            tick={{fill: '#94A3B8', fontSize: 12}} 
-                        />
-                        
+                        <YAxis allowDecimals={false} domain={[0, dataMax => Math.max(dataMax, 1)]} axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
                         <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                         <Area type="monotone" dataKey="scans" stroke="#0D9488" strokeWidth={3} fillOpacity={1} fill="url(#colorScans)" name="Total Scans" />
                         <Area type="monotone" dataKey="detected_disease" stroke="#EF4444" strokeWidth={3} fillOpacity={1} fill="url(#colorDisease)" name="Disease Detected" />
@@ -168,11 +366,10 @@ const AdminDashboard = () => {
             </div>
         </div>
 
-        {/* Pie Chart: Population Gender Stats */}
+        {/* Pie Chart */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col min-h-[350px]">
             <h3 className="font-bold text-slate-800 text-lg mb-2">Population Gender Stats</h3>
             <p className="text-xs text-slate-500 mb-6">Aggregated from valid species scans</p>
-            
             <div className="w-full relative flex-1 min-h-[180px]">
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -191,8 +388,6 @@ const AdminDashboard = () => {
                         {hasPopulationData && <Tooltip />}
                     </PieChart>
                 </ResponsiveContainer>
-                
-                {/* Center Text */}
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[50%] text-center pointer-events-none">
                     <p className={`text-2xl font-bold ${hasPopulationData ? 'text-slate-800' : 'text-slate-300'}`}>
                         {hasPopulationData ? totalScans : '0'}
@@ -200,34 +395,15 @@ const AdminDashboard = () => {
                     <p className="text-xs text-slate-400">Specimens</p>
                 </div>
             </div>
-
-            {/* --- CUSTOM ALWAYS-VISIBLE LEGEND --- */}
             <div className="flex justify-center items-center gap-6 mt-4 pt-4 border-t border-slate-50">
-                <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-[#3B82F6]"></span>
-                    <span className="text-sm font-medium text-slate-600">
-                        {populationData.find(d => d.name === 'Male')?.value || 0} Male
-                    </span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-[#EC4899]"></span>
-                    <span className="text-sm font-medium text-slate-600">
-                        {populationData.find(d => d.name === 'Female')?.value || 0} Female
-                    </span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-[#F59E0B]"></span>
-                    <span className="text-sm font-medium text-slate-600">
-                        {populationData.find(d => d.name === 'Berried')?.value || 0} Berried
-                    </span>
-                </div>
+                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-[#3B82F6]"></span><span className="text-sm font-medium text-slate-600">{populationData.find(d => d.name === 'Male')?.value || 0} Male</span></div>
+                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-[#EC4899]"></span><span className="text-sm font-medium text-slate-600">{populationData.find(d => d.name === 'Female')?.value || 0} Female</span></div>
+                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-[#F59E0B]"></span><span className="text-sm font-medium text-slate-600">{populationData.find(d => d.name === 'Berried')?.value || 0} Berried</span></div>
             </div>
         </div>
       </div>
-
       {/* 3. BOTTOM ROW: Water Quality & Logs */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
           {/* Water Quality Bar Chart */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col min-h-[350px]">
               <div className="flex justify-between items-center mb-6">
@@ -285,7 +461,6 @@ const AdminDashboard = () => {
                                   <div>
                                       <p className="text-sm font-bold text-slate-900">{log.species}</p>
                                       <p className="text-xs text-slate-500 truncate max-w-[150px]">{log.user}</p>
-                                      <p className="text-[10px] text-slate-400 truncate max-w-[150px]">{log.email}</p>
                                   </div>
                               </div>
                               <div className="text-right shrink-0">
@@ -305,13 +480,11 @@ const AdminDashboard = () => {
                   )}
               </div>
           </div>
-
       </div>
     </AdminLayout>
   );
 };
 
-// --- HELPER COMPONENT ---
 const StatsCard = ({ title, value, subtext, icon, bg }) => (
     <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4 hover:-translate-y-1 transition-transform duration-300">
         <div className={`w-14 h-14 rounded-full flex items-center justify-center text-xl ${bg}`}>
