@@ -129,6 +129,11 @@ const UserDashboard = () => {
     }
   };
 
+  // 4. Redirect to History Page
+  const handleViewHistory = () => {
+    navigate('/history'); // <--- REDIRECT HERE
+  };
+
   // Logic for Gender Pie Chart
   const getGenderData = () => {
     let male = 0, female = 0, berried = 0;
@@ -366,7 +371,10 @@ const UserDashboard = () => {
                     <div className="flex justify-between items-center mb-8">
                         <h2 className="text-xl font-black text-[#293241] uppercase tracking-wider">Recent Activity</h2>
                         {recentScans.length > 0 && (
-                            <button className="flex items-center gap-2 text-xs font-bold text-[#3D5A80] hover:text-[#293241] transition-colors uppercase tracking-widest group">
+                            <button 
+                                onClick={handleViewHistory} 
+                                className="flex items-center gap-2 text-xs font-bold text-[#3D5A80] hover:text-[#293241] transition-colors uppercase tracking-widest group"
+                            >
                                 View History <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                             </button>
                         )}
