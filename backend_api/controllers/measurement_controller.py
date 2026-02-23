@@ -6,17 +6,28 @@ from ultralytics import YOLO
 
 PIXELS_PER_CM = 65.0 
 MIN_CRAYFISH_LENGTH_CM = 2.0 
-AI_MODEL_VERSION = "CrayAI YOLO-Core v1.2"
+AI_MODEL_VERSION = "CrayAI YOLO-Core v1.5"
 
+# --- MODEL PATHS ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
 MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "crayfish.pt")
+GENDER_MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "gender.pt")
 
+# --- LOAD BOTH AI MODELS ---
 try:
     ai_model = YOLO(MODEL_PATH)
-    print(f"✅ AI Model successfully loaded from: {MODEL_PATH}")
+    print(f"✅ Detection Model successfully loaded from: {MODEL_PATH}")
 except Exception as e:
-    print(f"❌ Failed to load AI model: {e}")
+    print(f"❌ Failed to load Detection model: {e}")
     ai_model = None
+
+try:
+    gender_model = YOLO(GENDER_MODEL_PATH)
+    print(f"✅ Gender Model successfully loaded from: {GENDER_MODEL_PATH}")
+except Exception as e:
+    print(f"❌ Failed to load Gender model: {e}")
+    gender_model = None
+
 
 def analyze_algae(img):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -34,10 +45,6 @@ def analyze_algae(img):
     else: return 3, "Critical (Immediate Action)"
 
 def analyze_turbidity(img, crayfish_boxes):
-    """
-    Measures water turbidity on a 1-10 scale by analyzing BOTH 
-    background luminance (darkness) and color saturation.
-    """
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
 
@@ -51,11 +58,8 @@ def analyze_turbidity(img, crayfish_boxes):
     mean_s = cv2.mean(s, mask=mask)[0]  
 
     darkness = 255 - mean_v 
-
     murkiness_score = (darkness * 0.4) + (mean_s * 0.6)
-
     level = int((murkiness_score / 120.0) * 10) + 1
-
     level = max(1, min(10, level))
     
     return level
@@ -76,6 +80,7 @@ def process_measurement(image_file):
     results_data = []
     raw_boxes = []
 
+    # 1. FIRST MODEL: Detect Crayfish & Measure Size
     if ai_model:
         results = ai_model.predict(source=original_img, conf=0.7)
         
@@ -100,12 +105,68 @@ def process_measurement(image_file):
                 h_cm = height_px / PIXELS_PER_CM
                 age_category = estimate_age(h_cm)
                 
+                # 2. SECOND MODEL: Smart Gender Filtering
+                detected_gender = "Not Defined"
+                gender_confidence = 0.0
+
+                if gender_model:
+                    try:
+                        # Crop image exactly to the crayfish bounding box
+                        crayfish_crop = original_img[max(0, y1):max(0, y2), max(0, x1):max(0, x2)]
+                        
+                        if crayfish_crop.size > 0:
+                            # Run prediction on the crop
+                            gender_results = gender_model.predict(source=crayfish_crop, conf=0.4) 
+                            
+                            found_valid_gender = False
+                            
+                            for g_res in gender_results:
+                                # Check BOTH standard boxes and OBB boxes
+                                all_detections = []
+                                if getattr(g_res, 'boxes', None) is not None:
+                                    all_detections.extend(g_res.boxes)
+                                if getattr(g_res, 'obb', None) is not None:
+                                    all_detections.extend(g_res.obb)
+
+                                for det in all_detections:
+                                    class_id = int(det.cls[0])
+                                    label = gender_model.names[class_id]
+                                    conf = float(det.conf[0]) * 100
+                                    
+                                    # --- UPDATED FILTER LIST ---
+                                    # Added 'female_crayfish' and 'male_crayfish' to match your model!
+                                    valid_labels = [
+                                        "Male", "Female", "Berried", 
+                                        "male", "female", "berried",
+                                        "male_crayfish", "female_crayfish"
+                                    ]
+                                    
+                                    if label in valid_labels:
+                                        if conf > gender_confidence:
+                                            # Clean up the label for display (remove '_crayfish')
+                                            clean_label = label.replace('_crayfish', '').capitalize()
+                                            
+                                            detected_gender = clean_label
+                                            gender_confidence = round(conf, 1)
+                                            found_valid_gender = True
+                                
+                                if found_valid_gender:
+                                    break
+
+                    except Exception as err:
+                        print(f"⚠️ Gender analysis failed but scan continues: {err}")
+
+                # Draw Results onto the image
                 cv2.rectangle(original_img, (x1, y1), (x2, y2), (0, 255, 0), 4)
-                cv2.putText(original_img, "CRAYFISH", (x1, max(30, y1 - 40)), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 3)
+                
+                # Dynamic Label Color (Pink for Female, Blue for Male/Default)
+                label_color = (255, 105, 180) if "Female" in detected_gender or "Berried" in detected_gender else (255, 0, 0)
+                
+                cv2.putText(original_img, f"{detected_gender} ({gender_confidence}%)", (x1, max(30, y1 - 40)), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, label_color, 3)
+                
                 cv2.putText(original_img, f"W: {w_cm:.2f}cm", (x1, max(30, y1 - 10)), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-                
                 cv2.putText(original_img, f"H: {h_cm:.2f}cm", (x1, y2 + 30), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
                 cv2.putText(original_img, f"Age: {age_category}", (x1, y2 + 65), 
@@ -115,7 +176,9 @@ def process_measurement(image_file):
                     "type": "target",
                     "width_cm": round(w_cm, 2),
                     "height_cm": round(h_cm, 2),
-                    "estimated_age": age_category
+                    "estimated_age": age_category,
+                    "gender": detected_gender,
+                    "gender_confidence": gender_confidence
                 })
 
     turbidity_level = analyze_turbidity(original_img, raw_boxes)
@@ -130,5 +193,7 @@ def process_measurement(image_file):
         "algae_level": algae_level,     
         "algae_desc": algae_desc,       
         "turbidity_level": turbidity_level, 
-        "model_version": AI_MODEL_VERSION   
+        "model_version": AI_MODEL_VERSION,
+        "gender": results_data[0]["gender"] if results_data else "Not Defined",
+        "genderConfidence": results_data[0]["gender_confidence"] if results_data else 0
     }

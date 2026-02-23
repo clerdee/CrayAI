@@ -3,12 +3,15 @@ import {
   Modal, View, Text, StyleSheet, Image, TouchableOpacity, 
   ScrollView, Dimensions, Platform 
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native'; // <--- IMPORT THIS
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { height } = Dimensions.get('window');
 
 export default function ScanDetailsModal({ visible, onClose, scan }) {
+  const navigation = useNavigation(); // <--- ENABLE NAVIGATION
+
   if (!scan) return null;
 
   const dateObj = new Date(scan.createdAt);
@@ -17,6 +20,7 @@ export default function ScanDetailsModal({ visible, onClose, scan }) {
 
   // Data Fallbacks
   const gender = scan.gender || 'Not Defined';
+  const confidence = scan.gender_confidence || 0; 
   const age = scan.morphometrics?.estimated_age || 'Unknown';
   
   // Height Conversions
@@ -33,10 +37,30 @@ export default function ScanDetailsModal({ visible, onClose, scan }) {
   const model = scan.model_version || 'CrayAI v1.0';
   const processingTime = scan.processing_time || 'N/A';
 
-  // Dynamic Colors
+  // Dynamic Colors & Icons
   const turbidityColor = turbidity > 6 ? '#E76F51' : '#3D5A80';
   const algaeColor = (algae === 'High' || algae === 'Critical') ? '#E11A22' : '#0FA958';
-  const genderColor = gender === 'Male' ? '#8AB4F8' : gender === 'Female' ? '#E76F51' : gender === 'Berried' ? '#2A9D8F' : '#95A5A6';
+  
+  // Gender Logic
+  const isFemale = gender === 'Female' || gender === 'Berried';
+  const isMale = gender === 'Male';
+  const genderColor = isFemale ? '#E76F51' : isMale ? '#3D5A80' : '#95A5A6';
+  const genderIcon = isFemale ? 'venus' : isMale ? 'mars' : 'genderless';
+
+  // --- NEW: HANDLE SHARE LOGIC ---
+  const handlePostToFeed = () => {
+    onClose(); // Close modal first
+    
+    // Auto-generate caption from saved data
+    const genderText = gender !== "Not Defined" ? gender : "";
+    const caption = `Shared from my history! 🕰️\n\nFound a ${genderText} Crayfish 🦞\n📏 Size: ${width_cm}cm W x ${height_cm}cm H\n🎂 Age: ${age}\n💧 Water Turbidity: Level ${turbidity}\n🌿 Algae: ${algae}`;
+
+    // Navigate to Community Screen with pre-filled data
+    navigation.navigate('Community', {
+        prefillImage: scan.image?.url,
+        prefillCaption: caption
+    });
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
@@ -60,12 +84,24 @@ export default function ScanDetailsModal({ visible, onClose, scan }) {
           {/* Scrollable Details */}
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
             
-            {/* Primary Classification */}
+            {/* Primary Classification (Age, Gender, Confidence) */}
             <View style={styles.headerSection}>
                 <Text style={styles.mainTitle}>{age}</Text>
-                <View style={styles.genderRow}>
-                    <FontAwesome5 name="genderless" size={16} color={genderColor} />
-                    <Text style={[styles.genderText, { color: genderColor }]}>{gender}</Text>
+                
+                <View style={styles.metaBadgeRow}>
+                    {/* Gender Badge */}
+                    <View style={[styles.badge, { backgroundColor: genderColor + '15' }]}>
+                        <FontAwesome5 name={genderIcon} size={14} color={genderColor} />
+                        <Text style={[styles.badgeText, { color: genderColor }]}>{gender}</Text>
+                    </View>
+
+                    {/* Confidence Badge */}
+                    {confidence > 0 && (
+                      <View style={[styles.badge, { backgroundColor: '#F0F0F0' }]}>
+                          <MaterialCommunityIcons name="bullseye-arrow" size={16} color="#7F8C8D" />
+                          <Text style={[styles.badgeText, { color: '#7F8C8D' }]}>{confidence}% Conf.</Text>
+                      </View>
+                    )}
                 </View>
             </View>
 
@@ -115,8 +151,23 @@ export default function ScanDetailsModal({ visible, onClose, scan }) {
                 <DetailRow icon="stopwatch" label="Processing Time" value={processingTime} color="#F4A261" />
             </View>
 
-            <View style={{height: 30}} />
+            {/* Padding for the fixed footer */}
+            <View style={{height: 100}} />
           </ScrollView>
+
+          {/* --- NEW: FIXED BOTTOM SHARE BUTTON --- */}
+          <View style={styles.footerAction}>
+            <TouchableOpacity style={styles.shareBtn} onPress={handlePostToFeed}>
+                <LinearGradient 
+                    colors={['#E76F51', '#D65A31']} 
+                    start={{x: 0, y: 0}} end={{x: 1, y: 0}}
+                    style={styles.shareBtnGradient}
+                >
+                    <Ionicons name="share-social" size={20} color="#FFF" />
+                    <Text style={styles.shareBtnText}>Post to Community Feed</Text>
+                </LinearGradient>
+            </TouchableOpacity>
+          </View>
 
         </View>
       </View>
@@ -146,18 +197,19 @@ const styles = StyleSheet.create({
   image: { width: '100%', height: '100%' },
   topGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 100 },
   
-  closeBtn: { position: 'absolute', top: Platform.OS === 'ios' ? 40 : 20, right: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  closeBtn: { position: 'absolute', top: Platform.OS === 'ios' ? 40 : 20, right: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', zIndex: 10 },
   idBadge: { position: 'absolute', bottom: 15, left: 20, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   idText: { color: '#FFF', fontSize: 12, fontWeight: '700', letterSpacing: 1 },
 
   scrollContent: { padding: 25 },
   
   headerSection: { marginBottom: 20 },
-  mainTitle: { fontSize: 26, fontWeight: '900', color: '#293241' },
-  genderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 },
-  genderText: { fontSize: 16, fontWeight: '700' },
+  mainTitle: { fontSize: 26, fontWeight: '900', color: '#293241', marginBottom: 8 },
+  
+  metaBadgeRow: { flexDirection: 'row', gap: 10 },
+  badge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, gap: 6 },
+  badgeText: { fontSize: 13, fontWeight: '700' },
 
-  // Updated Grid to handle 4 squares nicely
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 25, gap: 10 },
   gridBox: { width: '48%', backgroundColor: '#FFF', padding: 15, borderRadius: 20, alignItems: 'center', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, shadowOffset: {width: 0, height: 2}, marginBottom: 5 },
   gridLabel: { fontSize: 11, color: '#95A5A6', fontWeight: '600', marginTop: 8, marginBottom: 2 },
@@ -173,4 +225,10 @@ const styles = StyleSheet.create({
   detailValue: { fontSize: 15, fontWeight: '700', color: '#293241' },
   detailSubValue: { fontSize: 12, color: '#7F8C8D', marginTop: 2 },
   divider: { height: 1, backgroundColor: '#F0F0F0', marginLeft: 53, marginVertical: 5 },
+
+  // --- NEW FOOTER STYLES ---
+  footerAction: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFF', padding: 20, borderTopWidth: 1, borderTopColor: '#F0F0F0', elevation: 20, shadowColor: '#000', shadowOffset: {width:0, height: -5}, shadowOpacity: 0.1, shadowRadius: 10 },
+  shareBtn: { borderRadius: 16, overflow: 'hidden', elevation: 5 },
+  shareBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 10 },
+  shareBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
 });

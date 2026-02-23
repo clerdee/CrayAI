@@ -1,29 +1,24 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { UploadCloud, Zap, Ruler, AlertCircle, RefreshCw, Image as ImageIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { UploadCloud, Zap, Ruler, RefreshCw, Image as ImageIcon, Activity, Droplets, Maximize2, GitCommit } from 'lucide-react';
 
-// --- HELPER FUNCTIONS ---
-const cmToInches = (cm) => {
-  return (cm / 2.54).toFixed(2);
-};
+// --- HELPER: CONVERT CM TO INCHES ---
+const cmToInches = (cm) => (cm / 2.54).toFixed(2);
 
-// --- UPDATED AGE ESTIMATION LOGIC (4 CLASSES) ---
-const estimateAge = (sizeCm) => {
-  if (!sizeCm) return "Unknown";
-  if (sizeCm < 3) return "Crayling (< 1 month)";
-  if (sizeCm >= 3 && sizeCm < 7) return "Juvenile (1-3 months)";
-  if (sizeCm >= 7 && sizeCm < 11) return "Sub-Adult (3-6 months)";
-  return "Adult/Breeder (> 6 months)";
+// --- HELPER: ALGAE LABELS ---
+const getAlgaeLabel = (level) => {
+  const levels = ["Low (Clean)", "Moderate", "High", "Critical"];
+  const colors = ["text-green-600 bg-green-50 border-green-200", "text-yellow-600 bg-yellow-50 border-yellow-200", "text-orange-600 bg-orange-50 border-orange-200", "text-red-600 bg-red-50 border-red-200"];
+  return { label: levels[level] || "Unknown", style: colors[level] || colors[0] };
 };
 
 const VisionSimulator = () => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [resultImage, setResultImage] = useState(null);
-  const [measurements, setMeasurements] = useState([]);
+  const [scanData, setScanData] = useState(null); // Store full backend response
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [showRawData, setShowRawData] = useState(false);
 
   // 1. HANDLE IMAGE SELECTION
   const handleImageChange = (e) => {
@@ -32,13 +27,12 @@ const VisionSimulator = () => {
       setSelectedImage(file);
       setPreviewUrl(URL.createObjectURL(file));
       setResultImage(null); 
-      setMeasurements([]);
+      setScanData(null);
       setError(null);
-      setShowRawData(false);
     }
   };
 
-  // 2. SEND TO PYTHON AI (Port 5001)
+  // 2. SEND TO PYTHON AI
   const handleAnalyze = async () => {
     if (!selectedImage) return;
 
@@ -49,32 +43,33 @@ const VisionSimulator = () => {
     formData.append('photo', selectedImage);
 
     try {
-      // Connect to your Python Backend
       const response = await axios.post('http://localhost:5001/api/measure', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      if (response.data.image) {
-        setResultImage(`data:image/jpeg;base64,${response.data.image}`);
-        setMeasurements(response.data.measurements);
+      if (response.data.success) {
+        if (response.data.image) {
+          setResultImage(`data:image/jpeg;base64,${response.data.image}`);
+        }
+        setScanData(response.data);
+      } else {
+        setError("Analysis finished but no crayfish were detected.");
+        setScanData(response.data); // Still set data to show algae/turbidity if avail
       }
     } catch (err) {
       console.error("AI Error:", err);
-      setError("Failed to connect to Vision Engine. Is 'app.py' running on Port 5001?");
+      setError("Failed to connect to Vision Engine. Is the backend running?");
     } finally {
       setLoading(false);
     }
   };
 
-  // Helper to extract key items
-  const referenceItem = measurements.find(m => m.type === 'reference');
-  const targetItems = measurements.filter(m => m.type === 'target');
-  const noiseItems = measurements.filter(m => m.type !== 'reference' && m.type !== 'target');
+  const algaeInfo = scanData ? getAlgaeLabel(scanData.algae_level) : null;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-140px)] p-6 bg-slate-50/50">
       
-      {/* --- LEFT: VISUALIZER (Takes up more space now) --- */}
+      {/* --- LEFT: VISUALIZER --- */}
       <div className="lg:col-span-2 flex flex-col gap-4">
         
         {/* Main Image Area */}
@@ -95,22 +90,18 @@ const VisionSimulator = () => {
           <div className="absolute top-4 right-4 flex flex-col gap-2 bg-black/60 backdrop-blur-md p-3 rounded-xl border border-white/10">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-              <span className="text-[10px] text-white font-bold tracking-wide">OBJECT</span>
+              <span className="text-[10px] text-white font-bold tracking-wide">CRAYFISH DETECTED</span>
             </div>
-            {/* <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.6)]"></span>
-              <span className="text-[10px] text-white font-bold tracking-wide">SCAN ZONE</span>
-            </div> */}
           </div>
         </div>
 
-        {/* CONTROLS (Moved under image for better flow) */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-            <label className="flex-1 cursor-pointer">
+        {/* CONTROLS */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <label className="flex-1 cursor-pointer group">
                 <input type="file" className="hidden" onChange={handleImageChange} accept="image/*" />
-                <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors">
-                    <ImageIcon className="w-5 h-5 text-slate-500" />
-                    <span className="text-sm font-semibold text-slate-600">
+                <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 group-hover:bg-slate-100 rounded-xl border border-dashed border-slate-300 transition-colors">
+                    <ImageIcon className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />
+                    <span className="text-sm font-semibold text-slate-500 group-hover:text-slate-700">
                         {selectedImage ? selectedImage.name : "Select Image..."}
                     </span>
                 </div>
@@ -119,126 +110,131 @@ const VisionSimulator = () => {
             <button 
                 onClick={handleAnalyze}
                 disabled={!selectedImage || loading}
-                className={`px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all ${
+                className={`px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all ${
                 !selectedImage 
                     ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                    : 'bg-teal-600 text-white hover:bg-teal-700 shadow-lg shadow-teal-200'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200'
                 }`}
             >
                 {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                {loading ? "Analyzing..." : "Run"}
+                {loading ? "Analyzing..." : "Run Analysis"}
             </button>
         </div>
+        
+        {error && (
+            <div className="p-4 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm font-medium">
+                ⚠️ {error}
+            </div>
+        )}
       </div>
 
-      {/* --- RIGHT: COMPACT RESULTS PANEL --- */}
-      <div className="lg:col-span-1 flex flex-col h-full overflow-hidden bg-white rounded-3xl border border-slate-100 shadow-sm">
-        <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-              <Ruler className="w-5 h-5 text-indigo-600" /> 
-              Scan Results
+      {/* --- RIGHT: RESULTS PANEL --- */}
+      <div className="lg:col-span-1 flex flex-col h-full overflow-hidden bg-white rounded-3xl border border-slate-200 shadow-sm">
+        <div className="p-6 border-b border-slate-100 bg-slate-50">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
+              <Activity className="w-5 h-5 text-indigo-600" /> 
+              Live Diagnostics
             </h3>
         </div>
         
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {measurements.length === 0 ? (
+            {!scanData ? (
                 <div className="text-center text-slate-400 py-10">
-                    <p className="text-sm">No results yet.</p>
+                    <p className="text-sm">Run a scan to view data.</p>
                 </div>
             ) : (
                 <>
-                    {/* 1. REFERENCE OBJECT (The Coin) */}
-                    {referenceItem ? (
-                        <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100">
-                            <span className="text-[10px] font-extrabold text-blue-600 bg-blue-100 px-2 py-1 rounded mb-2 inline-block">REFERENCE</span>
-                            <div className="flex justify-between items-end">
+                    {/* 1. ENVIRONMENT DATA */}
+                    <div className="space-y-3">
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Environment</h4>
+                        
+                        {/* Algae */}
+                        <div className={`flex justify-between items-center p-4 rounded-xl border ${algaeInfo.style}`}>
+                            <div className="flex items-center gap-3">
+                                <Activity className="w-5 h-5" />
                                 <div>
-                                    <p className="text-xs text-blue-400 font-semibold mb-1">Standard (Coin)</p>
-                                    <p className="text-2xl font-bold text-slate-800">
-                                      {referenceItem.width_cm.toFixed(2)}<span className="text-sm text-slate-400 ml-1">cm</span>
-                                    </p>
-                                    <p className="text-xs text-slate-500 font-semibold mt-1">
-                                      {cmToInches(referenceItem.width_cm)} in
-                                    </p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-[10px] text-slate-400">Calibrated</p>
+                                    <p className="text-xs font-bold uppercase opacity-70">Algae Level</p>
+                                    <p className="font-bold">{algaeInfo.label}</p>
                                 </div>
                             </div>
                         </div>
-                    ) : (
-                        <div className="p-4 rounded-2xl border border-red-100 bg-red-50 text-red-600 text-xs text-center font-bold">
-                            ⚠️ Reference Object Not Found
-                        </div>
-                    )}
 
-                    {/* 2. TARGET OBJECTS (The Crayfish/Pen) */}
-                    {targetItems.length > 0 ? (
-                        targetItems.map((item, idx) => (
-                            <div key={idx} className="bg-green-50 rounded-2xl p-4 border border-green-100 shadow-sm">
-                                <div className="flex justify-between items-start mb-2">
-                                  <span className="text-[10px] font-extrabold text-green-600 bg-green-100 px-2 py-1 rounded inline-block">TARGET #{idx + 1}</span>
-                                  {/* AGE CLASSIFICATION BADGE */}
-                                  <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-2 py-1 rounded inline-block">
-                                    {estimateAge(item.width_cm)}
-                                  </span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4 mt-2">
-                                    <div>
-                                        <p className="text-xs text-green-600 font-bold uppercase mb-1">Width</p>
-                                        <p className="text-xl font-bold text-slate-800">
-                                          {item.width_cm}<span className="text-sm text-slate-400 ml-1">cm</span>
-                                        </p>
-                                        {/* INCHES CONVERSION */}
-                                        <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                                          {cmToInches(item.width_cm)} in
-                                        </p>
-                                    </div>
-                                    <div className="border-l border-green-200 pl-4">
-                                        <p className="text-xs text-green-600 font-bold uppercase mb-1">Height</p>
-                                        <p className="text-xl font-bold text-slate-800">
-                                          {item.height_cm}<span className="text-sm text-slate-400 ml-1">cm</span>
-                                        </p>
-                                        {/* INCHES CONVERSION */}
-                                        <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                                          {cmToInches(item.height_cm)} in
-                                        </p>
-                                    </div>
+                        {/* Turbidity */}
+                        <div className="flex justify-between items-center p-4 rounded-xl border border-blue-100 bg-blue-50 text-blue-700">
+                            <div className="flex items-center gap-3">
+                                <Droplets className="w-5 h-5" />
+                                <div>
+                                    <p className="text-xs font-bold uppercase opacity-70">Water Turbidity</p>
+                                    <p className="font-bold">Level {scanData.turbidity_level} / 10</p>
                                 </div>
                             </div>
-                        ))
-                    ) : (
-                        <p className="text-center text-sm text-slate-400">No main target detected.</p>
-                    )}
+                        </div>
+                    </div>
 
-                    {/* 3. COLLAPSIBLE NOISE SECTION (The Fix for "Too Long") */}
-                    {noiseItems.length > 0 && (
-                        <div className="border-t border-slate-100 pt-4">
-                            <button 
-                                onClick={() => setShowRawData(!showRawData)}
-                                className="w-full flex justify-between items-center text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
-                            >
-                                <span>Found {noiseItems.length} other items (Noise)</span>
-                                {showRawData ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </button>
-                            
-                            {showRawData && (
-                                <div className="mt-3 space-y-2">
-                                    {noiseItems.map((item, idx) => (
-                                        <div key={idx} className="flex justify-between p-2 bg-slate-50 rounded-lg text-xs text-slate-500 font-mono">
-                                            <span>Item #{idx + 1}</span>
-                                            <span>{item.width_cm}cm ({cmToInches(item.width_cm)}in)</span>
+                    <div className="border-t border-slate-100 my-2"></div>
+
+                    {/* 2. TARGET OBJECTS */}
+                    <div className="space-y-4">
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex justify-between">
+                            Detected Targets 
+                            <span className="bg-slate-200 text-slate-600 px-2 rounded-full">{scanData.measurements ? scanData.measurements.length : 0}</span>
+                        </h4>
+
+                        {scanData.measurements && scanData.measurements.length > 0 ? (
+                            scanData.measurements.map((item, idx) => (
+                                <div key={idx} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                                    {/* HEADER: GENDER & CONFIDENCE */}
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <div className={`flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wide mb-1 w-fit ${
+                                                item.gender === 'Female' || item.gender === 'Berried' 
+                                                ? 'bg-pink-100 text-pink-700' 
+                                                : item.gender === 'Male' 
+                                                ? 'bg-blue-100 text-blue-700'
+                                                : 'bg-slate-100 text-slate-600'
+                                            }`}>
+                                                {item.gender === 'Female' || item.gender === 'Berried' ? '♀' : item.gender === 'Male' ? '♂' : '?'} {item.gender || "Unknown"}
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 font-medium pl-1">Conf: {item.gender_confidence}%</p>
                                         </div>
-                                    ))}
+                                        <div className="text-right">
+                                            <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded border border-orange-100 block">
+                                                {item.estimated_age}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* METRICS GRID */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                            <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                                                <Maximize2 className="w-3 h-3" />
+                                                <span className="text-[10px] font-black uppercase">Width</span>
+                                            </div>
+                                            <p className="text-lg font-black text-slate-700">{item.width_cm}<span className="text-xs font-normal text-slate-400">cm</span></p>
+                                            <p className="text-[10px] font-bold text-slate-400">{cmToInches(item.width_cm)}"</p>
+                                        </div>
+                                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                            <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                                                <GitCommit className="w-3 h-3 rotate-90" />
+                                                <span className="text-[10px] font-black uppercase">Height</span>
+                                            </div>
+                                            <p className="text-lg font-black text-slate-700">{item.height_cm}<span className="text-xs font-normal text-slate-400">cm</span></p>
+                                            <p className="text-[10px] font-bold text-slate-400">{cmToInches(item.height_cm)}"</p>
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
-                        </div>
-                    )}
+                            ))
+                        ) : (
+                            <div className="p-6 bg-slate-50 rounded-xl text-center border-2 border-dashed border-slate-200">
+                                <p className="text-sm text-slate-400 font-medium">No crayfish detected</p>
+                            </div>
+                        )}
+                    </div>
                 </>
             )}
         </div>
       </div>
-
     </div>
   );
 };

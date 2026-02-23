@@ -27,9 +27,11 @@ export default function CameraScreen({ navigation, route }) {
   const [liveMask, setLiveMask] = useState(null);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   
+  // ADDED: gender and genderConfidence storage
   const scanBuffer = useRef({ 
     widths: [], 
     heights: [], 
+    genders: [], // Store genders to find most frequent
     lastImage: null,
     algaeLevel: 0,
     algaeDesc: '',
@@ -83,7 +85,12 @@ export default function CameraScreen({ navigation, route }) {
     setLiveMask(null);
     setErrorModalVisible(false);
     
-    scanBuffer.current = { widths: [], heights: [], lastImage: null, algaeLevel: 0, algaeDesc: '', turbidityLevel: 2, processingTime: 0, modelVersion: '' };
+    // Reset Buffer
+    scanBuffer.current = { 
+        widths: [], heights: [], genders: [], 
+        lastImage: null, algaeLevel: 0, algaeDesc: '', 
+        turbidityLevel: 2, processingTime: 0, modelVersion: '' 
+    };
 
     startAnimations();
     searchTimerRef.current = setTimeout(() => { setScanStatus('detecting'); }, 1500);
@@ -134,6 +141,16 @@ export default function CameraScreen({ navigation, route }) {
       if (target) {
         scanBuffer.current.widths.push(target.width_cm);
         scanBuffer.current.heights.push(target.height_cm);
+        
+        // --- FIX: Check both snake_case and camelCase to be safe ---
+        const conf = target.gender_confidence || target.genderConfidence || 0;
+
+        // Push object with gender info
+        scanBuffer.current.genders.push({ 
+            gender: target.gender || "Not Defined", 
+            confidence: conf
+        });
+
         scanBuffer.current.lastImage = `data:image/jpeg;base64,${data.image}`; 
         
         if (scanBuffer.current.widths.length >= SAMPLES_NEEDED) {
@@ -165,6 +182,11 @@ export default function CameraScreen({ navigation, route }) {
     const avgW = widths.reduce((a, b) => a + b, 0) / widths.length;
     const avgH = heights.reduce((a, b) => a + b, 0) / heights.length;
     
+    // Logic to pick the best gender (pick the one with highest confidence)
+    const bestGenderObj = scanBuffer.current.genders.reduce((prev, current) => {
+        return (prev.confidence > current.confidence) ? prev : current;
+    }, { gender: "Not Defined", confidence: 0 });
+
     const generatedScanId = `CRY-${Math.floor(Date.now() / 1000)}`;
 
     navigation.navigate('Results', { 
@@ -176,12 +198,14 @@ export default function CameraScreen({ navigation, route }) {
         turbidity_level: scanBuffer.current.turbidityLevel, 
         processing_time: `${scanBuffer.current.processingTime}s`,
         model_version: scanBuffer.current.modelVersion,
-        scan_id: generatedScanId
+        scan_id: generatedScanId,
+        gender: bestGenderObj.gender,            // <--- PASSING GENDER
+        gender_confidence: bestGenderObj.confidence // <--- PASSING CONFIDENCE
     });
 
     setIsScanningLoop(false);
     setScanStatus('locked');
-    scanBuffer.current = { widths: [], heights: [], lastImage: null, algaeLevel: 0, algaeDesc: '', turbidityLevel: 2, processingTime: 0, modelVersion: '' };
+    scanBuffer.current = { widths: [], heights: [], genders: [], lastImage: null, algaeLevel: 0, algaeDesc: '', turbidityLevel: 2, processingTime: 0, modelVersion: '' };
   };
 
   const takeSinglePhotoAI = async () => {
@@ -220,6 +244,9 @@ export default function CameraScreen({ navigation, route }) {
 
         const generatedScanId = `CRY-${Math.floor(Date.now() / 1000)}`;
 
+        // --- FIX: Check both snake_case and camelCase ---
+        const conf = target.gender_confidence || target.genderConfidence || 0;
+
         navigation.navigate('Results', { 
             imageUri: `data:image/jpeg;base64,${data.image}`, 
             type: 'image',
@@ -229,7 +256,9 @@ export default function CameraScreen({ navigation, route }) {
             turbidity_level: data.turbidity_level || 2,
             processing_time: `${timeTakenInSeconds}s`,
             model_version: data.model_version || 'Local Fallback',
-            scan_id: generatedScanId
+            scan_id: generatedScanId,
+            gender: target.gender || "Not Defined",
+            gender_confidence: conf  // <--- FIXED
         });
         setScanStatus('READY');
       } else {
@@ -286,6 +315,9 @@ export default function CameraScreen({ navigation, route }) {
 
           const generatedScanId = `CRY-${Math.floor(Date.now() / 1000)}`;
 
+          // --- FIX: Check both snake_case and camelCase ---
+          const conf = target.gender_confidence || target.genderConfidence || 0;
+
           navigation.navigate('Results', { 
               imageUri: `data:image/jpeg;base64,${data.image}`, 
               type: 'image',
@@ -295,7 +327,9 @@ export default function CameraScreen({ navigation, route }) {
               turbidity_level: data.turbidity_level || 2,
               processing_time: `${timeTakenInSeconds}s`,
               model_version: data.model_version || 'Local Fallback',
-              scan_id: generatedScanId
+              scan_id: generatedScanId,
+              gender: target.gender || "Not Defined",
+              gender_confidence: conf // <--- FIXED
           });
           
           if (selectedMode === 'PHOTO') setScanStatus('READY');

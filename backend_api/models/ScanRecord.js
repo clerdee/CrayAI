@@ -13,6 +13,15 @@ const scanRecordSchema = new mongoose.Schema({
     public_id: { type: String, required: true }
   },
 
+  gender: {
+    type: String,
+    default: "Not Defined"
+  },
+  gender_confidence: {
+    type: Number,
+    default: 0
+  },
+
   morphometrics: {
     width_cm: { type: Number, default: 0 },
     height_cm: { type: Number, default: 0 },

@@ -12,6 +12,7 @@ exports.createScanRecord = async (req, res) => {
     const { 
       userId, scanId, imageUrl, imagePublicId, 
       width_cm, height_cm, estimated_age, 
+      gender, gender_confidence, 
       algae_label, turbidity_level, location, 
       processing_time, model_version 
     } = req.body;
@@ -27,6 +28,9 @@ exports.createScanRecord = async (req, res) => {
         url: imageUrl,
         public_id: imagePublicId || 'default_id'
       },
+      
+      gender: gender || "Not Defined",           
+      gender_confidence: gender_confidence || 0, 
       morphometrics: {
         width_cm: width_cm,
         height_cm: height_cm,

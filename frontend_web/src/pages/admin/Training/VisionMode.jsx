@@ -4,7 +4,7 @@ import VisionDataset from './VisionDataset';
 import VisionSimulator from './VisionSimulator';
 
 const VisionMode = () => {
-  const [activeTab, setActiveTab] = useState('dataset'); // 'dataset' | 'simulator'
+  const [activeTab, setActiveTab] = useState('dataset'); 
 
   return (
     <div className="space-y-6">
@@ -32,7 +32,7 @@ const VisionMode = () => {
           }`}
         >
           <ScanEye className="w-3.5 h-3.5" />
-          Measurement Simulator
+          Simulator
         </button>
       </div>
 

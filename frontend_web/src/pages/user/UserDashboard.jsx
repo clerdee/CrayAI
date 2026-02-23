@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Camera, Image as ImageIcon, Calendar, Droplets, Leaf, 
@@ -7,6 +7,7 @@ import {
 import { 
   LineChart, Line, BarChart, Bar, PieChart, Pie, XAxis, Tooltip, ResponsiveContainer, CartesianGrid, YAxis, Cell
 } from 'recharts';
+import { useNavigate } from 'react-router-dom'; 
 import client from '../../api/client'; 
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -24,6 +25,9 @@ const fadeUpVariants = {
 };
 
 const UserDashboard = () => {
+  const navigate = useNavigate(); 
+  const fileInputRef = useRef(null); 
+
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -104,6 +108,27 @@ const UserDashboard = () => {
     }
   };
 
+  // --- NAVIGATION HANDLERS ---
+
+  // 1. Direct Redirect to Scan Page
+  const handleNewScan = () => {
+    navigate('/scan'); 
+  };
+
+  // 2. Trigger File Explorer
+  const handleUploadClick = () => {
+    fileInputRef.current.click();
+  };
+
+  // 3. Handle File Selection & Redirect with State
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      // Navigate to /scan and pass the file object in the location state
+      navigate('/scan', { state: { uploadedFile: file } });
+    }
+  };
+
   // Logic for Gender Pie Chart
   const getGenderData = () => {
     let male = 0, female = 0, berried = 0;
@@ -126,12 +151,10 @@ const UserDashboard = () => {
   };
   const genderData = getGenderData();
   
-  // If empty, draw a faint placeholder circle instead of collapsing
   const displayPieData = genderData.total === 0 
     ? [{ name: 'No Scans Yet', value: 1, color: 'rgba(255,255,255,0.05)' }] 
     : genderData.data;
 
-  // Logic for Size/Age Distribution Chart strictly matching the Python backend logic
   const getSizeAgeChartData = () => {
     let counts = { crayling: 0, juvenile: 0, subAdult: 0, adult: 0 };
     recentScans.forEach(r => {
@@ -167,10 +190,16 @@ const UserDashboard = () => {
 
   return (
     <div className="min-h-screen bg-[#F4F7F9] font-sans relative overflow-hidden pb-24">
-      
-      {/* =========================================
-          AMBIENT SEAMLESS BACKGROUND VIDEO 
-      ========================================= */}
+
+      {/* --- HIDDEN FILE INPUT FOR UPLOAD --- */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileChange} 
+        accept="image/*" 
+        style={{ display: 'none' }} 
+      />
+
       <div className="absolute top-0 left-0 w-full h-[75vh] z-0 pointer-events-none">
         <video 
           autoPlay 
@@ -208,9 +237,12 @@ const UserDashboard = () => {
           </p>
         </motion.div>
 
-        {/* --- HERO ACTION CARDS (GLASSMORPHISM) --- */}
+        {/* --- HERO ACTION CARDS (WIRED UP) --- */}
         <motion.div variants={fadeUpVariants} className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            
+            {/* BUTTON 1: NEW SCAN */}
             <motion.button 
+                onClick={handleNewScan}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className="group relative overflow-hidden rounded-3xl bg-white/70 backdrop-blur-xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.08)] p-8 md:p-10 flex flex-col justify-between text-left h-[240px] hover:bg-white/90 transition-all duration-500"
@@ -227,7 +259,9 @@ const UserDashboard = () => {
                 </div>
             </motion.button>
             
+            {/* BUTTON 2: UPLOAD IMAGE */}
             <motion.button 
+                onClick={handleUploadClick}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className="group relative overflow-hidden rounded-3xl bg-white/50 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 md:p-10 flex flex-col justify-between text-left h-[240px] hover:bg-white/80 transition-all duration-500"
@@ -305,7 +339,7 @@ const UserDashboard = () => {
                             </ResponsiveContainer>
                         </div>
                         
-                        {/* Custom Legend - Will always show, dynamically displaying 0% when empty */}
+                        {/* Custom Legend */}
                         <div className="flex justify-center gap-5 mt-6 w-full px-2">
                             {genderData.data.map(item => (
                                 <div key={item.name} className="flex flex-col items-center gap-1">

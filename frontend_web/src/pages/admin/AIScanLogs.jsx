@@ -65,7 +65,10 @@ const AIScanLogs = () => {
                 age: age, 
                 algae: algae,
                 turbidity: turbidity,
-                confidence: 95, 
+                
+                // --- FIX: Map the real confidence from MongoDB ---
+                confidence: record.gender_confidence || 0, 
+                
                 status: record.isDeleted ? 'Deleted' : 'Verified',
                 image: record.image?.url || 'https://via.placeholder.com/150',
                 date: record.createdAt,
@@ -258,13 +261,13 @@ const AIScanLogs = () => {
                                               {hasWarning && <div className="absolute inset-0 bg-red-500/20 flex items-center justify-center"><AlertTriangle className="text-white w-4 h-4 drop-shadow-md" /></div>}
                                           </div>
                                           <div className="flex flex-col justify-center">
-                                            <p className="font-bold text-slate-900 text-xs truncate max-w-[140px]">{log.id}</p>
-                                            <p className="text-[10px] text-slate-500 mt-0.5">{dt.date} • {dt.time}</p>
-                                            
-                                            <div className="mt-1 flex flex-col">
-                                                <span className="text-[11px] font-bold text-slate-700">{log.sizeCm}</span>
-                                                <span className="text-[10px] text-slate-500 italic">{log.sizeIn}</span>
-                                            </div>
+                                              <p className="font-bold text-slate-900 text-xs truncate max-w-[140px]">{log.id}</p>
+                                              <p className="text-[10px] text-slate-500 mt-0.5">{dt.date} • {dt.time}</p>
+                                              
+                                              <div className="mt-1 flex flex-col">
+                                                  <span className="text-[11px] font-bold text-slate-700">{log.sizeCm}</span>
+                                                  <span className="text-[10px] text-slate-500 italic">{log.sizeIn}</span>
+                                              </div>
                                           </div>
                                       </div>
                                   </td>
@@ -273,24 +276,24 @@ const AIScanLogs = () => {
                                       <div className="flex flex-col min-w-0">
                                           <p className="text-xs font-bold text-slate-700 truncate max-w-[150px]">{log.user}</p>
                                           <div className="flex items-center gap-1 mt-0.5 text-slate-500">
-                                            <MapPin className="w-3 h-3 text-teal-500 shrink-0" />
-                                            <span className="text-[9px] font-bold uppercase tracking-wide text-teal-600 bg-teal-50 px-1 py-0.5 rounded border border-teal-100 truncate max-w-[120px]">
-                                                {log.pond}
-                                            </span>
+                                              <MapPin className="w-3 h-3 text-teal-500 shrink-0" />
+                                              <span className="text-[9px] font-bold uppercase tracking-wide text-teal-600 bg-teal-50 px-1 py-0.5 rounded border border-teal-100 truncate max-w-[120px]">
+                                                  {log.pond}
+                                              </span>
                                           </div>
                                       </div>
                                   </td>
 
                                   <td className="p-4">
-                                    <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${log.gender?.includes('Female') ? 'bg-pink-50 text-pink-600 border-pink-100' : log.gender?.includes('Male') ? 'bg-blue-50 text-blue-600 border-blue-100' : log.gender?.includes('Berried') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
-                                        {log.gender}
-                                    </span>
+                                      <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${log.gender?.includes('Female') ? 'bg-pink-50 text-pink-600 border-pink-100' : log.gender?.includes('Male') ? 'bg-blue-50 text-blue-600 border-blue-100' : log.gender?.includes('Berried') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                                          {log.gender}
+                                      </span>
                                   </td>
 
                                   <td className="p-4">
-                                    <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 whitespace-nowrap shadow-sm">
-                                        {log.age.split(' ')[0]}
-                                    </span>
+                                      <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 whitespace-nowrap shadow-sm">
+                                          {log.age.split(' ')[0]}
+                                      </span>
                                   </td>
 
                                   <td className="p-4">
@@ -298,10 +301,10 @@ const AIScanLogs = () => {
                                           <p className="text-[11px] font-bold text-slate-800 italic">{log.species}</p>
                                           <div className="flex flex-col gap-1 mt-1">
                                               <span className={`inline-block text-[9px] font-semibold px-2 py-0.5 rounded-full border w-fit ${log.algae === 'High' || log.algae === 'Critical' ? 'bg-red-50 text-red-600 border-red-100' : log.algae === 'Moderate' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
-                                                Algae: {log.algae}
+                                                  Algae: {log.algae}
                                               </span>
                                               <span className={`inline-block text-[9px] font-semibold px-2 py-0.5 rounded-full border w-fit ${log.turbidity > 6 ? 'bg-orange-50 text-orange-700 border-orange-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
-                                                Turbidity: Lvl {log.turbidity}
+                                                  Turbidity: Lvl {log.turbidity}
                                               </span>
                                           </div>
                                       </div>
@@ -338,9 +341,6 @@ const AIScanLogs = () => {
                                               {activeMenu === log.id && (
                                                   <div ref={menuRef} className="absolute right-0 top-8 w-48 bg-white rounded-xl shadow-xl border border-slate-100 z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right text-left">
                                                       <div className="p-1.5 space-y-1">
-                                                          {/* <button onClick={(e) => { e.stopPropagation(); handleMenuAction('edit', log.id); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg transition-colors">
-                                                              <Pencil className="w-3.5 h-3.5" /> Edit Details
-                                                          </button> */}
                                                           <button onClick={(e) => { e.stopPropagation(); handleMenuAction('dataset', log.id); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg transition-colors">
                                                               <Database className="w-3.5 h-3.5" /> Add to Training
                                                           </button>

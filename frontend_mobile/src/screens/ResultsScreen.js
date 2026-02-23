@@ -71,7 +71,9 @@ export default function ResultsScreen({ route, navigation }) {
     turbidity_level = 2,
     processing_time = "N/A", 
     model_version = "Unknown Model",
-    scan_id = "N/A"
+    scan_id = "N/A",
+    gender = "Not Defined",
+    gender_confidence = 0
   } = route.params || {}; 
   
   const [activeTab, setActiveTab] = useState('specimen'); 
@@ -193,18 +195,22 @@ export default function ResultsScreen({ route, navigation }) {
     sizeCm: scanData ? `${cmW}cm W x ${cmH}cm H` : "Measurement Failed",
     sizeIn: scanData ? `${inW}in W x ${inH}in H` : "",
     age: calculatedAge, 
-    gender: "Not Defined",
+    gender: gender || "Not Defined",
+    confidence: gender_confidence || 0,
     turbidity: `Turbidity Level ${turbidity_level}`,
     scanDate: `${formattedDate} • ${formattedTime}`, 
-    confidence: 0 
   };
 
-  const mainColor = '#3D5A80'; 
+  // Determine main theme color based on gender
+  const isFemale = results.gender === 'Female' || results.gender === 'Berried';
+  const isMale = results.gender === 'Male';
+  const mainColor = isFemale ? '#FF69B4' : (isMale ? '#3D5A80' : '#3D5A80');
+  const genderIcon = isFemale ? "venus" : (isMale ? "mars" : "genderless");
 
   const handleDiscard = () => navigation.navigate('Camera', { resetScan: Date.now() });
 
   // --- CORE FUNCTION: UPLOAD AND SAVE TO RECENT SCANS ---
-  const uploadAndSaveScan = async () => {
+const uploadAndSaveScan = async () => {
     const formData = new FormData();
     formData.append('file', {
       uri: imageUri,
@@ -234,6 +240,8 @@ export default function ResultsScreen({ route, navigation }) {
       width_cm: parseFloat(cmW),
       height_cm: parseFloat(cmH),
       estimated_age: results.age,
+      gender: results.gender, 
+      gender_confidence: results.confidence,
       algae_label: currentAlgae.label,
       turbidity_level: parseInt(turbidity_level),
       location: userLocation,
@@ -241,7 +249,7 @@ export default function ResultsScreen({ route, navigation }) {
       model_version: model_version
     };
 
-    // This creates the record in your database (Recent Scans)
+    // This creates the record in your database 
     await client.post('/scans/create', scanDataPayload);
     
     // Return the URL so the feed can use it without re-uploading
@@ -270,7 +278,7 @@ export default function ResultsScreen({ route, navigation }) {
       const uploadedImageUrl = await uploadAndSaveScan();
 
       // 2. Format the auto-caption
-      const autoCaption = `Just scanned an Australian Red Claw Crayfish! 🦞\n\n📏 Size: ${results.sizeCm}\n🎂 Est. Age: ${results.age}\n💧 Water Turbidity: Level ${turbidity_level}\n🌿 Algae: ${currentAlgae.label}`;
+      const autoCaption = `Just scanned a ${results.gender !== "Not Defined" ? results.gender : ""} Australian Red Claw Crayfish! 🦞\n\n📏 Size: ${results.sizeCm}\n🎂 Est. Age: ${results.age}\n💧 Water Turbidity: Level ${turbidity_level}\n🌿 Algae: ${currentAlgae.label}`;
 
       // 3. Navigate to Community passing the Cloudinary URL (so it doesn't upload again)
       navigation.navigate('Community', {
@@ -343,7 +351,7 @@ export default function ResultsScreen({ route, navigation }) {
                 <View style={[styles.card, styles.shadow]}>
                     <View style={styles.cardHeader}>
                         <Text style={styles.cardTitle}>GENDER ID</Text>
-                        <FontAwesome5 name="genderless" size={18} color={mainColor} />
+                        <FontAwesome5 name={genderIcon} size={18} color={mainColor} />
                     </View>
                     <Text style={[styles.bigResult, { color: mainColor }]}>{results.gender}</Text>
                     <Text style={styles.subResult}>Australian Red Claw</Text>

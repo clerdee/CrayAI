@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, MapPin, Download, Flag, AlertTriangle, User } from 'lucide-react';
+import { X, MapPin, Download, Flag, AlertTriangle, User, Activity } from 'lucide-react';
 
 const ScanDetailsModal = ({ log, onClose }) => {
   if (!log) return null;
@@ -9,6 +9,10 @@ const ScanDetailsModal = ({ log, onClose }) => {
   });
 
   const hasWarning = log.algae === 'High' || log.algae === 'Critical' || log.turbidity > 6;
+
+  // Determine Confidence Color
+  const confidence = log.confidence || 0;
+  const confColor = confidence > 80 ? 'bg-emerald-500' : confidence > 50 ? 'bg-yellow-500' : 'bg-red-500';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -35,7 +39,7 @@ const ScanDetailsModal = ({ log, onClose }) => {
                 <img src={log.image} alt="Full Scan" className="absolute inset-0 w-full h-full object-contain" />
                 
                 <div className="absolute top-4 right-4 flex gap-2">
-                     <span className={`px-3 py-1 rounded-full text-xs font-bold border shadow-sm ${
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold border shadow-sm ${
                         log.status === 'Verified' ? 'bg-teal-50 text-teal-700 border-teal-100' :
                         log.status === 'Flagged' ? 'bg-red-50 text-red-700 border-red-100' :
                         'bg-slate-50 text-slate-600 border-slate-100'
@@ -78,7 +82,6 @@ const ScanDetailsModal = ({ log, onClose }) => {
                    )}
                    <div>
                       <p className="font-bold text-slate-900">{log.user}</p>
-                      {/* FETCHED EMAIL DISPLAYED HERE */}
                       <p className="text-xs text-slate-500">{log.userEmail}</p>
                    </div>
                    <button className="ml-auto text-xs font-bold text-teal-600 border border-teal-100 px-4 py-2 rounded-lg hover:bg-teal-50 transition-colors">
@@ -97,14 +100,16 @@ const ScanDetailsModal = ({ log, onClose }) => {
                           <p className="font-bold text-slate-800 italic truncate">{log.species}</p>
                       </div>
 
-                      {/* Confidence */}
+                      {/* Confidence Level (UPDATED) */}
                       <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                          <p className="text-xs text-slate-500 mb-1">Confidence</p>
+                          <p className="text-xs text-slate-500 mb-1 flex items-center gap-1">
+                            AI Confidence <Activity className="w-3 h-3" />
+                          </p>
                           <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-800">{log.confidence}%</span>
-                              <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                                  <div className="h-full bg-teal-500" style={{width: `${log.confidence}%`}}></div>
-                              </div>
+                              <span className="font-black text-slate-800 text-lg">{confidence}%</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1">
+                                <div className={`h-full ${confColor} transition-all duration-500`} style={{ width: `${confidence}%` }}></div>
                           </div>
                       </div>
 
