@@ -1,25 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Image as ImageIcon, Tag, Loader } from 'lucide-react';
 import client from '../../../api/client';
 
-const CreatePostModal = ({ isOpen, onClose, onPostCreated }) => {
+const CreatePostModal = ({ isOpen, onClose, onPostCreated, initialData }) => {
   const [content, setContent] = useState('');
-  const [image, setImage] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [image, setImage] = useState(null); // File Object (for new uploads)
+  const [imagePreview, setImagePreview] = useState(null); // URL for display
+  const [existingImage, setExistingImage] = useState(null); // String URL (from History)
+  
   const [isForSale, setIsForSale] = useState(false);
   const [price, setPrice] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // 1. Populate form when modal opens with initialData
+  useEffect(() => {
+    if (isOpen && initialData) {
+        setContent(initialData.content || '');
+        // If image is passed (URL string)
+        if (initialData.image) {
+            setImagePreview(initialData.image);
+            setExistingImage(initialData.image);
+        }
+    } else if (isOpen && !initialData) {
+        // Reset if opened empty
+        setContent('');
+        setImage(null);
+        setImagePreview(null);
+        setExistingImage(null);
+        setIsForSale(false);
+        setPrice('');
+    }
+  }, [isOpen, initialData]);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       setImage(file);
+      setExistingImage(null); // Clear existing if new one picked
       setImagePreview(URL.createObjectURL(file));
     }
   };
 
-  // Helper to convert image to Base64 so the backend can accept it as a string URI
   const convertToBase64 = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -31,21 +53,28 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!content.trim() && !image) return;
+    if (!content.trim() && !image && !existingImage) return;
     
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
       
-      // 1. Convert the image to a string format if it exists
       let mediaArray = [];
+      
+      // Case A: New File Uploaded
       if (image) {
         const base64String = await convertToBase64(image);
-        // Matches the exact backend schema: { uri: String, mediaType: String }
         mediaArray = [{ uri: base64String, mediaType: image.type }];
+      } 
+      // Case B: Shared from History (Existing URL)
+      else if (existingImage) {
+        // We send the URL directly. Backend needs to handle this or we treat it as URI.
+        // Assuming your backend/Cloudinary setup handles URLs or you just store it.
+        // If your backend strictly uploads to Cloudinary, passing a URL might fail unless handled.
+        // However, most image logic treats 'uri' as the source.
+        mediaArray = [{ uri: existingImage, mediaType: 'image/jpeg' }]; 
       }
 
-      // 2. Create the exact JSON payload your backend postController expects
       const payload = {
         content: content,
         media: mediaArray,
@@ -53,21 +82,12 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }) => {
         price: isForSale ? Number(price) : 0
       };
 
-      // 3. Send as standard JSON (Removed FormData)
       const res = await client.post('/posts/create', payload, {
-        headers: { 
-          Authorization: `Bearer ${token}`
-          // Axios automatically sets Content-Type to application/json
-        }
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       if (res.data.success) {
         onPostCreated(res.data.post);
-        setContent('');
-        setImage(null);
-        setImagePreview(null);
-        setIsForSale(false);
-        setPrice('');
         onClose();
       }
     } catch (error) {
@@ -107,7 +127,7 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }) => {
               <img src={imagePreview} alt="Preview" className="h-full w-auto object-cover" />
               <button 
                 type="button"
-                onClick={() => { setImage(null); setImagePreview(null); }}
+                onClick={() => { setImage(null); setExistingImage(null); setImagePreview(null); }}
                 className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full hover:bg-[#E76F51] transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -150,7 +170,7 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }) => {
 
           <button 
             type="submit" 
-            disabled={loading || (!content.trim() && !image)}
+            disabled={loading || (!content.trim() && !image && !existingImage)}
             className="w-full py-4 bg-[#3D5A80] hover:bg-[#293241] disabled:bg-slate-300 text-white font-black uppercase tracking-widest rounded-2xl transition-colors flex justify-center items-center gap-2 shadow-lg shadow-[#3D5A80]/20"
           >
             {loading ? <Loader className="w-5 h-5 animate-spin" /> : 'Post to Community'}

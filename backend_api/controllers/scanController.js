@@ -9,40 +9,41 @@ cloudinary.config({
 
 exports.createScanRecord = async (req, res) => {
   try {
+    // 1. Receive the nested data exactly as Frontend sends it
     const { 
-      userId, scanId, imageUrl, imagePublicId, 
-      width_cm, height_cm, estimated_age, 
-      gender, gender_confidence, 
-      algae_label, turbidity_level, location, 
-      processing_time, model_version 
+      scanId, 
+      gender, 
+      gender_confidence, 
+      image, 
+      morphometrics, 
+      environment, 
+      metadata 
     } = req.body;
 
-    if (!imageUrl) {
+    // 2. Validate using the nested structure
+    // The frontend sends 'image' as an object, so we check image.url
+    if (!image || !image.url) {
       return res.status(400).json({ message: 'No image URL provided' });
     }
 
+    // 3. Create the record
+    // We map the incoming nested objects to the Schema structure
     const newRecord = await ScanRecord.create({
       user: req.user.userId, 
       scanId: scanId,
-      image: {
-        url: imageUrl,
-        public_id: imagePublicId || 'default_id'
-      },
+      
+      // Pass the objects directly since they match the Schema structure
+      image: image,
+      morphometrics: morphometrics,
+      environment: environment,
       
       gender: gender || "Not Defined",           
       gender_confidence: gender_confidence || 0, 
-      morphometrics: {
-        width_cm: width_cm,
-        height_cm: height_cm,
-        estimated_age: estimated_age
-      },
-      environment: {
-        algae_label: algae_label,
-        turbidity_level: turbidity_level
-      },
-      location: location,
-      processing_time: processing_time,
-      model_version: model_version
+      
+      // Extract flattened fields from the frontend 'metadata' object to match Schema root fields
+      location: metadata?.location || 'Unknown Location',
+      processing_time: metadata?.processing_time,
+      model_version: metadata?.model_version
     });
 
     res.status(201).json({ success: true, message: 'Scan Record Saved', record: newRecord });

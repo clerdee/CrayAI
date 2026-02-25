@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Users, LayoutGrid, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useLocation } from 'react-router-dom'; // 1. Import useLocation
 import client from '../../../api/client';
 import PostCard from './PostCard';
 import CreatePostModal from './CreatePostModal';
@@ -8,6 +9,7 @@ import PostDetailModal from './PostDetailModal';
 import EditPostModal from './EditPostModal';
 
 const CommunityPage = () => {
+  const location = useLocation(); // 2. Get location
   const [currentUser, setCurrentUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -16,9 +18,25 @@ const CommunityPage = () => {
   // Modal & Notification States
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
-  const [postToEdit, setPostToEdit] = useState(null); // Tracks which post to edit
+  const [postToEdit, setPostToEdit] = useState(null);
+  
+  // 3. State for data coming from History Page
+  const [preFilledData, setPreFilledData] = useState(null); 
   
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+
+  // 4. Check for Redirect Data on Load
+  useEffect(() => {
+    if (location.state?.newPostText || location.state?.newPostImage) {
+        setPreFilledData({
+            content: location.state.newPostText,
+            image: location.state.newPostImage
+        });
+        setIsCreateOpen(true);
+        // Clean up state so it doesn't persist on reload
+        window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   useEffect(() => {
     fetchData();
@@ -53,13 +71,11 @@ const CommunityPage = () => {
     const completePost = { ...newPost, user: currentUser };
     setPosts([completePost, ...posts]);
     showToast("Post created successfully!", "success");
+    setPreFilledData(null); // Clear pre-fill after success
   };
 
-  // NEW: Handle updating the state locally after an Edit
   const handlePostUpdated = (updatedPost) => {
     setPosts(prev => prev.map(p => p._id === updatedPost._id ? { ...p, ...updatedPost } : p));
-    
-    // Also update the selected post in the detail modal if it's open
     if (selectedPost && selectedPost._id === updatedPost._id) {
         setSelectedPost({ ...selectedPost, ...updatedPost });
     }
@@ -125,7 +141,6 @@ const CommunityPage = () => {
   return (
     <div className="min-h-screen bg-[#F4F7F9] font-sans pb-24 relative">
       
-      {/* Custom Toast Notification */}
       <AnimatePresence>
         {toast.visible && (
           <motion.div
@@ -156,7 +171,7 @@ const CommunityPage = () => {
           </div>
           
           <button 
-            onClick={() => setIsCreateOpen(true)}
+            onClick={() => { setIsCreateOpen(true); setPreFilledData(null); }}
             className="flex items-center gap-2 bg-[#E76F51] hover:bg-[#D65A3E] text-white px-6 py-3 rounded-full font-black uppercase tracking-widest text-xs transition-colors shadow-md shadow-[#E76F51]/20"
           >
             <Plus className="w-4 h-4" /> New Post
@@ -165,7 +180,6 @@ const CommunityPage = () => {
       </div>
 
       <div className="max-w-[90rem] mx-auto px-4 md:px-8 py-8">
-        
         <div className="flex gap-2 mb-8 bg-white w-fit p-1.5 rounded-2xl shadow-sm border border-slate-100">
           {['All', 'General', 'For Sale'].map(tab => (
             <button
@@ -197,7 +211,7 @@ const CommunityPage = () => {
                   onLike={handleLikeUpdate}
                   onClick={setSelectedPost}
                   onDelete={handleDeletePost}
-                  onEdit={setPostToEdit} // Opens the Edit Modal
+                  onEdit={setPostToEdit}
                 />
               ))}
             </AnimatePresence>
@@ -207,8 +221,9 @@ const CommunityPage = () => {
 
       <CreatePostModal 
         isOpen={isCreateOpen} 
-        onClose={() => setIsCreateOpen(false)} 
+        onClose={() => { setIsCreateOpen(false); setPreFilledData(null); }} 
         onPostCreated={handlePostCreated} 
+        initialData={preFilledData} // 5. Pass data to modal
       />
 
       <PostDetailModal 
@@ -217,10 +232,9 @@ const CommunityPage = () => {
         isOpen={!!selectedPost} 
         onClose={() => setSelectedPost(null)} 
         onDelete={handleDeletePost} 
-        onEdit={setPostToEdit} // Opens the Edit Modal from inside the Details Modal
+        onEdit={setPostToEdit}
       />
 
-      {/* NEW: Edit Post Modal */}
       <EditPostModal 
         isOpen={!!postToEdit}
         post={postToEdit}
