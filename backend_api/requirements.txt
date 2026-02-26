@@ -6,3 +6,4 @@ python-dotenv
 ultralytics
 google-genai
 gunicorn
+sentence-transformers
