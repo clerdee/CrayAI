@@ -4,7 +4,8 @@ const axios = require('axios');
 
 router.post('/ask', async (req, res) => {
   try {
-    const pythonResponse = await axios.post('http://127.0.0.1:5001/api/training/chatbot/ask', req.body);
+    const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://127.0.0.1:5001';
+    const pythonResponse = await axios.post(`${PYTHON_API_URL}/api/training/chatbot/ask`, req.body);  
     
     res.status(200).json(pythonResponse.data);
   } catch (error) {

@@ -1,8 +1,8 @@
 // config.js
 
 const config = {
-  NETWORK_IP: "http://192.168.1.24:5000",
-  // NETWORK_IP: "https://eleven-turkeys-laugh.loca.lt  ",
+  // NETWORK_IP: "http://192.168.1.24:5000",
+  NETWORK_IP: "http://172.20.10.2:5000",
 
   GOOGLE: {
     WEB_CLIENT_ID:

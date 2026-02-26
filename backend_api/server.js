@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 dotenv.config(); 
 
 const connectDB = require('./config/db'); 
+const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://127.0.0.1:5001';
 
 // Route Imports
 const { createProxyMiddleware } = require('http-proxy-middleware');
@@ -38,7 +39,7 @@ app.use('/api/chatbot', chatbotProxy);
 app.use('/api/scans', scanRoutes);
 
 app.use('/api/measure', createProxyMiddleware({ 
-    target: 'http://127.0.0.1:5001',
+    target: PYTHON_API_URL, 
     changeOrigin: true,
     pathRewrite: function (path, req) {
         return '/api/measure'; 
