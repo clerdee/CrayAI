@@ -8,3 +8,6 @@ google-genai
 gunicorn
 sentence-transformers
 better_profanity
+opencv-python-headless
+numpy
+requests
