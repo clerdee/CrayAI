@@ -1,8 +1,9 @@
 // config.js
 
 const config = {
-  // NETWORK_IP: "http://192.168.1.24:5000",
-  NETWORK_IP: "http://172.20.10.2:5000",
+  // fallback 
+  // NETWORK_IP: process.env.EXPO_PUBLIC_NETWORK_IP || "http://192.168.1.24:5000",
+  EXPO_PUBLIC_NETWORK_IP: process.env.EXPO_PUBLIC_NETWORK_IP || "https://crayai.onrender.com",
 
   GOOGLE: {
     WEB_CLIENT_ID:
