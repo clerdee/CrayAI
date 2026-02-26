@@ -22,7 +22,7 @@ COPY . .
 # 6. Make a startup script to run BOTH servers
 # This script starts Python in the background (&) and Node in the foreground
 RUN echo '#!/bin/bash' > start.sh
-RUN echo 'gunicorn app:app --bind 0.0.0.0:5001 &' >> start.sh
+RUN echo 'gunicorn app:app --bind 0.0.0.0:5001 --timeout 120 &' >> start.sh
 RUN echo 'node server.js' >> start.sh
 RUN chmod +x start.sh
 

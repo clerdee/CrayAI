@@ -8,28 +8,43 @@ from ultralytics import YOLO
 DEFAULT_PIXELS_PER_CM = 65.0 
 MIN_CRAYFISH_LENGTH_CM = 2.0 
 AI_MODEL_VERSION = "CrayAI Dual-Core v2.5 (Male Fallback)"
-REFERENCE_BOX_SIZE_CM = 2.0  # The size of your grid boxes (2x2 cm)
+REFERENCE_BOX_SIZE_CM = 2.0  
 
 # --- MODEL PATHS ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
 MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "crayfish.pt")
 GENDER_MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "gender.pt")
 
-# --- LOAD MODELS ---
-try:
-    ai_model = YOLO(MODEL_PATH)
-    print(f"✅ Detection Model successfully loaded from: {MODEL_PATH}")
-except Exception as e:
-    print(f"❌ Failed to load Detection model: {e}")
-    ai_model = None
+# --- LAZY LOADING GLOBALS ---
+# We initialize them as None so they don't eat RAM at startup
+ai_model = None
+gender_model = None
 
-try:
-    gender_model = YOLO(GENDER_MODEL_PATH)
-    print(f"✅ Gender Model successfully loaded from: {GENDER_MODEL_PATH}")
-except Exception as e:
-    print(f"❌ Failed to load Gender model: {e}")
-    gender_model = None
+def get_ai_model():
+    """Loads the Crayfish Detection Model only when needed."""
+    global ai_model
+    if ai_model is None:
+        try:
+            print(f"⚡ Loading Detection Model from: {MODEL_PATH}")
+            ai_model = YOLO(MODEL_PATH)
+            print("✅ Detection Model loaded successfully")
+        except Exception as e:
+            print(f"❌ Failed to load Detection model: {e}")
+            ai_model = False # Set to False to stop trying
+    return ai_model
 
+def get_gender_model():
+    """Loads the Gender Detection Model only when needed."""
+    global gender_model
+    if gender_model is None:
+        try:
+            print(f"⚡ Loading Gender Model from: {GENDER_MODEL_PATH}")
+            gender_model = YOLO(GENDER_MODEL_PATH)
+            print("✅ Gender Model loaded successfully")
+        except Exception as e:
+            print(f"❌ Failed to load Gender model: {e}")
+            gender_model = False
+    return gender_model
 
 def analyze_algae(img):
     try:
@@ -91,7 +106,7 @@ def calculate_dynamic_scale(img):
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         
         thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                    cv2.THRESH_BINARY_INV, 11, 2)
+                                       cv2.THRESH_BINARY_INV, 11, 2)
 
         cnts_result = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours = cnts_result[0] if len(cnts_result) == 2 else cnts_result[1]
@@ -137,9 +152,11 @@ def process_measurement(image_file):
         results_data = []
         raw_boxes = []
 
-        # 2. FIRST MODEL: Detect Crayfish (Reliable)
-        if ai_model:
-            results = ai_model.predict(source=original_img, conf=0.6)
+        # 2. LOAD MODELS NOW (Lazy Load)
+        model = get_ai_model()
+        
+        if model:
+            results = model.predict(source=original_img, conf=0.6)
             
             for result in results:
                 for box in result.boxes:
@@ -154,6 +171,9 @@ def process_measurement(image_file):
                 cv2.putText(original_img, "NO CRAYFISH DETECTED", (int(w * 0.1), int(h / 2)), 
                             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
             else:
+                # Load gender model only if we actually found crayfish
+                g_model = get_gender_model()
+
                 for box in raw_boxes:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
                     width_px, height_px = x2 - x1, y2 - y1
@@ -166,12 +186,12 @@ def process_measurement(image_file):
                     detected_gender = "Not Defined"
                     gender_confidence = 0.0
 
-                    if gender_model:
+                    if g_model:
                         try:
                             crayfish_crop = original_img[max(0, y1):max(0, y2), max(0, x1):max(0, x2)]
                             
                             if crayfish_crop.size > 0:
-                                gender_results = gender_model.predict(source=crayfish_crop, conf=0.4) 
+                                gender_results = g_model.predict(source=crayfish_crop, conf=0.4) 
                                 
                                 found_valid_gender = False
                                 for g_res in gender_results:
@@ -183,7 +203,7 @@ def process_measurement(image_file):
 
                                     for det in all_detections:
                                         class_id = int(det.cls[0])
-                                        label = gender_model.names[class_id]
+                                        label = g_model.names[class_id]
                                         conf = float(det.conf[0]) * 100
                                         
                                         valid_labels = [
@@ -205,7 +225,6 @@ def process_measurement(image_file):
                             print(f"⚠️ Gender analysis failed but scan continues: {err}")
 
                     # --- FALLBACK LOGIC ---
-                    # If gender is still "Not Defined", default to "Male" with low confidence
                     if detected_gender == "Not Defined":
                         detected_gender = "Male"
                         gender_confidence = 15.0
