@@ -13,7 +13,7 @@ app = Flask(__name__)
 CORS(app)
 
 # 2. Database Config (Replace with your actual Connection String)                                      
-app.config["MONGO_URI"] ="mongodb+srv://clerdeecruz_db_user:0cL6e3Daa2ZsYypT@crayai.hc7kwql.mongodb.net/crayai_db?appName=CrayAI"
+app.config["MONGO_URI"] = os.environ.get("MONGO_URI")
 
 # 3. Initialize DB
 mongo.init_app(app)
