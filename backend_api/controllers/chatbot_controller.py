@@ -5,12 +5,9 @@ from datetime import datetime
 from services.ai_engine import find_best_match 
 from better_profanity import profanity
 import os
-from google import genai
 from dotenv import load_dotenv
 
-# Load environment variables and initialize Gemini
 load_dotenv()
-gemini_client = genai.Client()
 
 chatbot_bp = Blueprint('chatbot_bp', __name__)
 
@@ -131,7 +128,6 @@ def ask_chatbot():
         cursor = mongo.db[COLLECTION].find({"status": "Approved"})
         approved_data = list(cursor)
 
-        # 🚨 NEW FIX: Only attempt local search if there is actually data!
         match = None
         if len(approved_data) > 0:
             try:
@@ -144,6 +140,10 @@ def ask_chatbot():
         if not match:
             print("Local DB missed or empty. Asking Gemini...")
             try:
+                # ✅ LAZY LOAD GEMINI ONLY WHEN NEEDED
+                from google import genai
+                gemini_client = genai.Client()
+                
                 # Ask Gemini 2.5 Flash
                 gemini_response = gemini_client.models.generate_content(
                     model='gemini-2.5-flash',

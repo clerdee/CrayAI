@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import base64
 import os
-from ultralytics import YOLO
 
 # --- CONFIGURATION ---
 DEFAULT_PIXELS_PER_CM = 65.0 
@@ -16,7 +15,6 @@ MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "crayfish.pt")
 GENDER_MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "gender.pt")
 
 # --- LAZY LOADING GLOBALS ---
-# We initialize them as None so they don't eat RAM at startup
 ai_model = None
 gender_model = None
 
@@ -25,12 +23,13 @@ def get_ai_model():
     global ai_model
     if ai_model is None:
         try:
+            from ultralytics import YOLO
             print(f"⚡ Loading Detection Model from: {MODEL_PATH}")
             ai_model = YOLO(MODEL_PATH)
             print("✅ Detection Model loaded successfully")
         except Exception as e:
             print(f"❌ Failed to load Detection model: {e}")
-            ai_model = False # Set to False to stop trying
+            ai_model = False 
     return ai_model
 
 def get_gender_model():
@@ -38,6 +37,7 @@ def get_gender_model():
     global gender_model
     if gender_model is None:
         try:
+            from ultralytics import YOLO
             print(f"⚡ Loading Gender Model from: {GENDER_MODEL_PATH}")
             gender_model = YOLO(GENDER_MODEL_PATH)
             print("✅ Gender Model loaded successfully")
@@ -73,7 +73,7 @@ def analyze_turbidity(img, crayfish_boxes):
 
         for box in crayfish_boxes:
             if box is not None and hasattr(box, 'xyxy'):
-                coords = box.xyxy[0].cpu().numpy() # Ensure CPU numpy array
+                coords = box.xyxy[0].cpu().numpy()
                 x1, y1, x2, y2 = map(int, coords)
                 cv2.rectangle(mask, (x1, y1), (x2, y2), 0, -1)
             
