@@ -49,7 +49,7 @@ const Header = ({ user, toggleMobileMenu }) => {
     e.stopPropagation();
     try {
       const res = await notificationActions.markAllRead();
-      if (res.data.success) {
+      if (res.data.success) {f
         setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
         setUnreadCount(0);
       }
