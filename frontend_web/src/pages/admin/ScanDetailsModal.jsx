@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, MapPin, Download, Flag, AlertTriangle, User, Activity, Loader2 } from 'lucide-react';
-import { jsPDF } from "jspdf"; // Make sure jsPDF is imported
+import { jsPDF } from "jspdf";
 
 const ScanDetailsModal = ({ log, onClose }) => {
   const [isDownloading, setIsDownloading] = useState(false);

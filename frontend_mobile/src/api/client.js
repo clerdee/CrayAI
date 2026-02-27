@@ -20,7 +20,7 @@ const client = axios.create({
 
 export const aiClient = axios.create({
   baseURL: AI_URL,
-  timeout: 20000,
+  timeout: 120000,
 });
 
 // 3. REQUEST INTERCEPTOR (Kept the crucial Auth Token injection, removed all logs)

@@ -3,10 +3,11 @@ import axios from 'axios';
 // 1. Point to your Backend URL
 // For local dev, use http://localhost:5000 
 // For production, use your Cloud URL (e.g., Render/Heroku)
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+// const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'; 
 
 const client = axios.create({
-  baseURL,
+  baseURL: API_BASE_URL,
 });
 
 // 2. Intercept requests to attach the Token
