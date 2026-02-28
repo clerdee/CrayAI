@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Camera, Image as ImageIcon, Calendar, Droplets, Leaf, 
-  Activity, TrendingUp, ScanLine, AlertCircle, ArrowRight
+  Activity, TrendingUp, ScanLine, AlertCircle, ArrowRight,
+  X, CheckCircle, AlertTriangle, ArrowUpRight, User, Share2, Clock, Cpu, MapPin, Ruler, Trash2
 } from 'lucide-react';
 import { 
   LineChart, Line, BarChart, Bar, PieChart, Pie, XAxis, Tooltip, ResponsiveContainer, CartesianGrid, YAxis, Cell
@@ -36,6 +37,9 @@ const UserDashboard = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   
   const [marketProjections, setMarketProjections] = useState(MONTH_NAMES.map(m => ({ month: m, price: 0 })));
+
+  // --- NEW: MODAL STATE ---
+  const [selectedScan, setSelectedScan] = useState(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDate(new Date()), 60000);
@@ -108,30 +112,70 @@ const UserDashboard = () => {
     }
   };
 
-  // --- NAVIGATION HANDLERS ---
+  // --- MODAL ACTION HANDLERS ---
+  const formatScanForModal = (r) => ({
+    id: r.scanId || r._id,
+    dbId: r._id, 
+    date: new Date(r.createdAt),
+    image: r.image?.url || 'https://via.placeholder.com/400x300?text=No+Image',
+    species: 'Australian Red Claw',
+    gender: r.gender || 'Unknown',
+    confidence: typeof r.gender_confidence === 'number' ? r.gender_confidence : 0,
+    age: r.morphometrics?.estimated_age || 'Unknown',
+    width_cm: parseFloat(r.morphometrics?.width_cm || 0),
+    height_cm: parseFloat(r.morphometrics?.height_cm || 0),
+    algae: r.environment?.algae_label || 'Low',
+    turbidity: r.environment?.turbidity_level || 1,
+    health: (['High', 'Critical'].includes(r.environment?.algae_label) || r.environment?.turbidity_level > 6) ? 'Risk' : 'Healthy',
+    location: r.location || 'Unknown Location',
+    model: r.model_version || 'CrayAI v1.0',
+    processingTime: r.processing_time || 'N/A'
+  });
 
-  // 1. Direct Redirect to Scan Page
+  const handleDeleteScan = async (scan) => {
+    if (!window.confirm("Are you sure you want to delete this scan log?")) return;
+    try {
+      const token = localStorage.getItem('token');
+      await client.delete(`/scans/${scan.dbId}/hard-delete`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      setRecentScans(prev => prev.filter(r => r._id !== scan.dbId));
+      setSelectedScan(null);
+      fetchDashboardData(); 
+    } catch (err) {
+      console.error("Delete failed:", err);
+      alert("Failed to delete scan. Please try again.");
+    }
+  };
+
+  const handlePostToFeed = (scan) => {
+    const caption = `Shared from my history! 🕰️\n\nFound a ${scan.gender} Crayfish 🦞\nID: ${scan.id}\n📏 Size: ${scan.width_cm}cm W x ${scan.height_cm}cm H\n🎂 Age: ${scan.age}\n💧 Water Turbidity: Level ${scan.turbidity}\n🌿 Algae: ${scan.algae}`;
+    navigate('/community', { 
+      state: { 
+        newPostImage: scan.image,
+        newPostText: caption
+      } 
+    });
+  };
+
+  // --- NAVIGATION HANDLERS ---
   const handleNewScan = () => {
     navigate('/scan'); 
   };
 
-  // 2. Trigger File Explorer
   const handleUploadClick = () => {
     fileInputRef.current.click();
   };
 
-  // 3. Handle File Selection & Redirect with State
   const handleFileChange = (event) => {
     const file = event.target.files[0];
     if (file) {
-      // Navigate to /scan and pass the file object in the location state
       navigate('/scan', { state: { uploadedFile: file } });
     }
   };
 
-  // 4. Redirect to History Page
   const handleViewHistory = () => {
-    navigate('/history'); // <--- REDIRECT HERE
+    navigate('/history'); 
   };
 
   // Logic for Gender Pie Chart
@@ -242,10 +286,9 @@ const UserDashboard = () => {
           </p>
         </motion.div>
 
-        {/* --- HERO ACTION CARDS (WIRED UP) --- */}
+        {/* --- HERO ACTION CARDS --- */}
         <motion.div variants={fadeUpVariants} className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
             
-            {/* BUTTON 1: NEW SCAN */}
             <motion.button 
                 onClick={handleNewScan}
                 whileHover={{ scale: 1.02 }}
@@ -264,7 +307,6 @@ const UserDashboard = () => {
                 </div>
             </motion.button>
             
-            {/* BUTTON 2: UPLOAD IMAGE */}
             <motion.button 
                 onClick={handleUploadClick}
                 whileHover={{ scale: 1.02 }}
@@ -287,7 +329,6 @@ const UserDashboard = () => {
             {/* LEFT COLUMN: Overview & Stats */}
             <motion.div variants={fadeUpVariants} className="lg:col-span-4 flex flex-col gap-8">
                 
-                {/* Minimalist Stats Summary */}
                 <div className="bg-white rounded-3xl p-8 shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-slate-100 flex flex-col justify-center">
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-6">Database Overview</p>
                     
@@ -334,7 +375,6 @@ const UserDashboard = () => {
                                             <Cell key={`cell-${index}`} fill={entry.color} />
                                         ))}
                                     </Pie>
-                                    {/* Only show tooltip values if there's actual data */}
                                     <Tooltip 
                                         formatter={(value, name) => [genderData.total === 0 ? 0 : value, name]}
                                         contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: '12px', border: 'none', color: '#293241', fontWeight: 'bold' }} 
@@ -344,7 +384,7 @@ const UserDashboard = () => {
                             </ResponsiveContainer>
                         </div>
                         
-                        {/* Custom Legend */}
+                        {/* Custom Legend - Now includes COUNT and PERCENTAGE */}
                         <div className="flex justify-center gap-5 mt-6 w-full px-2">
                             {genderData.data.map(item => (
                                 <div key={item.name} className="flex flex-col items-center gap-1">
@@ -352,8 +392,11 @@ const UserDashboard = () => {
                                         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                                         <span className="text-[9px] font-bold tracking-widest text-slate-300 uppercase">{item.name}</span>
                                     </div>
-                                    <span className="text-sm font-black text-white">
-                                        {item.value > 0 ? Math.round((item.value / genderData.total) * 100) : 0}%
+                                    <span className="text-lg font-black text-white flex items-baseline gap-1">
+                                        {item.value} 
+                                        <span className="text-[10px] font-medium text-slate-400">
+                                            ({item.value > 0 ? Math.round((item.value / genderData.total) * 100) : 0}%)
+                                        </span>
                                     </span>
                                 </div>
                             ))}
@@ -387,10 +430,13 @@ const UserDashboard = () => {
                     ) : (
                         <div className="flex gap-4 overflow-x-auto pb-4 snap-x custom-scrollbar">
                         {recentScans.slice(0, 8).map((scan) => (
-                            <div key={scan._id} className="group relative min-w-[200px] w-[200px] h-[280px] rounded-2xl overflow-hidden snap-start cursor-pointer border border-slate-100 bg-black flex-shrink-0">
+                            <div 
+                                key={scan._id} 
+                                onClick={() => setSelectedScan(formatScanForModal(scan))}
+                                className="group relative min-w-[200px] w-[200px] h-[280px] rounded-2xl overflow-hidden snap-start cursor-pointer border border-slate-100 bg-black flex-shrink-0"
+                            >
                                 <img src={scan.image?.url} alt="Scan" className="w-full h-full object-cover opacity-70 group-hover:scale-105 group-hover:opacity-100 transition-all duration-700" />
                                 
-                                {/* Gradient Overlay */}
                                 <div className="absolute inset-0 bg-gradient-to-t from-[#293241] via-transparent to-transparent flex flex-col justify-end p-5">
                                     <span className="text-[9px] font-bold text-[#98C1D9] mb-2 uppercase tracking-[0.2em]">
                                         {new Date(scan.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -496,8 +542,171 @@ const UserDashboard = () => {
         </motion.div>
 
       </motion.div>
+
+      {/* --- DETAIL MODAL --- */}
+      <AnimatePresence>
+        {selectedScan && (
+          <UserScanDetailModal 
+            scan={selectedScan} 
+            onClose={() => setSelectedScan(null)} 
+            onDelete={() => handleDeleteScan(selectedScan)}
+            onPost={() => handlePostToFeed(selectedScan)}
+          />
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };
+
+// --- SUB-COMPONENT: USER SCAN DETAIL MODAL ---
+const UserScanDetailModal = ({ scan, onClose, onDelete, onPost }) => {
+    const widthIn = (scan.width_cm / 2.54).toFixed(2);
+    const heightIn = (scan.height_cm / 2.54).toFixed(2);
+    const displaySize = `${scan.width_cm}cm x ${scan.height_cm}cm`;
+    const displaySizeIn = `(${widthIn}" x ${heightIn}")`;
+
+    return (
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#293241]/60 backdrop-blur-sm"
+        onClick={onClose} 
+      >
+        <motion.div 
+          onClick={(e) => e.stopPropagation()}
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          className="bg-white w-full max-w-4xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[85vh]"
+        >
+          {/* Left: Image */}
+          <div className="w-full md:w-2/5 bg-black relative min-h-[300px] md:min-h-full group">
+            <img src={scan.image} alt="Full Scan" className="absolute inset-0 w-full h-full object-contain opacity-90 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60 pointer-events-none" />
+            
+            <button onClick={onClose} className="absolute top-4 left-4 md:hidden bg-white/20 backdrop-blur-md text-white p-2 rounded-full hover:bg-white/30 transition-colors z-20">
+              <X className="w-5 h-5" />
+            </button>
+    
+            <div className="absolute bottom-6 left-6 right-6">
+                <span className={`inline-block px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest mb-2 backdrop-blur-md ${
+                    scan.health === 'Healthy' ? 'bg-green-500/80 text-white' : 'bg-red-500/80 text-white'
+                }`}>
+                   {scan.health} Status
+                </span>
+                <h2 className="text-2xl font-black text-white leading-tight">{scan.species}</h2>
+                <p className="text-white/70 text-xs font-medium mt-1 flex items-center gap-2">
+                    ID: <span className="font-mono text-white tracking-wider">{scan.id}</span>
+                </p>
+            </div>
+          </div>
+    
+          {/* Right: Details */}
+          <div className="w-full md:w-3/5 p-8 overflow-y-auto bg-white relative flex flex-col">
+            <button onClick={onClose} className="hidden md:block absolute top-6 right-6 p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-5 h-5" />
+            </button>
+    
+            <div className="flex-1">
+                <div className="mb-8">
+                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Morphometrics</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                        <DetailBox label="Gender" value={scan.gender} icon={<User className="w-5 h-5 text-blue-500" />} />
+                        <DetailBox label="Est. Age" value={scan.age} icon={<Activity className="w-5 h-5 text-orange-500" />} />
+                        
+                        <div className="p-4 bg-white border border-slate-100 rounded-2xl flex items-start gap-3 shadow-sm hover:shadow-md transition-shadow col-span-2 sm:col-span-1">
+                            <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100 shrink-0">
+                                <Ruler className="w-5 h-5 text-indigo-500" />
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Size (WxH)</p>
+                                <p className="text-sm font-black text-slate-800 truncate">{displaySize}</p>
+                                <p className="text-[10px] text-slate-400 font-medium">{displaySizeIn}</p>
+                            </div>
+                        </div>
+
+                        <DetailBox label="Location" value={scan.location} icon={<MapPin className="w-5 h-5 text-red-500" />} />
+                    </div>
+                </div>
+    
+                <div>
+                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">System Data</h3>
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                    <Cpu className="w-4 h-4"/>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase">AI Model</p>
+                                    <p className="font-bold text-slate-700 text-xs">{scan.model}</p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <div className="flex items-center gap-2 justify-end">
+                                    <Clock className="w-3 h-3 text-slate-400" />
+                                    <span className="text-xs font-bold text-slate-700">{scan.processingTime}s</span>
+                                </div>
+                                <p className="text-[9px] text-slate-400 uppercase font-bold">Process Time</p>
+                            </div>
+                        </div>
+
+                        <div className="h-px bg-slate-200 w-full" />
+
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center text-teal-600">
+                                    <Droplets className="w-4 h-4"/>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase">Turbidity</p>
+                                    <p className="font-bold text-slate-700">Lvl {scan.turbidity}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="text-right">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase">Algae</p>
+                                    <p className="font-bold text-slate-700">{scan.algae}</p>
+                                </div>
+                                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
+                                    <Activity className="w-4 h-4"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+    
+            <div className="mt-8 pt-6 border-t border-slate-100 flex gap-3">
+                <button 
+                    onClick={onDelete}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-red-100 transition-colors"
+                >
+                    <Trash2 className="w-4 h-4" /> Delete Log
+                </button>
+                <button 
+                    onClick={onPost}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-[#3D5A80] text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-[#293241] shadow-lg shadow-[#3D5A80]/20 transition-all"
+                >
+                    <Share2 className="w-4 h-4" /> Post to Community
+                </button>
+            </div>
+    
+          </div>
+        </motion.div>
+      </div>
+    );
+};
+
+const DetailBox = ({ label, value, icon }) => (
+  <div className="p-4 bg-white border border-slate-100 rounded-2xl flex items-start gap-3 shadow-sm hover:shadow-md transition-shadow">
+    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100 shrink-0">
+      {icon}
+    </div>
+    <div className="min-w-0">
+      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">{label}</p>
+      <p className="text-sm font-black text-slate-800 truncate">{value}</p>
+    </div>
+  </div>
+);
 
 export default UserDashboard;
