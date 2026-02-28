@@ -46,6 +46,12 @@ app.use('/api/measure', createProxyMiddleware({
     }
 }));
 
+app.get('/api/training/vision', (req, res) => {
+    // Later, we will fetch actual images from MongoDB here.
+    // For now, return an empty array so the frontend table says "No images found" instead of crashing!
+    res.status(200).json([]);
+});
+
 app.get('/', (req, res) => {
   res.send('CRAYAI Backend is Running!');
 });

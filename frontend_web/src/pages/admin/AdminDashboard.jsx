@@ -8,7 +8,7 @@ import {
 } from 'recharts';
 import { 
   ScanEye, Users, Activity, Droplets, HelpCircle, ShieldAlert, Loader, 
-  FileText, FileSpreadsheet, Download 
+  FileText, FileSpreadsheet, Download, MessageSquare 
 } from 'lucide-react';
 
 // --- IMPORTS FOR EXPORT ---
@@ -28,6 +28,9 @@ const AdminDashboard = () => {
   const [chatbotStats, setChatbotStats] = useState({ failed_count: 0 }); 
   const [moderationCount, setModerationCount] = useState(0);
   const [totalScans, setTotalScans] = useState(0);
+  
+  // Knowledge Base Breakdown State
+  const [qaCounts, setQaCounts] = useState({ approved: 0, pending: 0 });
 
   // Charts State
   const [scanActivityData, setScanActivityData] = useState([]);
@@ -44,7 +47,8 @@ const AdminDashboard = () => {
             axios.get(`${API_BASE_URL}/auth/user-count`),
             axios.get(`${CHATBOT_API_URL}/stats`),
             axios.get(`${API_BASE_URL}/auth/admin/moderation`, { headers: { Authorization: `Bearer ${token}` }}),
-            axios.get(`${API_BASE_URL}/auth/admin/analytics`, { headers: { Authorization: `Bearer ${token}` }})
+            axios.get(`${API_BASE_URL}/auth/admin/analytics`, { headers: { Authorization: `Bearer ${token}` }}),
+            axios.get(CHATBOT_API_URL) 
         ]);
 
         if (results[0].status === 'fulfilled' && results[0].value.data.success) {
@@ -69,6 +73,14 @@ const AdminDashboard = () => {
             setRecentLogs(logs || []);
         }
 
+        if (results[4].status === 'fulfilled' && Array.isArray(results[4].value.data)) {
+            const dataset = results[4].value.data;
+            setQaCounts({
+                approved: dataset.filter(item => item.status === 'Approved').length,
+                pending: dataset.filter(item => item.status === 'Pending Review').length
+            });
+        }
+
       } catch (error) {
         console.error("Critical Dashboard Error", error);
       } finally {
@@ -84,10 +96,10 @@ const AdminDashboard = () => {
   const exportToPDF = () => {
     try {
         const doc = new jsPDF();
-        let yPos = 25; // Track vertical position
+        let yPos = 25; 
 
         // 1. Header
-        doc.setFillColor(41, 50, 65); // Dark Blue Header
+        doc.setFillColor(41, 50, 65); 
         doc.rect(0, 0, 210, 40, 'F');
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(22);
@@ -105,8 +117,8 @@ const AdminDashboard = () => {
 
         autoTable(doc, {
             startY: yPos,
-            head: [['Total Scans', 'Total Users', 'Pending Moderation', 'Unanswered Queries']],
-            body: [[totalScans, userCount, moderationCount, chatbotStats.failed_count]],
+            head: [['Total Scans', 'Total Users', 'Pending Moderation', 'Knowledge Base']],
+            body: [[totalScans, userCount, moderationCount, `${qaCounts.approved} Appr | ${qaCounts.pending} Pend`]],
             theme: 'grid',
             headStyles: { fillColor: [61, 90, 128], halign: 'center' },
             bodyStyles: { halign: 'center', fontSize: 11, fontStyle: 'bold' }
@@ -114,7 +126,7 @@ const AdminDashboard = () => {
         
         yPos = doc.lastAutoTable.finalY + 15;
 
-        // 3. Population Gender Stats (Pie Chart Data)
+        // 3. Population Gender Stats 
         doc.text('2. Population Demographics', 14, yPos);
         yPos += 5;
 
@@ -129,7 +141,7 @@ const AdminDashboard = () => {
 
         yPos = doc.lastAutoTable.finalY + 15;
 
-        // 4. Scan Activity Trends (Area Chart Data)
+        // 4. Scan Activity Trends 
         doc.text('3. Scan Activity Trends', 14, yPos);
         yPos += 5;
 
@@ -139,13 +151,12 @@ const AdminDashboard = () => {
             head: [['Time Period', 'Total Scans', 'Disease Detected']],
             body: activityBody,
             theme: 'striped',
-            headStyles: { fillColor: [13, 148, 136] }, // Teal color
+            headStyles: { fillColor: [13, 148, 136] }, 
         });
 
         yPos = doc.lastAutoTable.finalY + 15;
 
-        // 5. Water Quality Data (Bar Chart Data)
-        // Check if we need a new page
+        // 5. Water Quality Data
         if (yPos > 250) { doc.addPage(); yPos = 20; }
         
         doc.text('4. Water Quality Analysis', 14, yPos);
@@ -157,7 +168,7 @@ const AdminDashboard = () => {
             head: [['Location/User', 'Avg Turbidity (NTU)', 'Avg Algae Level']],
             body: waterBody,
             theme: 'striped',
-            headStyles: { fillColor: [59, 130, 246] }, // Blue color
+            headStyles: { fillColor: [59, 130, 246] }, 
         });
 
         yPos = doc.lastAutoTable.finalY + 15;
@@ -201,21 +212,18 @@ const AdminDashboard = () => {
     try {
         const workbook = XLSX.utils.book_new();
 
-        // 1. KPI Sheet
         const kpiData = [
             { Metric: "Total AI Scans", Value: totalScans },
             { Metric: "Total Users", Value: userCount },
             { Metric: "Pending Moderation", Value: moderationCount },
-            { Metric: "Unanswered Queries", Value: chatbotStats.failed_count }
+            { Metric: "Knowledge Base", Value: `${qaCounts.approved} Approved | ${qaCounts.pending} Pending` }
         ];
         const kpiSheet = XLSX.utils.json_to_sheet(kpiData);
         XLSX.utils.book_append_sheet(workbook, kpiSheet, "Executive Summary");
 
-        // 2. Gender Stats Sheet
         const genderSheet = XLSX.utils.json_to_sheet(populationData);
         XLSX.utils.book_append_sheet(workbook, genderSheet, "Gender Stats");
 
-        // 3. Activity Trends Sheet
         const activityData = scanActivityData.map(item => ({
             "Time Period": item.name,
             "Total Scans": item.scans,
@@ -224,7 +232,6 @@ const AdminDashboard = () => {
         const activitySheet = XLSX.utils.json_to_sheet(activityData);
         XLSX.utils.book_append_sheet(workbook, activitySheet, "Activity Trends");
 
-        // 4. Water Quality Sheet
         const waterData = waterQualityData.map(item => ({
             "Location/User": item.name,
             "Avg Turbidity": item.turbidity,
@@ -233,7 +240,6 @@ const AdminDashboard = () => {
         const waterSheet = XLSX.utils.json_to_sheet(waterData);
         XLSX.utils.book_append_sheet(workbook, waterSheet, "Water Quality");
 
-        // 5. Detailed Logs Sheet
         const logsData = recentLogs.map(log => ({
             "Species": log.species,
             "User": log.user,
@@ -289,14 +295,6 @@ const AdminDashboard = () => {
                 <FileText className="w-4 h-4" />
                 <span className="hidden sm:inline">Export PDF</span>
             </button>
-            {/* <div className="w-px bg-slate-200 my-1"></div>
-            <button 
-                onClick={exportToExcel}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
-            >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span className="hidden sm:inline">Export Excel</span>
-            </button> */}
         </div>
       </div>
 
@@ -309,13 +307,19 @@ const AdminDashboard = () => {
           icon={<ScanEye className="text-teal-600" />} 
           bg="bg-teal-50" 
         />
-        <StatsCard 
-          title="Unanswered Queries" 
-          value={chatbotStats.failed_count || 0} 
-          subtext="Needs Admin Review"
-          icon={<HelpCircle className={(chatbotStats.failed_count || 0) > 0 ? "text-orange-600" : "text-green-600"} />} 
-          bg={(chatbotStats.failed_count || 0) > 0 ? "bg-orange-50" : "bg-green-50"} 
+        
+        {/* NEW: Split format DualStatsCard for Knowledge Base */}
+        <DualStatsCard 
+          title="Knowledge Base" 
+          value1={qaCounts.approved} 
+          label1="Approved"
+          value2={qaCounts.pending} 
+          label2="Pending"
+          icon={<MessageSquare className={qaCounts.pending > 0 ? "text-orange-600" : "text-purple-600"} />} 
+          bg={qaCounts.pending > 0 ? "bg-orange-50" : "bg-purple-50"} 
+          textColor2={qaCounts.pending > 0 ? "text-orange-500 font-bold" : "text-slate-400"}
         />
+        
         <StatsCard 
           title="Total Users" 
           value={userCount} 
@@ -485,15 +489,39 @@ const AdminDashboard = () => {
   );
 };
 
+// Original Stats Card for standard single metrics
 const StatsCard = ({ title, value, subtext, icon, bg }) => (
     <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4 hover:-translate-y-1 transition-transform duration-300">
-        <div className={`w-14 h-14 rounded-full flex items-center justify-center text-xl ${bg}`}>
+        <div className={`w-14 h-14 shrink-0 rounded-full flex items-center justify-center text-xl ${bg}`}>
             {icon}
         </div>
-        <div>
-            <h4 className="text-2xl font-bold text-slate-900">{value}</h4>
-            <p className="text-sm text-slate-500 font-medium">{title}</p>
-            <p className="text-[10px] text-slate-400 mt-1">{subtext}</p>
+        <div className="min-w-0">
+            <h4 className="font-bold text-slate-900 text-2xl truncate">{value}</h4>
+            <p className="text-sm text-slate-500 font-medium truncate">{title}</p>
+            <p className="text-[10px] text-slate-400 mt-1 truncate">{subtext}</p>
+        </div>
+    </div>
+);
+
+// NEW: Dual Stats Card for splitting two numbers side-by-side
+const DualStatsCard = ({ title, value1, label1, value2, label2, icon, bg, textColor2 }) => (
+    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4 hover:-translate-y-1 transition-transform duration-300">
+        <div className={`w-14 h-14 shrink-0 rounded-full flex items-center justify-center text-xl ${bg}`}>
+            {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+            <p className="text-sm text-slate-500 font-medium truncate pb-1">{title}</p>
+            <div className="flex items-center gap-3">
+                <div className="flex flex-col">
+                    <span className="text-xl font-bold text-slate-900 leading-none">{value1}</span>
+                    <span className="text-[10px] text-slate-400 font-medium mt-1">{label1}</span>
+                </div>
+                <div className="h-6 w-px bg-slate-200"></div>
+                <div className="flex flex-col">
+                    <span className="text-xl font-bold text-slate-900 leading-none">{value2}</span>
+                    <span className={`text-[10px] font-medium mt-1 ${textColor2}`}>{label2}</span>
+                </div>
+            </div>
         </div>
     </div>
 );

@@ -82,7 +82,7 @@ const VisionDataset = () => {
                       value={searchQuery}
                       onChange={(e) => {
                           setSearchQuery(e.target.value);
-                          setCurrentPage(1); // Reset to page 1 on search
+                          setCurrentPage(1); 
                       }}
                       className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-500" 
                     />
