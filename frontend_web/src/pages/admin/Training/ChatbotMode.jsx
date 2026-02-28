@@ -46,6 +46,7 @@ const ChatbotMode = () => {
 
   const API_URL = import.meta.env.VITE_CHATBOT_API_URL;
 
+  // 1. Silent Fetch Function (No loading state manipulation here)
   const fetchData = async () => {
     try {
       const [qaResponse, statsResponse] = await Promise.allSettled([
@@ -55,8 +56,6 @@ const ChatbotMode = () => {
 
       if (qaResponse.status === 'fulfilled') {
         setDataset(Array.isArray(qaResponse.value.data) ? qaResponse.value.data : []);
-      } else {
-        setDataset([]);
       }
 
       if (statsResponse.status === 'fulfilled' && statsResponse.value.data) {
@@ -64,16 +63,28 @@ const ChatbotMode = () => {
       }
     } catch (error) {
       console.error("Error fetching data:", error);
-      toast.error("Failed to sync with AI Brain");
-    } finally {
-      setLoading(false);
     }
   };
 
+  // 2. Initial Load & Manual Updates (Shows loading spinner)
   useEffect(() => {
-    setLoading(true);
-    fetchData();
+    const loadData = async () => {
+      setLoading(true);
+      await fetchData();
+      setLoading(false);
+    };
+    loadData();
   }, [lastUpdated]);
+
+  // 3. NEW: Auto-Refresh Background Polling (Every 30 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchData(); // Silently updates data without triggering the loading spinner
+    }, 10000); 
+
+    // Cleanup interval when component unmounts
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab');
@@ -86,6 +97,9 @@ const ChatbotMode = () => {
     pending: dataset?.filter(i => i.status === 'Pending Review').length || 0,
     unanswered: stats.failed_count || 0
   };
+
+  const systemConfidence = Math.max(0, (stats.accuracy || 0) - (counts.pending * 2));
+  const needsAttentionCount = counts.unanswered + counts.pending;
 
   const filteredDataset = (dataset || []).filter(item => {
     const matchesTab = 
@@ -176,7 +190,7 @@ const ChatbotMode = () => {
         query: logItem.query, 
         response: logItem.response || '', 
         topic: 'General',
-        status: 'Approved'
+        status: 'Pending Review' 
     });
     setIsAddModalOpen(true);
   };
@@ -191,8 +205,11 @@ const ChatbotMode = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
             <StatCard title="Total Queries Received" value={stats.total_interactions || 0} icon={MessageCircle} color="bg-blue-50 text-blue-600" />
-            <StatCard title="System Accuracy" value={(stats.accuracy || 0) + "%"} icon={Check} color={(stats.accuracy || 0) > 80 ? "bg-teal-50 text-teal-600" : "bg-orange-50 text-orange-600"} />
-            <StatCard title="Needs Attention" value={counts.unanswered} icon={Clock} color={counts.unanswered > 0 ? "bg-orange-50 text-orange-600" : "bg-slate-50 text-slate-600"} />
+            
+            <StatCard title="System Accuracy" value={systemConfidence + "%"} icon={Check} color={systemConfidence > 80 ? "bg-teal-50 text-teal-600" : "bg-orange-50 text-orange-600"} />
+            
+            <StatCard title="Needs Attention" value={needsAttentionCount} icon={Clock} color={needsAttentionCount > 0 ? "bg-orange-50 text-orange-600" : "bg-slate-50 text-slate-600"} />
+            
             <StatCard title="Flagged Content" value={stats.flagged_count || 0} icon={AlertTriangle} color={(stats.flagged_count || 0) > 0 ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"} />
         </div>
 
@@ -330,7 +347,7 @@ const ChatbotMode = () => {
                                                 </td>
                                                 <td className="p-4 align-top"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold">{item.topic}</span></td>
                                                 <td className="p-4 align-top">
-                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${item.status === 'Approved' ? 'bg-green-50 text-green-600' : item.status === 'Needs Improvement' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
+                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${item.status === 'Approved' ? 'bg-green-50 text-green-600' : item.status === 'Pending Review' ? 'bg-orange-50 text-orange-600' : 'bg-red-50 text-red-600'}`}>
                                                         {item.status}
                                                     </span>
                                                 </td>
