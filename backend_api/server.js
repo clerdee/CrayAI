@@ -7,7 +7,6 @@ dotenv.config();
 const connectDB = require('./config/db'); 
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://127.0.0.1:5001';
 
-// Route Imports
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const authRoutes = require('./routes/authRoutes');
 const postRoutes = require('./routes/postRoutes');
@@ -51,8 +50,6 @@ app.use('/api/measure', createProxyMiddleware({
 }));
 
 app.get('/api/training/vision', (req, res) => {
-    // Later, we will fetch actual images from MongoDB here.
-    // For now, return an empty array so the frontend table says "No images found" instead of crashing!
     res.status(200).json([]);
 });
 
