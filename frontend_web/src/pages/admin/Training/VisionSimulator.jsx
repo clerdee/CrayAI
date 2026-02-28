@@ -43,7 +43,7 @@ const VisionSimulator = () => {
     formData.append('photo', selectedImage);
 
     try {
-      const response = await axios.post('http://localhost:5001/api/measure', formData, {
+      const response = await axios.post(`${import.meta.env.VITE_CHATBOT_API_URL}/measure`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 

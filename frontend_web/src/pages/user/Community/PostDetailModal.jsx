@@ -45,7 +45,6 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit,
     }
   }, [isOpen, post?._id]);
 
-  // Sync like state when the post changes
   useEffect(() => {
     setIsLiked(post?.likes?.includes(currentUserId) || false);
     setLikesCount(post?.likes?.length || 0);
@@ -63,7 +62,6 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit,
   const handleLikeClick = async (e) => {
     e.preventDefault();
     
-    // 🚨 Optimistic UI Update: Instantly changes color to red and updates the number
     const newlyLiked = !isLiked;
     setIsLiked(newlyLiked);
     setLikesCount(prev => newlyLiked ? prev + 1 : prev - 1);

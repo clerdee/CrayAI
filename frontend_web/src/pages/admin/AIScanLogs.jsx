@@ -6,13 +6,11 @@ import {
   Pencil, Database, Trash2, Loader, ChevronLeft, ChevronRight, ScanLine, RefreshCw, X, FileText, FileSpreadsheet
 } from 'lucide-react';
 import ScanDetailsModal from './ScanDetailsModal';
-
-// --- FIXED IMPORTS FOR PDF ---
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable"; 
 import * as XLSX from 'xlsx'; 
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const AIScanLogs = () => {
   const [logs, setLogs] = useState([]); 
@@ -24,7 +22,6 @@ const AIScanLogs = () => {
   const [activeMenu, setActiveMenu] = useState(null);
   const menuRef = useRef(null);
 
-  // Custom Modal & Toast States
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, logId: null });
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 

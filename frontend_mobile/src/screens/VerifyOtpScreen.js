@@ -7,19 +7,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Import your API client
 import client from '../api/client';
 
 export default function VerifyOtpScreen({ route, navigation }) {
-  // Get email AND profileData passed from RegisterScreen
   const { email, profileData } = route.params; 
   
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
-  const [timer, setTimer] = useState(600); // 10 minutes
+  const [timer, setTimer] = useState(600); 
   const inputRefs = useRef([]);
 
-  // Timer Logic
   useEffect(() => {
     const interval = setInterval(() => {
       setTimer((prev) => (prev > 0 ? prev - 1 : 0));

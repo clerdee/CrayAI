@@ -16,8 +16,8 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable"; 
 import * as XLSX from 'xlsx';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'; 
-const CHATBOT_API_URL = 'http://localhost:5001/api/training/chatbot'; 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL; 
+const CHATBOT_API_URL = import.meta.env.VITE_CHATBOT_API_URL; 
 
 const AdminDashboard = () => {
   const navigate = useNavigate();

@@ -8,7 +8,7 @@ import { CLOUDINARY_CONFIG } from '../../config/cloudinary';
 import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider, githubProvider } from '../../config/firebase'; 
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'; 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL; 
 
 // --- REGEX PATTERNS ---
 const MOBILE_REGEX = /^9\d{9}$/; 

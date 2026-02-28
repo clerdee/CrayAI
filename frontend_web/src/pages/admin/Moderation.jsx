@@ -7,26 +7,21 @@ import {
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const Moderation = () => {
-  // --- DATA STATE ---
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('All'); 
   const [selectedDateTime, setSelectedDateTime] = useState(''); 
 
-  // --- PAGINATION STATE (Restored) ---
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 6; // Shows 6 items (2 columns x 3 rows)
+  const itemsPerPage = 6; 
 
-  // --- NOTIFICATION STATE (TOAST) ---
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
 
-  // --- MODAL STATE (CONFIRMATION) ---
   const [actionModal, setActionModal] = useState(null); 
 
-  // --- HELPER: SHOW TOAST ---
   const showToast = (message, type = 'success') => {
     setNotification({ show: true, message, type });
     setTimeout(() => {
@@ -34,7 +29,6 @@ const Moderation = () => {
     }, 3000); 
   };
 
-  // --- HELPER: FIX IPHONE HEIC IMAGES ---
   const getDisplayUrl = (url) => {
     if (!url) return '';
     if (url.includes('cloudinary') && url.toLowerCase().endsWith('.heic')) {
@@ -43,7 +37,6 @@ const Moderation = () => {
     return url;
   };
 
-  // --- HELPER: GET USER DETAILS ---
   const getUserDetails = (item) => {
     const authorObj = item.author || {};
     return {

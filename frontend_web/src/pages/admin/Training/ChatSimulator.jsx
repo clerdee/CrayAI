@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { Send, Bot, User, X, Trash2, Sparkles, Loader2, AlertCircle } from 'lucide-react';
 
-// 👇 Added 'onInteraction' prop
 const ChatSimulator = ({ isOpen, onClose, onInteraction }) => {
   const [messages, setMessages] = useState([
     { id: 1, type: 'bot', text: 'Hello! I am the CrayAI simulator. Test your training data here.' }
@@ -11,17 +10,14 @@ const ChatSimulator = ({ isOpen, onClose, onInteraction }) => {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef(null);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle Send
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
 
-    // 1. Add User Message
     const userMsg = { id: Date.now(), type: 'user', text: input };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
@@ -29,7 +25,7 @@ const ChatSimulator = ({ isOpen, onClose, onInteraction }) => {
 
     try {
       // 2. Call Python AI Endpoint
-      const response = await axios.post('http://localhost:5001/api/training/chatbot/ask', {
+      const response = await axios.post(import.meta.env.VITE_CHATBOT_API_URL + '/ask', {
         question: userMsg.text
       });
 
@@ -40,7 +36,7 @@ const ChatSimulator = ({ isOpen, onClose, onInteraction }) => {
         text: response.data.response,
         topic: response.data.topic,
         confidence: response.data.confidence,
-        isFlagged: response.data.is_flagged // Check if flagged
+        isFlagged: response.data.is_flagged 
       };
       setMessages(prev => [...prev, botMsg]);
 

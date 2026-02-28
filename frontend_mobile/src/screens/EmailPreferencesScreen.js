@@ -5,21 +5,17 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-
-// API Import
 import client from '../api/client';
 
 export default function EmailPreferencesScreen() {
   const navigation = useNavigation();
   const [currentEmail, setCurrentEmail] = useState('');
 
-  // --- STATE ---
   const [newEmail, setNewEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Fetch current email on load
   useEffect(() => {
     const fetchEmail = async () => {
       try {

@@ -35,7 +35,7 @@ const Navbar = () => {
     if (storedUser && token) {
       setUser(JSON.parse(storedUser));
     }
-  }, [location]); // Re-check on route change (e.g. after login)
+  }, [location]); 
 
   // --- LOGOUT LOGIC ---
   const handleLogout = () => {

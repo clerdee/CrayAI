@@ -13,11 +13,9 @@ const ScanDetailsModal = ({ log, onClose }) => {
 
   const hasWarning = log.algae === 'High' || log.algae === 'Critical' || log.turbidity > 6;
 
-  // Determine Confidence Color
   const confidence = log.confidence || 0;
   const confColor = confidence > 80 ? 'bg-emerald-500' : confidence > 50 ? 'bg-yellow-500' : 'bg-red-500';
 
-  // --- PDF GENERATION LOGIC ---
   const handleDownloadReport = async () => {
     setIsDownloading(true);
     try {
@@ -36,7 +34,7 @@ const ScanDetailsModal = ({ log, onClose }) => {
         };
 
         // 2. Add Header
-        doc.setFillColor(41, 50, 65); // Dark Blue Header #293241
+        doc.setFillColor(41, 50, 65); 
         doc.rect(0, 0, 210, 30, 'F');
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(22);

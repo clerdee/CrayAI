@@ -6,11 +6,9 @@ import SwipeButton from 'rn-swipe-button';
 const { width } = Dimensions.get('window');
 
 export default function WelcomeScreen({ navigation }) {
-  // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
-  // Trigger animations when the screen loads
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -26,7 +24,6 @@ export default function WelcomeScreen({ navigation }) {
     ]).start();
   }, []);
 
-  // Custom component for the Swipe Button thumb (Uses your crayfish logo!)
   const CrayfishThumb = () => (
     <View style={styles.thumbContainer}>
       <Image 

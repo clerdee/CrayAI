@@ -9,15 +9,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Dropdown } from 'react-native-element-dropdown'; 
 import * as ImagePicker from 'expo-image-picker';
 
-// --- NEW BACKEND IMPORT ---
 import client from '../api/client'; 
 
-// Cloudinary Imports (Keep this for now to generate the image URL)
 import { CLOUDINARY_CONFIG } from '../config/cloudinary';
 import { phCities } from '../data/ph_cities';
 
 export default function RegisterScreen({ navigation }) {
-  // Form State
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -27,13 +24,11 @@ export default function RegisterScreen({ navigation }) {
   const [country, setCountry] = useState('Philippines');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  
-  // UI State
+
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [image, setImage] = useState(null);
 
-  // --- NOTIFICATION STATE ---
   const [message, setMessage] = useState({ text: '', type: '' });
 
   const showNotification = (text, type) => {
@@ -41,7 +36,6 @@ export default function RegisterScreen({ navigation }) {
     setTimeout(() => setMessage({ text: '', type: '' }), 4000);
   };
 
-  // --- IMAGE PICKING LOGIC ---
   const showImageOptions = () => {
     Alert.alert("Profile Picture", "Choose a source", [
       { text: "📷 Camera", onPress: () => pickImage(true) },

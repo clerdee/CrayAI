@@ -155,7 +155,7 @@ const ScanPage = () => {
       const formData = new FormData();
       formData.append('photo', selectedFile);
 
-      const res = await axios.post('http://localhost:5001/api/measure', formData, {
+      const res = await axios.post(`${import.meta.env.VITE_CHATBOT_API_URL}/measure`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 

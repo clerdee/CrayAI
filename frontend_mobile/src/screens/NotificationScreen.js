@@ -6,18 +6,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-
-// API & Config
 import client from '../api/client';
-
-// Custom Components
 import Header from '../components/Header';
 import BottomNavBar from '../components/BottomNavBar';
 import Sidebar from '../components/Sidebar';
 
 const { width } = Dimensions.get('window');
 
-// --- HELPER: TIME FORMATTER ---
 const formatTimeAgo = (dateString) => {
   const date = new Date(dateString);
   const now = new Date();
@@ -38,15 +33,11 @@ export default function NotificationScreen({ navigation }) {
   const [isGuest, setIsGuest] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   
-  // Data States
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [alertsCount, setAlertsCount] = useState(0);
 
-  // --- FETCH DATA ---
-  // Notice we don't set loading=true here every time. 
-  // This allows the 30-second background fetch to happen "silently" without flashing a spinner!
   const fetchData = async () => {
     try {
       const token = await AsyncStorage.getItem('token');

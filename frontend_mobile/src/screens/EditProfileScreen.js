@@ -9,7 +9,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Dropdown } from 'react-native-element-dropdown'; 
 import * as ImagePicker from 'expo-image-picker';
 
-// API & Data Imports
 import client from '../api/client';
 import { phCities } from '../data/ph_cities';
 import { CLOUDINARY_CONFIG } from '../config/cloudinary';
@@ -21,19 +20,16 @@ export default function EditProfileScreen({ navigation }) {
   const [phone, setPhone] = useState('');
   const [street, setStreet] = useState('');
   const [city, setCity] = useState(null);
-  const [country, setCountry] = useState('Philippines'); // <--- NEW COUNTRY STATE
+  const [country, setCountry] = useState('Philippines'); 
   const [bio, setBio] = useState('');
-  
-  // Image State
+
   const [currentProfilePic, setCurrentProfilePic] = useState(null); 
   const [newImage, setNewImage] = useState(null); 
 
-  // UI State
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
 
-  // Custom Notification Handler
   const showNotification = (text, type) => {
     setMessage({ text, type });
     setTimeout(() => setMessage({ text: '', type: '' }), 4000);

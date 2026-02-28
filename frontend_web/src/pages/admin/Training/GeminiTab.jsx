@@ -10,7 +10,7 @@ const GeminiTab = ({ searchQuery, onConvertToQa }) => {
     const fetchLogs = async () => {
         try {
             // Fetch only the logs marked as Gemini successes
-            const res = await axios.get('http://localhost:5001/api/training/chatbot/logs?status=Success%20(Gemini)');
+            const res = await axios.get(`${import.meta.env.VITE_CHATBOT_API_URL}/logs?status=Success%20(Gemini)`);
             setLogs(res.data);
         } catch (error) {
             console.error("Error fetching Gemini logs:", error);
@@ -25,7 +25,7 @@ const GeminiTab = ({ searchQuery, onConvertToQa }) => {
 
     const handleDelete = async (id) => {
         try {
-            await axios.delete(`http://localhost:5001/api/training/chatbot/logs/${id}`);
+            await axios.delete(`${import.meta.env.VITE_CHATBOT_API_URL}/logs/${id}`);
             setLogs(logs.filter(log => log._id !== id));
             toast.success("Log removed");
         } catch (error) {

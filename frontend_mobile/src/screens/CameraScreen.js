@@ -31,7 +31,7 @@ export default function CameraScreen({ navigation, route }) {
   const scanBuffer = useRef({ 
     widths: [], 
     heights: [], 
-    genders: [], // Store genders to find most frequent
+    genders: [],
     lastImage: null,
     algaeLevel: 0,
     algaeDesc: '',

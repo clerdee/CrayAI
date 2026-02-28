@@ -1,9 +1,5 @@
 import client from './client';
 
-/**
- * Frontend actions for interacting with notification backend routes.
- * These routes are protected and require the crayai_token.
- */
 const notificationActions = {
   // GET /api/notification - Fetch all notifications for the logged-in user
   getNotifications: async () => {

@@ -50,13 +50,11 @@ client.interceptors.request.use(
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Only prints a single line if something goes wrong, instead of 10 lines
     console.error('🚨 API ERROR:', error.response?.data?.message || error.message);
     return Promise.reject(error);
   }
 );
 
-// (Optional) Add a tiny error interceptor for your AI client so you aren't blind if it fails
 aiClient.interceptors.response.use(
   (response) => response,
   (error) => {

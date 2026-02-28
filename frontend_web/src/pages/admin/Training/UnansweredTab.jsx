@@ -8,7 +8,7 @@ const UnansweredTab = ({ searchQuery, onConvertToQa }) => {
   const [loading, setLoading] = useState(true);
 
   // API URL
-  const API_URL = 'http://localhost:5001/api/training/chatbot';
+  const API_URL = import.meta.env.VITE_CHATBOT_API_URL;
 
   const fetchLogs = async () => {
     try {

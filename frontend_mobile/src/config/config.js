@@ -1,35 +1,27 @@
-// config.js
-
 const config = {
-  // fallback 
-  // NETWORK_IP: process.env.EXPO_PUBLIC_NETWORK_IP || "http://192.168.1.24:5000",
-  // NETWORK_IP: process.env.EXPO_PUBLIC_NETWORK_IP || "https://crayai.onrender.com",
-  NETWORK_IP: 'http://192.168.191.132:5000',
+  NETWORK_IP: process.env.EXPO_PUBLIC_NETWORK_IP,
 
   GOOGLE: {
-    WEB_CLIENT_ID:
-      "89631301641-rdcgj1ba8n2bi6lpmblblnqha3c2jfjd.apps.googleusercontent.com",
-    ANDROID_CLIENT_ID:
-      "89631301641-ahjbseq5kgl98ivjajd9bspf6i5i21uf.apps.googleusercontent.com",
-    IOS_CLIENT_ID:
-      "89631301641-dpfct97rnqggb9b8j4866fgqti2n9ss9.apps.googleusercontent.com",
+    WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    ANDROID_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    IOS_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
   },
 
-  FACEBOOK_APP_ID: "2401039316998222",
+  FACEBOOK_APP_ID: process.env.EXPO_PUBLIC_FACEBOOK_APP_ID,
 
   CLOUDINARY: {
-    CLOUD_NAME: "dvdrak5wl",
-    UPLOAD_PRESET: "CrayAI",
-    API_URL: "https://api.cloudinary.com/v1_1/dvdrak5wl/image/upload",
+    CLOUD_NAME: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME,
+    UPLOAD_PRESET: process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
+    API_URL: process.env.EXPO_PUBLIC_CLOUDINARY_API_URL,
   },
 
   FIREBASE: {
-    API_KEY: "AIzaSyCLAJf2jzx-CT6AgQWkKu0iTymukdRz5iM",
-    AUTH_DOMAIN: "crayai.firebaseapp.com",
-    PROJECT_ID: "crayai",
-    STORAGE_BUCKET: "crayai.firebasestorage.app",
-    MESSAGING_SENDER_ID: "89631301641",
-    APP_ID: "1:89631301641:web:3a296a566be56a4ab398d8",
+    API_KEY: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+    AUTH_DOMAIN: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    PROJECT_ID: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+    STORAGE_BUCKET: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    MESSAGING_SENDER_ID: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    APP_ID: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
   },
 };
 

@@ -7,8 +7,8 @@ import {
   Eye, EyeOff, CheckCircle2, XCircle
 } from 'lucide-react';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
-const CHATBOT_API_URL = 'http://localhost:5001/api/training/chatbot';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const CHATBOT_API_URL = import.meta.env.VITE_CHATBOT_API_URL;
 
 const Settings = () => {
   const [activeTab, setActiveTab] = useState('General');

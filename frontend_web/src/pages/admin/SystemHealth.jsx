@@ -3,7 +3,7 @@ import axios from 'axios';
 import AdminLayout from '../../layouts/AdminLayout';
 import { Server, Database, BrainCircuit, Cloud, Activity, AlertCircle, RefreshCw } from 'lucide-react';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const SystemHealth = () => {
   const [isRefreshing, setIsRefreshing] = useState(true);

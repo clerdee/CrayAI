@@ -7,7 +7,6 @@ import {
 const UserDetailsModal = ({ user, onClose, onDeactivate, onReactivate }) => {
   if (!user) return null;
 
-  // Helper: Format Date
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -17,7 +16,6 @@ const UserDetailsModal = ({ user, onClose, onDeactivate, onReactivate }) => {
     });
   };
 
-  // Helper: Get Initials
   const getInitials = () => {
     const first = user.firstName ? user.firstName[0] : '';
     const last = user.lastName ? user.lastName[0] : '';
@@ -27,7 +25,6 @@ const UserDetailsModal = ({ user, onClose, onDeactivate, onReactivate }) => {
   const fullName = `${user.firstName} ${user.lastName}`;
   const fullAddress = [user.street, user.city, user.country].filter(Boolean).join(', ');
 
-  // Local state for deactivation reason input
   const [reason, setReason] = useState('');
   const [showDeactivateInput, setShowDeactivateInput] = useState(false);
 

@@ -6,11 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
-
-// API Import
 import client from '../api/client';
-
-// Component Imports
 import BottomNavBar from '../components/BottomNavBar';
 import PostDetailModal from '../components/PostDetailModal'; 
 
@@ -18,11 +14,9 @@ const { width } = Dimensions.get('window');
 const GRID_SIZE = width / 3;
 
 export default function ProfileScreen({ navigation, route }) {
-  // 1. IDENTIFY USER
   const targetUserId = route?.params?.userId;
   const isViewingSelf = !targetUserId;
-  
-  // 2. STATE MANAGEMENT
+
   const [userData, setUserData] = useState(null);
   const [userPosts, setUserPosts] = useState([]); 
   const [stats, setStats] = useState({ followers: 0, following: 0 });
@@ -32,14 +26,11 @@ export default function ProfileScreen({ navigation, route }) {
   const [followLoading, setFollowLoading] = useState(false); 
   const [messageLoading, setMessageLoading] = useState(false); 
 
-  // --- NEW: Store logged-in user's ID to pass to the modal ---
   const [loggedInUserId, setLoggedInUserId] = useState(null);
 
-  // --- MODAL STATE ---
   const [selectedPost, setSelectedPost] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // 3. FETCH DATA
   useFocusEffect(
     useCallback(() => {
       loadProfileAndPosts();
