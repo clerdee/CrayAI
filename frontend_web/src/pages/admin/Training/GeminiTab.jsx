@@ -9,7 +9,6 @@ const GeminiTab = ({ searchQuery, onConvertToQa }) => {
 
     const fetchLogs = async () => {
         try {
-            // Fetch only the logs marked as Gemini successes
             const res = await axios.get(`${import.meta.env.VITE_CHATBOT_API_URL}/logs?status=Success%20(Gemini)`);
             setLogs(res.data);
         } catch (error) {

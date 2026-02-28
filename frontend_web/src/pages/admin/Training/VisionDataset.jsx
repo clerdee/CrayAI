@@ -15,9 +15,7 @@ const VisionDataset = () => {
   // 1. FETCH DATA FROM BACKEND
   const fetchImages = async () => {
     try {
-      setLoading(true);
-      // Replace with your actual endpoint
-      const response = await axios.get(`${import.meta.env.VITE_CHATBOT_API_URL}/vision`); 
+      const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/training/vision`);
       setImages(response.data);
     } catch (error) {
       console.error("Error fetching vision data:", error);

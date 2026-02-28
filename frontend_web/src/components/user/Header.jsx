@@ -44,7 +44,6 @@ const Header = ({ user, toggleMobileMenu }) => {
     return () => clearInterval(intervalId);
   }, [user]);
 
-  // 🚨 NEW: Handle marking ALL notifications as read
   const handleMarkAllRead = async (e) => {
     e.stopPropagation();
     try {
@@ -58,7 +57,6 @@ const Header = ({ user, toggleMobileMenu }) => {
     }
   };
 
-  // 🚨 NEW: Handle marking ONE notification as read
   const handleMarkOneRead = async (id) => {
     try {
       const res = await notificationActions.markOneRead(id);
@@ -116,7 +114,6 @@ const Header = ({ user, toggleMobileMenu }) => {
               <AnimatePresence>
                 {showNotifDropdown && (
                   <>
-                    {/* Invisible overlay to detect clicks outside the modal */}
                     <div 
                       className="fixed inset-0 z-40" 
                       onClick={() => setShowNotifDropdown(false)} 
@@ -138,7 +135,6 @@ const Header = ({ user, toggleMobileMenu }) => {
                             </span>
                           )}
                         </div>
-                        {/* 🚨 NEW: Mark all as read button */}
                         {unreadCount > 0 && (
                           <button 
                             onClick={handleMarkAllRead}
@@ -156,18 +152,16 @@ const Header = ({ user, toggleMobileMenu }) => {
                             <p className="text-sm font-bold text-slate-400">No new notifications</p>
                           </div>
                         ) : (
-                          // Show only the 5 most recent notifications in the dropdown
                           notifications.slice(0, 5).map((noti) => (
                             <div 
                               key={noti._id} 
-                              // 🚨 ADDED: Light blue background (bg-[#E0FBFC]/50) for unread items
                               className={`flex items-start gap-3 p-4 border-b border-slate-50 transition-colors group cursor-pointer ${
                                 noti.isRead 
                                   ? 'bg-white opacity-70 hover:bg-slate-50/80' 
                                   : 'bg-[#E0FBFC]/50 hover:bg-[#E0FBFC]/80'
                               }`}
                               onClick={() => {
-                                if (!noti.isRead) handleMarkOneRead(noti._id); // Auto mark read on click
+                                if (!noti.isRead) handleMarkOneRead(noti._id); 
                                 setShowNotifDropdown(false);
                                 navigate('/notifications');
                               }}
@@ -194,7 +188,6 @@ const Header = ({ user, toggleMobileMenu }) => {
 
                               <div className="flex flex-col items-center gap-2 flex-shrink-0 mt-1">
                                 {!noti.isRead && (
-                                  // 🚨 NEW: Quick "Mark as read" button on individual unread notifications
                                   <button 
                                     onClick={(e) => {
                                       e.stopPropagation();
