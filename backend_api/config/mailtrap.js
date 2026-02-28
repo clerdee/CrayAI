@@ -5,14 +5,13 @@ dotenv.config();
 
 const transport = nodemailer.createTransport({
   host: process.env.MAIL_HOST,
-  port: Number(process.env.MAIL_PORT) || 2525,
+  port: Number(process.env.MAIL_PORT),
   auth: {
     user: process.env.MAIL_USER,
     pass: process.env.MAIL_PASS,
   },
 });
 
-// verify connection
 transport.verify((err, success) => {
   if (err) {
     console.error('Mailtrap connection error:', err);

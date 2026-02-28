@@ -52,7 +52,7 @@ const UserLayout = ({ children }) => {
     setIsBotTyping(true);
 
     try {
-      const CHATBOT_URL = import.meta.env.VITE_CHATBOT_API_URL || 'http://localhost:5001/api/training/chatbot';
+      const CHATBOT_URL = import.meta.env.VITE_CHATBOT_API_URL;
       const response = await axios.post(`${CHATBOT_URL}/ask`, { question: userMsg });
 
       setMessages(prev => [...prev, {
