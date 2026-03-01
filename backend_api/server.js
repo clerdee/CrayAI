@@ -49,6 +49,14 @@ app.use('/api/measure', createProxyMiddleware({
     }
 }));
 
+app.use('/api/chatbot', createProxyMiddleware({ 
+    target: PYTHON_API_URL, 
+    changeOrigin: true,
+    pathRewrite: function (path, req) {
+        return path.replace('/api/chatbot', '/api/training/chatbot'); 
+    }
+}));
+
 app.get('/api/training/vision', (req, res) => {
     res.status(200).json([]);
 });
