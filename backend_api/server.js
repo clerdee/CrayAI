@@ -12,7 +12,6 @@ const authRoutes = require('./routes/authRoutes');
 const postRoutes = require('./routes/postRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const notificationRoutes = require('./routes/notification');
-const chatbotProxy = require('./routes/chatbotProxy');
 const scanRoutes = require('./routes/scanRoutes');
 
 const app = express();
@@ -38,7 +37,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/notification', notificationRoutes);
-app.use('/api/chatbot', chatbotProxy);
 app.use('/api/scans', scanRoutes);
 
 app.use('/api/measure', createProxyMiddleware({ 
