@@ -43,9 +43,9 @@ const VisionSimulator = () => {
     formData.append('photo', selectedImage);
 
     try {
-      const response = await axios.post(`${import.meta.env.VITE_CHATBOT_API_URL}/measure`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+        const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/measure`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
 
       if (response.data.success) {
         if (response.data.image) {
@@ -54,7 +54,7 @@ const VisionSimulator = () => {
         setScanData(response.data);
       } else {
         setError("Analysis finished but no crayfish were detected.");
-        setScanData(response.data); // Still set data to show algae/turbidity if avail
+        setScanData(response.data); 
       }
     } catch (err) {
       console.error("AI Error:", err);
