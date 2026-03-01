@@ -24,12 +24,9 @@ const Navbar = () => {
   const location = useLocation(); 
   const navigate = useNavigate();
 
-  // --- AUTH STATE ---
-  // Check if user is logged in based on your App.jsx logic
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // Read user from local storage to check session
     const storedUser = localStorage.getItem('user');
     const token = localStorage.getItem('token');
     if (storedUser && token) {
@@ -37,7 +34,6 @@ const Navbar = () => {
     }
   }, [location]); 
 
-  // --- LOGOUT LOGIC ---
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -45,14 +41,12 @@ const Navbar = () => {
     navigate('/login');
   };
 
-  // --- MENU ITEMS ---
   const menuItems = [
     { label: 'Home', path: '/' },
     { label: 'About Us', path: '/about' },      
     { label: 'The Red Claw', path: '/red-claw' }, 
   ];
 
-  // --- USER DROPDOWN (For logged in users) ---
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
   const handleMenuClick = (event) => setAnchorEl(event.currentTarget);
@@ -149,7 +143,6 @@ const Navbar = () => {
           <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
             
             {user ? (
-              // SCENARIO 1: USER IS LOGGED IN -> Show Avatar & Dropdown
               <>
                 <Button 
                    onClick={handleMenuClick}
@@ -206,11 +199,11 @@ const Navbar = () => {
                 </Menu>
               </>
             ) : (
-              // SCENARIO 2: GUEST -> Show Login / Register
+
               <>
                 <Button 
                   component={Link}
-                  to="/login"  // Updated to match App.jsx
+                  to="/login"  
                   sx={{ 
                     color: '#0A2540', 
                     fontWeight: 700, 
@@ -225,7 +218,7 @@ const Navbar = () => {
                 
                 <Button 
                   component={Link}
-                  to="/register" // Updated to match App.jsx
+                  to="/register" 
                   variant="contained" 
                   sx={{ 
                     bgcolor: '#008080',

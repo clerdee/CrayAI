@@ -42,16 +42,16 @@ const TheRedClaw = () => {
         display: 'flex', 
         flexDirection: { xs: 'column', md: 'row' },
         width: '100%', 
-        maxWidth: '1400px', // Added to keep layout contained on huge screens
-        mx: 'auto', // Centers the container
-        height: { xs: 'auto', md: '70vh' }, // Reduced from 85vh to prevent extreme tallness
-        p: { xs: 2, md: 4 }, // Added slightly more padding on desktop
-        gap: 3 // Increased gap slightly for breathing room
+        maxWidth: '1400px',
+        mx: 'auto', 
+        height: { xs: 'auto', md: '70vh' }, 
+        p: { xs: 2, md: 4 }, 
+        gap: 3 
       }}>
         
         {/* --- LEFT COLUMN: VIDEO (~55% WIDTH) --- */}
         <Box sx={{ 
-          flex: 1.2, // Changed from 3 to 1.2 for a more balanced split
+          flex: 1.2, 
           position: 'relative',
           borderRadius: '24px',
           overflow: 'hidden',

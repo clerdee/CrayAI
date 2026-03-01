@@ -16,7 +16,6 @@ import LinkedInIcon from '@mui/icons-material/LinkedIn';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import EmailIcon from '@mui/icons-material/Email';
 
-// --- FONT STYLES ---
 const FontStyles = () => (
   <style>
     {`
@@ -28,7 +27,6 @@ const FontStyles = () => (
   </style>
 );
 
-// --- TEAM DATA (Now Scalable) ---
 const teamMembers = [
   { 
     id: 1, 

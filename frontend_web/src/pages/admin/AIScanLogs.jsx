@@ -67,7 +67,7 @@ const AIScanLogs = () => {
                 age: age, 
                 algae: algae,
                 turbidity: turbidity,
-                confidence: record.gender_confidence || 0, // Mapped correctly
+                confidence: record.gender_confidence || 0,
                 status: record.isDeleted ? 'Deleted' : 'Verified',
                 image: record.image?.url || 'https://via.placeholder.com/150',
                 date: record.createdAt,
@@ -131,7 +131,7 @@ const AIScanLogs = () => {
     }
   };
 
-  // --- FILTER LOGIC (Moved up so exports can use it) ---
+  // --- UPDATED SEARCH & FILTER LOGIC ---
   const filteredLogs = logs.filter(log => {
     const matchesFilter = filter === 'All' || 
                           (filter === 'Low Confidence' && log.confidence < 80) ||
@@ -139,27 +139,35 @@ const AIScanLogs = () => {
                           log.status === filter;
     
     const search = searchQuery.toLowerCase();
-    const matchesSearch = log.id?.toLowerCase().includes(search) ||
-                          log.user?.toLowerCase().includes(search) ||
-                          log.species?.toLowerCase().includes(search);
+    
+    // Check against every possible column display value
+    const matchesSearch = !search || [
+        log.id,
+        log.user,
+        log.pond,
+        log.gender,
+        log.age,
+        log.sizeCm,
+        log.sizeIn,
+        log.species,
+        log.algae,
+        `lvl ${log.turbidity}`,
+        `${log.confidence}%`,
+        log.status
+    ].some(field => field?.toString().toLowerCase().includes(search));
 
     return matchesFilter && matchesSearch;
   });
 
-  // --- EXPORT FUNCTIONS ---
-
   const exportToPDF = () => {
     try {
         const doc = new jsPDF();
-        
-        // Add Title
+
         doc.setFontSize(18);
         doc.text('AI Scan Logs Report', 14, 22);
         doc.setFontSize(11);
         doc.setTextColor(100);
         doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
-
-        // Prepare table data
         const tableColumn = ["ID", "User", "Date", "Gender", "Age", "Size", "Algae", "Turbidity", "Conf."];
         const tableRows = [];
 
@@ -178,14 +186,13 @@ const AIScanLogs = () => {
             tableRows.push(logData);
         });
 
-        // Generate Table using correct autoTable import
         autoTable(doc, {
             head: [tableColumn],
             body: tableRows,
             startY: 40,
             theme: 'grid',
             styles: { fontSize: 8, cellPadding: 2 },
-            headStyles: { fillColor: [61, 90, 128] }, // Matches theme color
+            headStyles: { fillColor: [61, 90, 128] },
         });
 
         doc.save('CrayAI_Scan_Logs.pdf');
@@ -255,7 +262,7 @@ const AIScanLogs = () => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
             <input 
                 type="text" 
-                placeholder="Search logs (ID, User, Species)..." 
+                placeholder="Search any column (ID, User, Gender, Age, Conf...)" 
                 value={searchQuery}
                 onChange={(e) => { 
                     setSearchQuery(e.target.value); 
@@ -265,7 +272,7 @@ const AIScanLogs = () => {
             />
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto no-scrollbar">
-            {['All', 'Female', 'Male', 'Berried', 'Low Confidence'].map((f) => (
+            {['All', 'Female', 'Male', 'Berried'].map((f) => (
                 <button 
                     key={f} 
                     onClick={() => { setFilter(f); setCurrentPage(1); }} 
@@ -432,10 +439,6 @@ const AIScanLogs = () => {
                                               {activeMenu === log.id && (
                                                   <div ref={menuRef} className="absolute right-0 top-8 w-48 bg-white rounded-xl shadow-xl border border-slate-100 z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right text-left">
                                                       <div className="p-1.5 space-y-1">
-                                                          <button onClick={(e) => { e.stopPropagation(); handleMenuAction('dataset', log.id); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg transition-colors">
-                                                              <Database className="w-3.5 h-3.5" /> Add to Training
-                                                          </button>
-                                                          <div className="h-px bg-slate-100 my-1"></div>
                                                           <button onClick={(e) => { e.stopPropagation(); handleMenuAction('delete', log.id); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                                                               <Trash2 className="w-3.5 h-3.5" /> Delete Log
                                                           </button>

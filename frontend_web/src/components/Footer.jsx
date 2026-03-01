@@ -37,7 +37,7 @@ const Footer = () => {
               Bridging the gap between aquaculture and artificial intelligence.
             </Typography>
             <Stack direction="row" spacing={1.5}>
-              {[FacebookIcon, TwitterIcon, InstagramIcon, LinkedInIcon].map((Icon, index) => (
+              {/* {[FacebookIcon, TwitterIcon, InstagramIcon, LinkedInIcon].map((Icon, index) => (
                 <IconButton 
                   key={index} 
                   size="small"
@@ -51,7 +51,7 @@ const Footer = () => {
                 >
                   <Icon fontSize="small" />
                 </IconButton>
-              ))}
+              ))} */}
             </Stack>
           </Grid>
 
@@ -113,7 +113,6 @@ const Footer = () => {
   );
 };
 
-// Reusable style for links to keep code clean
 const linkStyle = {
   color: '#556987', 
   fontSize: '0.9rem', 

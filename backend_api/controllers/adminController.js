@@ -86,7 +86,6 @@ exports.getDashboardAnalytics = async (req, res) => {
 
     const totalScans = allScans.length; 
 
-    // SCAN ACTIVITY (Last 7 Days)
     const activity = [];
     for (let i = 6; i >= 0; i--) {
         const d = new Date();
@@ -105,14 +104,12 @@ exports.getDashboardAnalytics = async (req, res) => {
         });
 
         activity.push({
-            // 🚨 UPDATED: Now includes month and day (e.g., 'Mon, Feb 19')
             name: d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), 
             scans: dayScans.length,
             detected_disease: diseaseCount
         });
     }
 
-    // POPULATION STATS
     let male = 0, female = 0, berried = 0, juvenile = 0;
     allScans.forEach(s => {
         if (s.gender === 'Male') male++;
@@ -126,7 +123,6 @@ exports.getDashboardAnalytics = async (req, res) => {
         { name: 'Berried', value: berried, color: '#F59E0B' },
     ];
 
-    // WATER QUALITY (Grouped by User + Location, Top 6 Most Active)
     const userPondStats = {};
     allScans.forEach(scan => {
         const loc = scan.location || 'Unknown Pond';
@@ -158,18 +154,17 @@ exports.getDashboardAnalytics = async (req, res) => {
         algae: Number((userPondStats[key].alg / userPondStats[key].count).toFixed(1))
     }));
 
-    // RECENT LOGS (Top 5)
     const sortedScans = [...allScans].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
     const logs = sortedScans.map(r => {
         const hasWarning = r.environment?.algae_label === 'High' || r.environment?.algae_label === 'Critical' || r.environment?.turbidity_level > 6;
         return {
             id: r.scanId || r._id,
-            species: 'Australian Red Claw',
+            species: r.species || 'Australian Red Claw',
             user: r.user ? `${r.user.firstName} ${r.user.lastName}` : 'Unknown User',
             email: r.user?.email || 'No email provided', 
             image: r.image?.url || null,
             health: hasWarning ? 'Warning' : 'Healthy',
-            confidence: 95
+            confidence: r.confidence !== undefined ? r.confidence : 20
         };
     });
 
@@ -222,7 +217,6 @@ exports.getSystemHealth = async (req, res) => {
   try {
     const startTime = Date.now();
 
-    // 1. MONGODB PING & STATS
     const dbStatus = mongoose.connection.readyState === 1 ? 'Operational' : 'Degraded';
     let dbSizeMB = 0;
     try {
@@ -232,11 +226,9 @@ exports.getSystemHealth = async (req, res) => {
       dbSizeMB = 12.5; 
     }
 
-    // 2. FETCH REAL COUNTS
     const scansCount = await ScanRecord.countDocuments();
     const postsCount = await Post.countDocuments();
 
-    // 3. CALCULATE REAL AI LATENCY (Average of last 50 scans)
     const recentScans = await ScanRecord.find({ processing_time: { $exists: true } })
         .sort({ createdAt: -1 })
         .limit(50)
@@ -253,10 +245,8 @@ exports.getSystemHealth = async (req, res) => {
     });
     const avgAiTime = validCount > 0 ? (totalTime / validCount).toFixed(2) + 's' : '0.00s';
 
-    // 4. CALCULATE NODE.JS LATENCY
     const nodePing = Date.now() - startTime;
 
-    // Send the real data back to React
     res.status(200).json({
       success: true,
       services: [
@@ -287,14 +277,10 @@ exports.getSystemHealth = async (req, res) => {
 // 6. GET GLOBAL SETTINGS
 exports.getSettings = async (req, res) => {
   try {
-    // Find the single settings document
     let settings = await Settings.findOne();
-
-    // If it doesn't exist yet, create default settings automatically
     if (!settings) {
       settings = await Settings.create({});
     }
-
     res.status(200).json({ success: true, settings });
   } catch (error) {
     console.error("Get Settings Error:", error);
@@ -312,7 +298,6 @@ exports.updateSettings = async (req, res) => {
       settings = new Settings();
     }
 
-    // Apply updates dynamically based on what was sent
     if (aiThreshold !== undefined) settings.aiThreshold = aiThreshold;
     if (marketplaceEnabled !== undefined) settings.marketplaceEnabled = marketplaceEnabled;
     if (profanityFilter !== undefined) settings.profanityFilter = profanityFilter;

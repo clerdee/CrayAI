@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -11,11 +12,9 @@ import {
   Chip
 } from '@mui/material';
 
-// --- IMPORTS ---
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
-// --- ICONS ---
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
@@ -23,12 +22,10 @@ import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
 import SecurityIcon from '@mui/icons-material/Security';
 
-// NEW SLIDESHOW ICONS
-import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard'; // For Dashboard/Monitor
-import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong'; // For Visual/Camera
-import WavesIcon from '@mui/icons-material/Waves'; // For Water
+import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard'; 
+import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
+import WavesIcon from '@mui/icons-material/Waves';
 
-// --- FONT STYLES & ANIMATIONS ---
 const FontStyles = () => (
   <style>
     {`
@@ -60,12 +57,13 @@ const FontStyles = () => (
   </style>
 );
 
-// --- HERO SLIDESHOW COMPONENT ---
 const HeroSlideshow = () => {
+  const navigate = useNavigate(); // <-- Added for navigation
+  
   const slides = [
     {
       type: 'video',
-      align: 'left', // Layout: Left
+      align: 'left', 
       url: "/media/crayfish.mp4", 
       title: "Monitor. Analyze. Farm.",
       subtitle: "The all-in-one intelligence platform for the modern crayfish farmer.",
@@ -73,7 +71,7 @@ const HeroSlideshow = () => {
     },
     {
       type: 'image',
-      align: 'center', // Layout: Center
+      align: 'center', 
       url: "/media/close-up-crayfish.jpg",
       title: "Precision Visual Analysis",
       subtitle: "Identify gender, species, and health status instantly with just your camera.",
@@ -81,7 +79,7 @@ const HeroSlideshow = () => {
     },
     {
       type: 'image',
-      align: 'right', // Layout: Right
+      align: 'right', 
       url: "/media/aquarium.jpg", 
       title: "See What Lies Beneath",
       subtitle: "Track water turbidity and algae blooms in real-time.",
@@ -91,7 +89,6 @@ const HeroSlideshow = () => {
 
   const [current, setCurrent] = useState(0);
 
-  // Auto-play logic
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrent((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
@@ -142,11 +139,10 @@ const HeroSlideshow = () => {
           )}
 
           {/* LAYER 2: OVERLAY */}
-          {/* Dynamic gradient based on alignment to ensure text contrast */}
           <Box sx={{ 
             position: 'absolute', inset: 0, zIndex: 1, 
             background: slide.align === 'center' 
-              ? 'rgba(0,10,20,0.4)' // Uniform dark for center
+              ? 'rgba(0,10,20,0.4)' 
               : slide.align === 'right'
                 ? 'linear-gradient(to left, rgba(0,20,40,0.95) 0%, rgba(0,20,40,0.3) 60%, rgba(0,0,0,0) 100%)' // Dark on right
                 : 'linear-gradient(to right, rgba(0,20,40,0.95) 0%, rgba(0,20,40,0.3) 60%, rgba(0,0,0,0) 100%)' // Dark on left (default)
@@ -160,7 +156,7 @@ const HeroSlideshow = () => {
                 color: 'white', 
                 pl: slide.align === 'right' ? 0 : { xs: 2, md: 8 },
                 pr: slide.align === 'left' ? 0 : { xs: 2, md: 8 },
-                textAlign: slide.align, // Aligns text inside the box
+                textAlign: slide.align, 
               }}
             >
               {/* CONTENT STACK */}
@@ -203,7 +199,7 @@ const HeroSlideshow = () => {
                     sx={{ 
                       fontWeight: 500, mb: 4, 
                       maxWidth: '600px', 
-                      mx: slide.align === 'center' ? 'auto' : 0, // Centers text block if mode is center
+                      mx: slide.align === 'center' ? 'auto' : 0,
                       lineHeight: 1.6, 
                       color: '#E0E0E0',
                       fontSize: { xs: '1rem', md: '1.25rem' },
@@ -215,8 +211,9 @@ const HeroSlideshow = () => {
                   
                   <Button 
                     variant="contained" size="large" 
+                    onClick={() => navigate('/login')}
                     sx={{ 
-                      bgcolor: index === 1 ? '#00ffaa' : '#00E5FF', // Vary button color slightly
+                      bgcolor: index === 1 ? '#00ffaa' : '#00E5FF',
                       color: '#0A2540', 
                       fontWeight: '800', 
                       fontSize: '1rem', 

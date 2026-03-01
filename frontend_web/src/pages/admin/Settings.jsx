@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useLocation } from 'react-router-dom';
 import AdminLayout from '../../layouts/AdminLayout';
 import { 
   User, Lock, Bell, BrainCircuit, Save, Shield, Camera, Loader, Store,
@@ -11,6 +12,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const CHATBOT_API_URL = import.meta.env.VITE_CHATBOT_API_URL;
 
 const Settings = () => {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState('General');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -40,6 +42,15 @@ const Settings = () => {
   const [notifications, setNotifications] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 8; 
+
+  // --- HANDLE URL TAB PARAMETER ---
+  useEffect(() => {
+    const queryParams = new URLSearchParams(location.search);
+    const tabFromUrl = queryParams.get('tab');
+    if (tabFromUrl) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [location]);
 
   // --- FETCH ALL DATA ON LOAD ---
   useEffect(() => {
@@ -137,9 +148,10 @@ const Settings = () => {
           showToast("Profile updated successfully!", "success");
         }
 
-      } else if (activeTab === 'AI Config') {
-        const res = await axios.put(`${API_BASE_URL}/auth/admin/settings`, settings, { headers });
-        if (res.data.success) showToast("Marketplace settings updated!", "success");
+      // COMMENTED OUT AI CONFIG SAVE LOGIC
+      // } else if (activeTab === 'AI Config') {
+      //   const res = await axios.put(`${API_BASE_URL}/auth/admin/settings`, settings, { headers });
+      //   if (res.data.success) showToast("Marketplace settings updated!", "success");
 
       } else if (activeTab === 'Security') {
         if (!passwords.currentPassword || !passwords.newPassword) {
@@ -173,7 +185,8 @@ const Settings = () => {
 
   const tabs = [
     { id: 'General', label: 'General & Profile', icon: User },
-    { id: 'AI Config', label: 'Configuration', icon: BrainCircuit },
+    // COMMENTED OUT CONFIGURATION TAB
+    // { id: 'AI Config', label: 'Configuration', icon: BrainCircuit },
     { id: 'Notifications', label: 'Notification History', icon: Bell },
     { id: 'Security', label: 'Security', icon: Shield },
   ];
@@ -299,8 +312,8 @@ const Settings = () => {
               </Section>
             )}
 
-            {/* --- AI CONFIGURATION TAB --- */}
-            {activeTab === 'AI Config' && (
+            {/* --- AI CONFIGURATION TAB (COMMENTED OUT) --- */}
+            {/* {activeTab === 'AI Config' && (
               <Section title="Community Controls" description="Manage global features for the mobile app feed.">
                   <div className="space-y-4">
                     <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
@@ -326,6 +339,7 @@ const Settings = () => {
                   </div>
               </Section>
             )}
+            */}
 
             {/* --- NOTIFICATIONS TAB (FULL HISTORY WITH PAGINATION) --- */}
             {activeTab === 'Notifications' && (

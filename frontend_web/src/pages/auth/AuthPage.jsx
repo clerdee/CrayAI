@@ -4,13 +4,11 @@ import axios from 'axios';
 import { PH_CITIES } from '../../data/cities'; 
 import { CLOUDINARY_CONFIG } from '../../config/cloudinary'; 
 
-// --- 1. FIREBASE IMPORTS ---
 import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider, githubProvider } from '../../config/firebase'; 
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL; 
 
-// --- REGEX PATTERNS ---
 const MOBILE_REGEX = /^9\d{9}$/; 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_REGEX = /^[a-zA-Z\s]+$/; 
@@ -21,19 +19,15 @@ const AuthPage = () => {
   
   const [isRegister, setIsRegister] = useState(location.pathname === '/register');
   const [loading, setLoading] = useState(false);
-  
-  // --- CUSTOM NOTIFICATION STATE ---
+
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' }); 
 
-  // --- PASSWORD VISIBILITY STATE ---
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // OTP Modal State
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpCode, setOtpCode] = useState('');
 
-  // --- FORM STATES ---
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
@@ -57,7 +51,7 @@ const AuthPage = () => {
     setToast({ show: true, message, type });
     setTimeout(() => {
       setToast((prev) => ({ ...prev, show: false }));
-    }, 4000); // Increased time slightly to allow reading the reason
+    }, 4000);
   };
 
   const handleImageChange = (e) => {
@@ -79,11 +73,9 @@ const AuthPage = () => {
   const handleSocialLogin = async (provider) => {
     setLoading(true);
     try {
-      // 1. Trigger Firebase Popup
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      // 2. Prepare data for your backend
       const socialData = {
         email: user.email,
         firstName: user.displayName ? user.displayName.split(' ')[0] : 'User',
@@ -93,13 +85,11 @@ const AuthPage = () => {
         uid: user.uid
       };
 
-      // 3. Send to your Backend to create session/JWT
       const response = await axios.post(`${API_BASE_URL}/auth/social-login`, socialData);
 
       if (response.data.success) {
         const loggedInUser = response.data.user;
 
-        // --- CHECK ACCOUNT STATUS AND SHOW REASON ---
         if (loggedInUser.accountStatus === 'Inactive') {
             const reason = loggedInUser.deactivationReason || "No specific reason provided.";
             showToast(`Account Deactivated. Reason: ${reason}`, "error");
@@ -165,15 +155,12 @@ const AuthPage = () => {
 
             const fullUserData = profileRes.data.user;
 
-            // --- CHECK ACCOUNT STATUS AND SHOW REASON ---
             if (fullUserData.accountStatus === 'Inactive') {
-                // const reason = fullUserData.deactivationReason || "No specific reason provided.";
                 showToast(`Access Denied. Account Deactivated.`, "error");
                 setLoading(false);
                 return; 
             }
 
-            // If active, save and proceed
             localStorage.setItem('token', token);
             localStorage.setItem('user', JSON.stringify(fullUserData));
 
@@ -312,7 +299,8 @@ const AuthPage = () => {
         <div className="relative z-10 flex flex-col items-center">
            <div className="relative w-[260px] h-[540px] bg-slate-950 rounded-[2.5rem] border-[6px] border-slate-900 shadow-2xl overflow-hidden ring-1 ring-white/10">
               <div className="w-full h-full bg-black relative">
-                 <img src="https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?q=80&w=600&auto=format&fit=crop" alt="Scan" className="w-full h-full object-cover opacity-60" />
+                 {/* CHANGED SRC TO POINT TO PUBLIC FOLDER */}
+                 <img src="/mobile_auth.png" alt="Scan" className="w-full h-full object-cover opacity-60" />
                  <div className="absolute inset-0 flex flex-col justify-end p-5">
                     <div className="bg-white/10 backdrop-blur-xl border border-white/10 p-4 rounded-2xl mb-4 shadow-lg">
                         <div className="flex items-center gap-3">

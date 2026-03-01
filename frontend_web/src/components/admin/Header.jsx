@@ -15,7 +15,6 @@ const Header = ({ title }) => {
   const [loading, setLoading] = useState(true);
   const dropdownRef = useRef(null);
 
-  // --- LOCAL STORAGE: READ STATUS ONLY ---
   const getStoredReadIds = () => JSON.parse(localStorage.getItem('read_notifications') || '[]');
 
   // --- 1. FETCH & UNSTACK NOTIFICATIONS ---
@@ -58,7 +57,6 @@ const Header = ({ title }) => {
                 ? (item.content.length > 50 ? item.content.substring(0, 50) + '...' : item.content)
                 : 'Content requires review';
 
-            // FALLBACK KEY: Use index if _id is missing to prevent errors
             const uniqueKey = item._id ? `mod-${item._id}` : `mod-fallback-${index}`;
 
             rawNotifs.push({
@@ -83,13 +81,12 @@ const Header = ({ title }) => {
             type: 'chatbot',
             title: 'Unanswered Bot Queries',
             message: `${failedCount} queries need training data.`,
-            time: new Date().toISOString(), // Updates time to stay fresh
+            time: new Date().toISOString(), 
             link: '/admin/dataset' 
           });
         }
       }
 
-      // PROCESS: Apply Read Status -> Sort by Date
       const processedNotifs = rawNotifs
         .map(n => ({
             ...n,
@@ -131,7 +128,6 @@ const Header = ({ title }) => {
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
   };
 
-  // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -166,7 +162,6 @@ const Header = ({ title }) => {
                 <Bell className={`w-5 h-5 ${unreadCount > 0 ? 'animate-pulse' : ''}`} />
             </div>
 
-            {/* 🔴 POP UP BADGE (Outside container to prevent clipping) */}
             {unreadCount > 0 && (
                 <div 
                     onClick={() => setShowNotifications(!showNotifications)}
@@ -252,7 +247,7 @@ const Header = ({ title }) => {
                     {/* Footer */}
                     <div className="p-3 border-t border-slate-50 bg-slate-50/30 text-center">
                         <Link 
-                            to="/admin/notifications" 
+                            to="/admin/settings" 
                             onClick={() => setShowNotifications(false)}
                             className="text-xs font-bold text-slate-500 hover:text-teal-600 transition-colors"
                         >

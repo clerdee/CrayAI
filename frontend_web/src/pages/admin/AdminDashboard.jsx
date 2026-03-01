@@ -186,7 +186,7 @@ const AdminDashboard = () => {
                 log.user,
                 log.gender || 'Unknown',
                 log.health,
-                `${log.confidence}%`,
+                `${typeof log.confidence === 'number' ? log.confidence.toFixed(1) : log.confidence}%`,
                 algae,
                 `Lvl ${turbidity}`
             ];
@@ -246,7 +246,7 @@ const AdminDashboard = () => {
             "Email": log.email,
             "Gender": log.gender || 'Unknown',
             "Health Status": log.health,
-            "Confidence": `${log.confidence}%`,
+            "Confidence": `${typeof log.confidence === 'number' ? log.confidence.toFixed(1) : log.confidence}%`,
             "Algae Level": log.environment?.algae_label || log.algae || 'N/A',
             "Turbidity": log.environment?.turbidity_level || log.turbidity || 'N/A',
             "Scan Date": new Date(log.createdAt || Date.now()).toLocaleDateString()
@@ -473,7 +473,10 @@ const AdminDashboard = () => {
                                   }`}>
                                       {log.health}
                                   </span>
-                                  <p className="text-[10px] text-slate-400 mt-1">{log.confidence}% Confidence</p>
+                                  {/* --- FORMATTED CONFIDENCE FETCHED FROM BACKEND --- */}
+                                  <p className="text-[10px] text-slate-400 mt-1">
+                                    {typeof log.confidence === 'number' ? log.confidence.toFixed(1) : log.confidence}% Confidence
+                                  </p>
                               </div>
                           </div>
                       ))
