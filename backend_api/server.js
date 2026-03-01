@@ -34,13 +34,20 @@ app.use(cors({
 app.use('/api/measure', createProxyMiddleware({ 
     target: PYTHON_API_URL, 
     changeOrigin: true,
-    pathRewrite: { '^/api/measure': '/api/measure' }
+    pathRewrite: function (path, req) {
+        return '/api/measure'; 
+    }
 }));
 
 app.use('/api/chatbot', createProxyMiddleware({ 
     target: PYTHON_API_URL, 
     changeOrigin: true,
-    pathRewrite: { '^/api/chatbot': '/api/training/chatbot' }
+    pathRewrite: function (path, req) {
+        return req.originalUrl.replace('/api/chatbot', '/api/training/chatbot'); 
+    },
+    onProxyReq: (proxyReq, req, res) => {
+        console.log(`🚀 [PROXY] Forwarding to: ${proxyReq.protocol}//${proxyReq.host}${proxyReq.path}`);
+    }
 }));
 
 app.use(express.json({ limit: '50mb' }));
