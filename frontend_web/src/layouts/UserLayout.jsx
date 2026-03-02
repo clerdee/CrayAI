@@ -1,12 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, Loader2, Trash2 } from 'lucide-react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import Header from '../components/user/Header';
 import Sidebar from '../components/user/Sidebar';
-import client from '../api/client';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const CHATBOT_URL = import.meta.env.VITE_CHATBOT_API_URL;
 
 const UserLayout = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const navigate = useNavigate();
+  
+  // Set initial user state immediately from localStorage if it exists 
+  // (This prevents the header from flashing empty data while fetchUser runs)
+  const [user, setUser] = useState(() => {
+      const savedUser = localStorage.getItem('user');
+      return savedUser ? JSON.parse(savedUser) : null;
+  });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // --- 1. CrayBot Chat State ---
@@ -29,17 +39,36 @@ const UserLayout = ({ children }) => {
     const fetchUser = async () => {
       try {
         const token = localStorage.getItem('token');
-        if (!token) return;
-        const res = await client.get('/auth/profile', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.data?.success) setUser(res.data.user);
+        if (!token) {
+            navigate('/auth');
+            return;
+        }
+
+        // Configure default axios headers so it always works
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+        const res = await axios.get(`${API_BASE_URL}/auth/profile`);
+        
+        if (res.data?.success) {
+            setUser(res.data.user);
+            localStorage.setItem('user', JSON.stringify(res.data.user)); 
+        }
       } catch (error) {
         console.error("Failed to fetch user context for layout", error);
+        
+        // 🚨 Critical Error Handling for 401
+        if (error.response && error.response.status === 401) {
+            console.log("Token is invalid or expired. Logging out.");
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            delete axios.defaults.headers.common['Authorization'];
+            navigate('/auth');
+        }
       }
     };
+    
     fetchUser();
-  }, []);
+  }, [navigate]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -52,7 +81,6 @@ const UserLayout = ({ children }) => {
     setIsBotTyping(true);
 
     try {
-      const CHATBOT_URL = import.meta.env.VITE_CHATBOT_API_URL;
       const response = await axios.post(`${CHATBOT_URL}/ask`, { question: userMsg });
 
       setMessages(prev => [...prev, {
@@ -91,7 +119,6 @@ const UserLayout = ({ children }) => {
 
       {/* --- CRAYBOT CHAT WINDOW MODAL --- */}
       {isChatOpen && (
-        /* FIXED BUG: Removed the conflicting 'relative' tag so it acts purely as a floating fixed overlay */
         <div className="fixed bottom-24 right-6 z-[60] w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300">
           
           {/* CUSTOM CONFIRMATION OVERLAY */}

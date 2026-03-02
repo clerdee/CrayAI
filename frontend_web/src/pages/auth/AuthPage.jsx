@@ -71,7 +71,9 @@ const AuthPage = () => {
   // 0. HANDLE SOCIAL LOGIN (GOOGLE & GITHUB)
   // ============================================================
   const handleSocialLogin = async (provider) => {
+    if (loading) return; 
     setLoading(true);
+    
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
@@ -88,33 +90,44 @@ const AuthPage = () => {
       const response = await axios.post(`${API_BASE_URL}/auth/social-login`, socialData);
 
       if (response.data.success) {
-        const loggedInUser = response.data.user;
+        const token = response.data.token; 
+        const fullUserData = response.data.user; 
 
-        if (loggedInUser.accountStatus === 'Inactive') {
-            const reason = loggedInUser.deactivationReason || "No specific reason provided.";
+        if (!token) {
+            showToast("Authentication error: No token received.", "error");
+            setLoading(false);
+            return;
+        }
+
+        if (fullUserData.accountStatus === 'Inactive') {
+            const reason = fullUserData.deactivationReason || "No specific reason provided.";
             showToast(`Account Deactivated. Reason: ${reason}`, "error");
             setLoading(false);
             return; 
         }
 
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(loggedInUser));
+        window.localStorage.setItem('token', token);
+        window.localStorage.setItem('user', JSON.stringify(fullUserData));
 
-        showToast(`Welcome ${socialData.firstName}!`, 'success');
-        
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+        showToast(`Welcome ${fullUserData.firstName}!`, 'success');
+ 
         setTimeout(() => {
-            if (loggedInUser.role === 'admin') {
+            if (fullUserData.role === 'admin') {
                 navigate('/admin/dashboard');
             } else {
+                // FIXED: Route exactly to /dashboard to match App.jsx
                 navigate('/dashboard');
             }
-        }, 1000);
+        }, 1500); 
       }
 
     } catch (error) {
       console.error("Social Login Error:", error);
       if (error.code === 'auth/popup-closed-by-user') {
-        showToast('Login cancelled.', 'error');
+        showToast('Login cancelled by user.', 'error');
+      } else if (error.code === 'auth/cancelled-popup-request') {
       } else if (error.code === 'auth/account-exists-with-different-credential') {
         showToast('Account exists with a different login method.', 'error');
       } else {
@@ -170,6 +183,7 @@ const AuthPage = () => {
                 if (fullUserData.role === 'admin') {
                     navigate('/admin/dashboard');
                 } else {
+                    // FIXED: Route exactly to /dashboard to match App.jsx
                     navigate('/dashboard');
                 }
             }, 1000);
@@ -253,11 +267,23 @@ const AuthPage = () => {
       });
 
       if (response.data.success) {
+        const fullUserData = response.data.user;
         localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user)); 
+        localStorage.setItem('user', JSON.stringify(fullUserData)); 
+        
+        axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+
         showToast("Verification Successful!", "success");
         setShowOtpModal(false);
-        setTimeout(() => navigate('/dashboard'), 1000);
+        
+        setTimeout(() => {
+            if (fullUserData.role === 'admin') {
+                navigate('/admin/dashboard');
+            } else {
+                // FIXED: Route exactly to /dashboard to match App.jsx
+                navigate('/dashboard');
+            }
+        }, 1000);
       }
     } catch (error) {
       showToast(error.response?.data?.message || 'Invalid OTP', 'error');
@@ -299,7 +325,6 @@ const AuthPage = () => {
         <div className="relative z-10 flex flex-col items-center">
            <div className="relative w-[260px] h-[540px] bg-slate-950 rounded-[2.5rem] border-[6px] border-slate-900 shadow-2xl overflow-hidden ring-1 ring-white/10">
               <div className="w-full h-full bg-black relative">
-                 {/* CHANGED SRC TO POINT TO PUBLIC FOLDER */}
                  <img src="/mobile_auth.png" alt="Scan" className="w-full h-full object-cover opacity-60" />
                  <div className="absolute inset-0 flex flex-col justify-end p-5">
                     <div className="bg-white/10 backdrop-blur-xl border border-white/10 p-4 rounded-2xl mb-4 shadow-lg">
@@ -389,26 +414,28 @@ const AuthPage = () => {
             <button type="submit" disabled={loading} className="primary-btn py-3.5 text-base disabled:opacity-70">{loading ? 'Signing In...' : 'Sign In to Dashboard'}</button>
           </form>
 
-          {/* --- SOCIAL LOGIN BUTTONS (UPDATED) --- */}
+          {/* --- SOCIAL LOGIN BUTTONS --- */}
           <div className="relative flex py-2 items-center"><div className="flex-grow border-t border-slate-100"></div><span className="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase tracking-wider">Or continue with</span><div className="flex-grow border-t border-slate-100"></div></div>
           
-          <div className="grid grid-cols-2 gap-4">
+          {/* <div className="grid grid-cols-2 gap-4">
             <button 
                 type="button" 
                 onClick={() => handleSocialLogin(googleProvider)} 
-                className="social-btn py-3"
+                className="social-btn py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading}
             >
                 <span className="font-bold text-lg text-blue-500">G</span> Google
             </button>
             <button 
                 type="button" 
                 onClick={() => handleSocialLogin(githubProvider)} 
-                className="social-btn py-3"
+                className="social-btn py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading}
             >
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.285 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" /></svg> 
                 GitHub
             </button>
-          </div>
+          </div> */}
 
           <div className="text-center"><p className="text-slate-500 text-sm">Don't have an account? <span onClick={toggleMode} className="text-teal-600 font-bold hover:text-teal-700 hover:underline cursor-pointer">Sign up</span></p></div>
         </div>
