@@ -117,7 +117,6 @@ const AuthPage = () => {
             if (fullUserData.role === 'admin') {
                 navigate('/admin/dashboard');
             } else {
-                // FIXED: Route exactly to /dashboard to match App.jsx
                 navigate('/dashboard');
             }
         }, 1500); 
@@ -183,7 +182,6 @@ const AuthPage = () => {
                 if (fullUserData.role === 'admin') {
                     navigate('/admin/dashboard');
                 } else {
-                    // FIXED: Route exactly to /dashboard to match App.jsx
                     navigate('/dashboard');
                 }
             }, 1000);
@@ -246,8 +244,15 @@ const AuthPage = () => {
         formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset); 
 
         try {
-           const uploadRes = await axios.post(CLOUDINARY_CONFIG.apiUrl, formData);
-           imageUrl = uploadRes.data.secure_url; 
+           const uploadRes = await fetch(CLOUDINARY_CONFIG.apiUrl, {
+               method: 'POST',
+               body: formData
+           });
+           
+           if (!uploadRes.ok) throw new Error("Cloudinary upload failed");
+           
+           const uploadData = await uploadRes.json();
+           imageUrl = uploadData.secure_url;
         } catch (uploadError) {
            console.error("Image upload failed:", uploadError);
            showToast("Failed to upload profile picture. Try again.", "error");
@@ -276,14 +281,10 @@ const AuthPage = () => {
         showToast("Verification Successful!", "success");
         setShowOtpModal(false);
         
+        // 🚨 FIXED: Route back to the landing page upon successful registration
         setTimeout(() => {
-            if (fullUserData.role === 'admin') {
-                navigate('/admin/dashboard');
-            } else {
-                // FIXED: Route exactly to /dashboard to match App.jsx
-                navigate('/dashboard');
-            }
-        }, 1000);
+            navigate('/');
+        }, 1500);
       }
     } catch (error) {
       showToast(error.response?.data?.message || 'Invalid OTP', 'error');
