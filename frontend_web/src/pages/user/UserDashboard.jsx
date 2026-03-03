@@ -38,8 +38,10 @@ const UserDashboard = () => {
   
   const [marketProjections, setMarketProjections] = useState(MONTH_NAMES.map(m => ({ month: m, price: 0 })));
 
-  // --- NEW: MODAL STATE ---
+  // --- NEW: MODAL & NOTIFICATION STATE ---
   const [selectedScan, setSelectedScan] = useState(null);
+  const [scanToDelete, setScanToDelete] = useState(null);
+  const [notification, setNotification] = useState(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDate(new Date()), 60000);
@@ -132,19 +134,36 @@ const UserDashboard = () => {
     processingTime: r.processing_time || 'N/A'
   });
 
-  const handleDeleteScan = async (scan) => {
-    if (!window.confirm("Are you sure you want to delete this scan log?")) return;
+  const promptDeleteScan = (scan) => {
+    setScanToDelete(scan);
+  };
+
+  const confirmDeleteScan = async () => {
+    if (!scanToDelete) return;
     try {
       const token = localStorage.getItem('token');
-      await client.delete(`/scans/${scan.dbId}/hard-delete`, { 
+      await client.delete(`/scans/${scanToDelete.dbId}/hard-delete`, { 
         headers: { Authorization: `Bearer ${token}` } 
       });
-      setRecentScans(prev => prev.filter(r => r._id !== scan.dbId));
+      
+      setRecentScans(prev => prev.filter(r => r._id !== scanToDelete.dbId));
+      
+      // Store ID before clearing for the notification
+      const deletedId = scanToDelete.id;
+      
+      setScanToDelete(null);
       setSelectedScan(null);
+      
+      // Trigger Notification
+      setNotification({ type: 'success', message: `Scan ${deletedId} deleted permanently.` });
+      setTimeout(() => setNotification(null), 4000);
+
       fetchDashboardData(); 
     } catch (err) {
       console.error("Delete failed:", err);
-      alert("Failed to delete scan. Please try again.");
+      setScanToDelete(null);
+      setNotification({ type: 'error', message: "Failed to delete scan. Please try again." });
+      setTimeout(() => setNotification(null), 4000);
     }
   };
 
@@ -543,14 +562,50 @@ const UserDashboard = () => {
 
       </motion.div>
 
+      {/* --- NOTIFICATION TOAST --- */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-8 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl bg-slate-800 text-white min-w-[300px]"
+          >
+            {notification.type === 'success' ? (
+              <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
+            )}
+            <span className="text-sm font-bold tracking-wide flex-1">{notification.message}</span>
+            <button 
+              onClick={() => setNotification(null)} 
+              className="ml-2 text-slate-400 hover:text-white transition-colors p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* --- DETAIL MODAL --- */}
       <AnimatePresence>
         {selectedScan && (
           <UserScanDetailModal 
             scan={selectedScan} 
             onClose={() => setSelectedScan(null)} 
-            onDelete={() => handleDeleteScan(selectedScan)}
+            onDelete={() => promptDeleteScan(selectedScan)}
             onPost={() => handlePostToFeed(selectedScan)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* --- CUSTOM DELETE CONFIRMATION MODAL --- */}
+      <AnimatePresence>
+        {scanToDelete && (
+          <DeleteConfirmModal
+            scan={scanToDelete}
+            onClose={() => setScanToDelete(null)}
+            onConfirm={confirmDeleteScan}
           />
         )}
       </AnimatePresence>
@@ -695,6 +750,48 @@ const UserScanDetailModal = ({ scan, onClose, onDelete, onPost }) => {
         </motion.div>
       </div>
     );
+};
+
+// --- SUB-COMPONENT: CUSTOM DELETE CONFIRMATION MODAL ---
+const DeleteConfirmModal = ({ scan, onClose, onConfirm }) => {
+  return (
+    <div 
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-[#293241]/70 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <motion.div 
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-8 text-center"
+      >
+        <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+          <Trash2 className="w-8 h-8" />
+        </div>
+        
+        <h3 className="text-xl font-black text-slate-800 mb-2">Delete Scan Log?</h3>
+        <p className="text-sm font-medium text-slate-500 mb-8">
+          Are you sure you want to permanently delete <span className="font-mono text-slate-700 bg-slate-100 px-1 rounded">{scan.id}</span>? This action cannot be undone.
+        </p>
+
+        <div className="flex gap-3">
+          <button 
+            onClick={onClose}
+            className="flex-1 py-3 bg-slate-50 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={onConfirm}
+            className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-red-500/20 hover:bg-red-600 transition-colors"
+          >
+            Yes, Delete
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
 };
 
 const DetailBox = ({ label, value, icon }) => (
