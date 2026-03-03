@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
-import { useNavigate, useLocation } from 'react-router-dom'; // <--- ADDED useLocation
+import { useNavigate, useLocation } from 'react-router-dom'; 
 import client from '../../api/client';
 
 const ALGAE_LEVELS = [
@@ -85,7 +85,7 @@ const TurbidityGraph = ({ level }) => {
 // --- MAIN SCAN PAGE ---
 const ScanPage = () => {
   const navigate = useNavigate();
-  const location = useLocation(); // <--- RECEIVE DATA FROM DASHBOARD
+  const location = useLocation(); 
   const fileInputRef = useRef(null);
   
   const [selectedFile, setSelectedFile] = useState(null);
@@ -104,7 +104,6 @@ const ScanPage = () => {
       setSelectedFile(file);
       setPreviewUrl(URL.createObjectURL(file));
       setScanResult(null);
-      // Clear the state so refreshing doesn't reload the file (optional but good practice)
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
@@ -155,7 +154,7 @@ const ScanPage = () => {
       const formData = new FormData();
       formData.append('photo', selectedFile);
 
-      const res = await axios.post(`${import.meta.env.VITE_CHATBOT_API_URL}/measure`, formData, {
+      const res = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/measure`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
@@ -179,7 +178,7 @@ const ScanPage = () => {
       toast.success('Analysis complete!');
     } catch (error) {
       console.error("AI Error:", error);
-      toast.error('Failed to communicate with AI brain.');
+      toast.error('Failed to communicate with AI brain. Is the backend running?');
     } finally {
       setIsScanning(false);
     }
@@ -195,7 +194,16 @@ const ScanPage = () => {
       uploadData.append('upload_preset', 'CrayAI');
       uploadData.append('cloud_name', 'dvdrak5wl');
 
-      const cloudRes = await axios.post('https://api.cloudinary.com/v1_1/dvdrak5wl/image/upload', uploadData);
+      const cloudRes = await fetch(`${import.meta.env.VITE_CLOUDINARY_API_URL}/image/upload`, {
+          method: 'POST',
+          body: uploadData
+      });
+
+      if (!cloudRes.ok) {
+          throw new Error(`Cloudinary upload failed with status ${cloudRes.status}`);
+      }
+
+      const cloudData = await cloudRes.json();
       
       const width = scanResult.measurements?.[0]?.width_cm || 0;
       const height = scanResult.measurements?.[0]?.height_cm || 0;
@@ -205,10 +213,10 @@ const ScanPage = () => {
       const payload = {
         scanId: scanResult.generatedScanId,
         gender: scanResult.gender || "Not Defined",
-        gender_confidence: scanResult.genderConfidence || 0, // Ensure web saves confidence too!
+        gender_confidence: scanResult.genderConfidence || 0, 
         image: {
-          url: cloudRes.data.secure_url,
-          public_id: cloudRes.data.public_id
+          url: cloudData.secure_url,
+          public_id: cloudData.public_id
         },
         morphometrics: {
           width_cm: width,
@@ -234,7 +242,7 @@ const ScanPage = () => {
         
         setTimeout(() => navigate('/community', { 
           state: { 
-            newPostImage: cloudRes.data.secure_url,
+            newPostImage: cloudData.secure_url,
             newPostText: postText
           }
         }), 1500);
@@ -266,8 +274,8 @@ const ScanPage = () => {
   return (
     <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-8 font-sans pb-24">
       <Toaster position="top-center" />
-      
       <div className="max-w-[90rem] mx-auto">
+        
         <div className="mb-8">
           <h1 className="text-3xl font-black text-[#293241] tracking-tight uppercase">AI Scanner</h1>
           <p className="text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest">Analyze sizing and water quality instantly</p>
@@ -278,137 +286,270 @@ const ScanPage = () => {
           {/* LEFT: UPLOAD & PREVIEW */}
           <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-6 flex flex-col h-[700px] sticky top-8">
             <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
+            
             {!previewUrl ? (
-              <div onDragOver={(e) => e.preventDefault()} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()} className="flex-1 border-2 border-dashed border-slate-200 rounded-[2rem] bg-slate-50 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors group">
-                <UploadCloud className="w-10 h-10 text-[#3D5A80] mb-4" />
-                <h3 className="text-lg font-black text-[#293241]">Upload a Photo</h3>
-                <p className="text-sm text-slate-400 font-bold">Center the crayfish for best results</p>
+              <div 
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-1 border-2 border-dashed border-slate-200 rounded-[2rem] bg-slate-50 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 transition-all group"
+              >
+                <div className="w-24 h-24 bg-white rounded-full shadow-sm flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                  <Camera className="w-10 h-10 text-[#3D5A80]" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-700">Tap to Capture</h3>
+                <p className="text-sm font-bold text-slate-400 mt-2 uppercase tracking-widest">or drop an image here</p>
               </div>
             ) : (
-              <div className="flex-1 relative rounded-[2rem] overflow-hidden bg-[#111] flex items-center justify-center">
-                <img src={previewUrl} alt="Preview" className={`w-full h-full object-contain ${isScanning ? 'opacity-30 blur-sm' : 'opacity-100'} transition-all duration-500`} />
+              <div className="flex-1 relative rounded-[2rem] overflow-hidden bg-black shadow-inner flex items-center justify-center">
+                <img src={previewUrl} alt="Preview" className={`max-w-full max-h-full object-contain transition-opacity duration-300 ${isScanning ? 'opacity-40 blur-sm' : 'opacity-100'}`} />
+                
                 {isScanning && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <Loader2 className="w-10 h-10 text-[#E76F51] animate-spin mb-4" />
-                    <p className="text-white font-black uppercase tracking-widest text-sm">Analyzing Specimen...</p>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+                    <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mb-4">
+                      <Loader2 className="w-10 h-10 text-white animate-spin" />
+                    </div>
+                    <div className="bg-[#293241] text-white px-6 py-2 rounded-full font-bold text-sm uppercase tracking-widest animate-pulse shadow-xl">
+                      Analyzing Target...
+                    </div>
                   </div>
                 )}
-                {!isScanning && <button onClick={resetScanner} className="absolute top-4 right-4 bg-black/60 text-white p-3 rounded-full hover:bg-black/80"><RefreshCw className="w-5 h-5" /></button>}
+                
+                {isScanning && (
+                  <motion.div 
+                    className="absolute top-0 left-0 w-full h-1 bg-[#0FA958] shadow-[0_0_20px_#0FA958]"
+                    animate={{ top: ['0%', '100%', '0%'] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                  />
+                )}
               </div>
             )}
-            <div className="mt-6"><button onClick={analyzeImage} disabled={!previewUrl || isScanning || scanResult} className={`w-full flex items-center justify-center gap-3 py-4 rounded-2xl text-sm font-black uppercase tracking-widest transition-all ${!previewUrl || isScanning || scanResult ? 'bg-slate-100 text-slate-400' : 'bg-[#E76F51] text-white hover:bg-red-600 shadow-xl shadow-[#E76F51]/20'}`}><ScanLine className="w-5 h-5" /> Run AI Analysis</button></div>
+
+            {/* ACTION BUTTONS */}
+            <div className="mt-6 flex gap-3 h-14">
+              {previewUrl && !scanResult && !isScanning && (
+                <>
+                  <button onClick={resetScanner} className="px-6 rounded-2xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors">
+                    Retake
+                  </button>
+                  <button onClick={analyzeImage} className="flex-1 bg-[#3D5A80] hover:bg-[#293241] text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#3D5A80]/20">
+                    <ScanLine className="w-5 h-5" /> Run AI Analysis
+                  </button>
+                </>
+              )}
+              {scanResult && (
+                <button onClick={resetScanner} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors">
+                  <RefreshCw className="w-5 h-5" /> Scan Another
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* RIGHT: RESULTS PANEL */}
-          <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-8 flex flex-col">
-            <h2 className="text-xl font-black text-[#293241] mb-6 flex items-center gap-3"><Activity className="text-[#3D5A80]" /> Report Dashboard</h2>
+          {/* RIGHT: RESULTS DASHBOARD */}
+          <div className="flex flex-col h-[700px]">
             {!scanResult ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
-                <ScanLine className="w-16 h-16 text-slate-300 mb-4" />
-                <p className="text-sm font-bold text-slate-400 max-w-xs uppercase tracking-widest">Upload and analyze an image to view results.</p>
+              <div className="flex-1 bg-white rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col items-center justify-center p-8 text-center">
+                <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-6">
+                  <Cpu className="w-8 h-8 text-slate-300" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-700">Awaiting Data</h3>
+                <p className="text-sm font-medium text-slate-400 mt-2 max-w-sm leading-relaxed">
+                  Upload an image and run the AI analysis to view morphometrics and water quality metrics here.
+                </p>
               </div>
             ) : (
-              <AnimatePresence>
-                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex-1 flex flex-col">
-                  {!hasDetected ? (
-                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 flex items-start gap-4"><AlertCircle className="w-6 h-6 text-amber-500 flex-shrink-0" /><div><h4 className="font-black text-amber-800 mb-1">No Crayfish Detected</h4><p className="text-sm text-amber-700 font-medium">Please ensure lighting is good and the subject is centered.</p></div></div>
-                  ) : (
-                    <>
-                      <div className="flex border-b border-slate-100 mb-6">
-                        {['specimen', 'env', 'details'].map(tab => (
-                          <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 pb-3 text-xs font-black uppercase tracking-widest transition-colors border-b-2 ${activeTab === tab ? 'text-[#3D5A80] border-[#3D5A80]' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
-                            {tab === 'env' ? 'Environment' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-                          </button>
-                        ))}
-                      </div>
+              <div className="flex-1 bg-white rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+                
+                {/* Custom Tabs */}
+                <div className="flex p-2 bg-slate-50 border-b border-slate-100">
+                  <button onClick={() => setActiveTab('specimen')} className={`flex-1 py-3 text-sm font-bold rounded-2xl transition-all ${activeTab === 'specimen' ? 'bg-white text-[#293241] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Specimen</button>
+                  <button onClick={() => setActiveTab('environment')} className={`flex-1 py-3 text-sm font-bold rounded-2xl transition-all ${activeTab === 'environment' ? 'bg-white text-[#293241] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Environment</button>
+                  <button onClick={() => setActiveTab('metadata')} className={`flex-1 py-3 text-sm font-bold rounded-2xl transition-all ${activeTab === 'metadata' ? 'bg-white text-[#293241] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Metadata</button>
+                </div>
 
-                      {activeTab === 'specimen' && (
-                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-6">
-                          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 text-center">
-                            <div className="flex items-center justify-between mb-4"><span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Gender ID</span><Activity className="w-4 h-4 text-[#3D5A80]" /></div>
-                            <h3 className="text-3xl font-black text-[#3D5A80] mb-2 uppercase">{scanResult.gender || "Not Defined"}</h3>
-                            <p className="text-xs font-bold text-slate-400 italic">Australian Red Claw</p>
-                          </div>
-                          <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
-                            <div className="flex justify-between items-center mb-3"><span className="text-[10px] font-black text-[#293241] uppercase tracking-widest">AI Confidence Score</span><span className="text-xs font-black text-[#3D5A80]">{scanResult.genderConfidence}%</span></div>
-                            <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-[#3D5A80] transition-all duration-1000" style={{ width: `${scanResult.genderConfidence}%` }} /></div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center">
-                              <div className="flex items-center gap-2 text-slate-400 mb-2"><Ruler className="w-4 h-4" /><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Size Estimation</span></div>
-                              <span className="text-lg font-black text-[#293241] block">{metrics.width_cm.toFixed(2)}cm W x {metrics.height_cm.toFixed(2)}cm H</span>
-                              <span className="text-[11px] font-bold text-[#E76F51] mt-1">{(metrics.width_cm / 2.54).toFixed(2)}in W x {(metrics.height_cm / 2.54).toFixed(2)}in H</span>
-                            </div>
-                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center">
-                              <div className="flex items-center gap-2 text-slate-400 mb-2"><Clock className="w-4 h-4" /><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Age Class</span></div>
-                              <span className="text-lg font-black text-[#293241] block">{ageInfo.class}</span>
-                              <span className="text-[11px] font-bold text-[#E76F51] mt-1">{ageInfo.months}</span>
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-
-                      {activeTab === 'env' && (
-                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4">
-                          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                            <div className="flex items-center justify-between mb-4"><div className="flex items-center gap-2 text-[#8B5A2B]"><Droplets className="w-4 h-4" /><span className="text-[10px] font-black uppercase tracking-widest">Water Turbidity</span></div><span className="text-lg font-black text-[#8B5A2B]">Level {scanResult.turbidity_level || 2}</span></div>
-                            <TurbidityGraph level={scanResult.turbidity_level || 2} />
-                          </div>
-                          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 text-center"><div className="flex items-center justify-start gap-2 text-[#0FA958] mb-2"><Activity className="w-4 h-4" /><span className="text-[10px] font-black uppercase tracking-widest">Algae Trace</span></div><GaugeChart levelIndex={scanResult.algae_level || 0} /><div className="text-center pb-2"><span className="text-2xl font-black uppercase tracking-widest block" style={{ color: algaeData.color }}>{algaeData.label} ALGAE</span><p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Cyanobacteria Detection</p></div></div>
-                        </motion.div>
-                      )}
-
-                      {activeTab === 'details' && (
-                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-6">
-                          <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-50 shadow-sm">
-                            <div className="p-4 flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500"><Calendar className="w-5 h-5"/></div>
-                              <div><p className="text-[10px] font-black text-slate-400 uppercase">Date & Time</p><p className="text-sm font-bold text-slate-800">{new Date().toLocaleString()}</p></div>
-                            </div>
-                            <div className="p-4 flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center text-orange-500"><MapPin className="w-5 h-5"/></div>
-                              <div><p className="text-[10px] font-black text-slate-400 uppercase">Location</p><p className="text-sm font-bold text-slate-800">{userLocation}</p></div>
-                            </div>
-                            <div className="p-4 flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-full bg-teal-50 flex items-center justify-center text-teal-500"><Fingerprint className="w-5 h-5"/></div>
-                              <div><p className="text-[10px] font-black text-slate-400 uppercase">Session ID</p><p className="text-sm font-bold text-slate-800">{scanResult.generatedScanId}</p></div>
-                            </div>
-                            <div className="p-4 flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-amber-500"><Clock className="w-5 h-5"/></div>
-                              <div><p className="text-[10px] font-black text-slate-400 uppercase">Actual Processing Time</p><p className="text-sm font-bold text-slate-800">{scanResult.actualProcessingTime}s</p></div>
-                            </div>
-                            <div className="p-4 flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500"><Cpu className="w-5 h-5"/></div>
-                              <div><p className="text-[10px] font-black text-slate-400 uppercase">Analysis Core</p><p className="text-sm font-bold text-slate-800">YOLOv8 v{scanResult.model_version || '1.0'}</p></div>
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </>
-                  )}
-                  
-                  {/* --- ACTION BUTTONS (Save & Post) --- */}
-                  <div className="mt-auto pt-6 flex gap-3">
-                    <button 
-                      onClick={() => handleSaveScan('profile')}
-                      disabled={isSaving || !hasDetected}
-                      className="flex-1 flex items-center justify-center gap-2 py-4 bg-slate-100 text-slate-500 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all disabled:opacity-50"
-                    >
-                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                      Save to Profile
-                    </button>
+                {/* Tab Content Area */}
+                <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
+                  <AnimatePresence mode="wait">
                     
-                    <button 
-                      onClick={() => handleSaveScan('feed')}
-                      disabled={isSaving || !hasDetected}
-                      className="flex-1 flex items-center justify-center gap-2 py-4 bg-[#3D5A80] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-[#293241] transition-all shadow-lg shadow-[#3D5A80]/20 disabled:opacity-50"
-                    >
-                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
-                      Post to Feed
-                    </button>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
+                    {/* --- SPECIMEN TAB --- */}
+                    {activeTab === 'specimen' && (
+                      <motion.div key="specimen" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+                        {!hasDetected ? (
+                           <div className="bg-red-50 border-2 border-dashed border-red-200 rounded-3xl p-8 text-center">
+                             <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+                             <h3 className="font-bold text-red-700 text-lg">No Crayfish Detected</h3>
+                             <p className="text-sm text-red-500/80 mt-2">Please ensure the crayfish is clearly visible against a contrasting background.</p>
+                           </div>
+                        ) : (
+                          <>
+                            {/* Gender Banner */}
+                            <div className={`p-5 rounded-3xl flex items-center justify-between border ${
+                                scanResult.gender === 'Female' ? 'bg-pink-50 border-pink-100 text-pink-700' :
+                                scanResult.gender === 'Male' ? 'bg-blue-50 border-blue-100 text-blue-700' :
+                                scanResult.gender === 'Berried' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' :
+                                'bg-slate-50 border-slate-200 text-slate-700'
+                            }`}>
+                               <div className="flex items-center gap-4">
+                                 <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center text-2xl font-black">
+                                   {scanResult.gender === 'Female' ? '♀' : scanResult.gender === 'Male' ? '♂' : scanResult.gender === 'Berried' ? '🥚' : '?'}
+                                 </div>
+                                 <div>
+                                   <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Classification</p>
+                                   <h3 className="text-xl font-black">{scanResult.gender}</h3>
+                                 </div>
+                               </div>
+                               <div className="text-right">
+                                  <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Confidence</p>
+                                  <p className="text-lg font-bold">{scanResult.genderConfidence}%</p>
+                               </div>
+                            </div>
+
+                            {/* Sizing Grid */}
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col justify-center">
+                                <div className="flex items-center gap-2 mb-2 text-slate-400">
+                                  <Ruler className="w-4 h-4" />
+                                  <span className="text-[10px] font-black uppercase tracking-widest">Carapace Length</span>
+                                </div>
+                                <div className="flex items-baseline gap-1">
+                                  <span className="text-3xl font-black text-[#293241]">{metrics.height_cm}</span>
+                                  <span className="text-sm font-bold text-slate-400">cm</span>
+                                </div>
+                                <p className="text-xs font-medium text-slate-400 mt-1">approx {(metrics.height_cm / 2.54).toFixed(2)} inches</p>
+                              </div>
+
+                              <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col justify-center">
+                                <div className="flex items-center gap-2 mb-2 text-slate-400">
+                                  <Ruler className="w-4 h-4 rotate-90" />
+                                  <span className="text-[10px] font-black uppercase tracking-widest">Carapace Width</span>
+                                </div>
+                                <div className="flex items-baseline gap-1">
+                                  <span className="text-3xl font-black text-[#293241]">{metrics.width_cm}</span>
+                                  <span className="text-sm font-bold text-slate-400">cm</span>
+                                </div>
+                                <p className="text-xs font-medium text-slate-400 mt-1">approx {(metrics.width_cm / 2.54).toFixed(2)} inches</p>
+                              </div>
+                            </div>
+
+                            {/* Age Category */}
+                            <div className="bg-[#F4F7F9] rounded-3xl p-5 border border-slate-200 flex items-center justify-between">
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Est. Age Category</p>
+                                <h4 className="text-lg font-black text-[#293241] mt-1">{ageInfo.class}</h4>
+                              </div>
+                              <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100">
+                                <p className="text-sm font-bold text-[#3D5A80]">{ageInfo.months}</p>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </motion.div>
+                    )}
+
+                    {/* --- ENVIRONMENT TAB --- */}
+                    {activeTab === 'environment' && (
+                      <motion.div key="env" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+                         
+                         {/* Algae Section */}
+                         <div className="bg-white border border-slate-100 shadow-sm rounded-3xl p-6">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-2 text-slate-700">
+                                <Activity className="w-5 h-5" />
+                                <h3 className="font-bold text-sm uppercase tracking-widest">Algae Concentration</h3>
+                              </div>
+                              <span className="text-xs font-black px-3 py-1 rounded-full" style={{ backgroundColor: algaeData.color + '20', color: algaeData.color }}>
+                                {algaeData.label}
+                              </span>
+                            </div>
+                            <GaugeChart levelIndex={scanResult.algae_level} />
+                         </div>
+
+                         {/* Turbidity Section */}
+                         <div className="bg-white border border-slate-100 shadow-sm rounded-3xl p-6">
+                            <div className="flex items-center gap-2 text-slate-700 mb-2">
+                              <Droplets className="w-5 h-5 text-blue-500" />
+                              <h3 className="font-bold text-sm uppercase tracking-widest">Water Turbidity</h3>
+                            </div>
+                            <div className="flex items-end gap-2 mb-2">
+                              <span className="text-4xl font-black text-[#293241]">{scanResult.turbidity_level}</span>
+                              <span className="text-sm font-bold text-slate-400 mb-1">/ 10</span>
+                            </div>
+                            <TurbidityGraph level={scanResult.turbidity_level} />
+                         </div>
+
+                      </motion.div>
+                    )}
+
+                    {/* --- METADATA TAB --- */}
+                    {activeTab === 'metadata' && (
+                      <motion.div key="meta" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-3">
+                         
+                         <div className="bg-slate-50 rounded-2xl p-4 flex items-center gap-4 border border-slate-100">
+                           <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400 shrink-0"><Fingerprint className="w-5 h-5" /></div>
+                           <div className="min-w-0">
+                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Scan ID</p>
+                             <p className="font-mono text-sm font-bold text-slate-700 truncate">{scanResult.generatedScanId}</p>
+                           </div>
+                         </div>
+
+                         <div className="bg-slate-50 rounded-2xl p-4 flex items-center gap-4 border border-slate-100">
+                           <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400 shrink-0"><MapPin className="w-5 h-5" /></div>
+                           <div className="min-w-0">
+                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Location</p>
+                             <p className="text-sm font-bold text-slate-700 truncate">{userLocation}</p>
+                           </div>
+                         </div>
+
+                         <div className="bg-slate-50 rounded-2xl p-4 flex items-center gap-4 border border-slate-100">
+                           <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400 shrink-0"><Calendar className="w-5 h-5" /></div>
+                           <div className="min-w-0">
+                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Timestamp</p>
+                             <p className="text-sm font-bold text-slate-700 truncate">{new Date().toLocaleString()}</p>
+                           </div>
+                         </div>
+
+                         <div className="bg-slate-50 rounded-2xl p-4 flex items-center gap-4 border border-slate-100">
+                           <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400 shrink-0"><Clock className="w-5 h-5" /></div>
+                           <div className="min-w-0">
+                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Processing Time</p>
+                             <p className="text-sm font-bold text-slate-700 truncate">{scanResult.actualProcessingTime}s</p>
+                           </div>
+                         </div>
+
+                         <div className="bg-slate-50 rounded-2xl p-4 flex items-center gap-4 border border-slate-100">
+                           <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400 shrink-0"><Cpu className="w-5 h-5" /></div>
+                           <div className="min-w-0">
+                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Model Version</p>
+                             <p className="text-sm font-bold text-slate-700 truncate">v{scanResult.model_version || '1.0'}</p>
+                           </div>
+                         </div>
+
+                      </motion.div>
+                    )}
+
+                  </AnimatePresence>
+                </div>
+
+                {/* Save Actions */}
+                <div className="p-4 bg-white border-t border-slate-100 flex gap-3">
+                  <button 
+                    onClick={() => handleSaveScan('feed')}
+                    disabled={isSaving}
+                    className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                    <Share2 className="w-4 h-4" /> Post to Feed
+                  </button>
+                  <button 
+                    onClick={() => handleSaveScan('profile')}
+                    disabled={isSaving}
+                    className="flex-1 py-3.5 bg-[#E76F51] hover:bg-[#D65A3E] text-white font-bold rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#E76F51]/20 disabled:opacity-50"
+                  >
+                    {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                    {isSaving ? 'Saving...' : 'Save to History'}
+                  </button>
+                </div>
+
+              </div>
             )}
           </div>
         </div>
