@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, MessageCircle, Tag, MoreHorizontal, User, ChevronLeft, ChevronRight, Image as ImageIcon, Trash2, Pencil, Send } from 'lucide-react'; // 🚨 Added Send icon for messages
+import { Heart, MessageCircle, Tag, MoreHorizontal, User, ChevronLeft, ChevronRight, Image as ImageIcon, Trash2, Pencil, Send } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import client from '../../../api/client';
 
@@ -66,17 +66,33 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
     if (onEdit) onEdit(post);
   };
 
-  const authorName = post.userId?.firstName ? `${post.userId.firstName} ${post.userId.lastName}` : (post.user || 'Unknown User');
+  // 🚨 FIX: Bulletproof Author Name Extraction
+  // This prevents the "Objects are not valid as a React child" error when redirected from ScanPage
+  let authorName = 'Unknown User';
+  if (post.userId && typeof post.userId === 'object') {
+    authorName = `${post.userId.firstName || ''} ${post.userId.lastName || ''}`.trim() || 'Unknown User';
+  } else if (post.user && typeof post.user === 'object') {
+    authorName = `${post.user.firstName || ''} ${post.user.lastName || ''}`.trim() || 'Unknown User';
+  } else if (typeof post.user === 'string') {
+    authorName = post.user;
+  } else if (typeof post.userId === 'string') {
+    authorName = 'User';
+  }
+  
+  // Ultimate failsafe to guarantee it is NEVER an object
+  if (typeof authorName !== 'string') {
+    authorName = 'Unknown User';
+  }
 
-  let profilePicUrl = post.userId?.profilePic || post.userAvatar;
+  // Safe extraction for Profile Pic
+  let profilePicUrl = post.userId?.profilePic || post.user?.profilePic || post.userAvatar;
   if (profilePicUrl && typeof profilePicUrl !== 'string') {
     profilePicUrl = profilePicUrl.url || profilePicUrl.uri || profilePicUrl.src;
   }
   profilePicUrl = formatWebImage(profilePicUrl);
 
-  // 🚨 NEW: Handle Message Click (Redirects to ChatPage with State)
   const handleMessageClick = (e) => {
-    e.stopPropagation(); // Prevent opening the post details modal
+    e.stopPropagation(); 
     navigate('/chats', { 
       state: { 
         targetUser: {
@@ -182,7 +198,6 @@ const PostCard = ({ post, currentUser, onLike, onClick, onDelete, onEdit }) => {
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            {/* 🚨 NEW: Message Action Button */}
             <button 
               onClick={handleMessageClick}
               className="p-1.5 text-slate-400 hover:text-[#3D5A80] hover:bg-[#F4F7F9] rounded-full transition-colors"

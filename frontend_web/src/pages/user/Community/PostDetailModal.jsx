@@ -21,6 +21,9 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit,
   const [editCommentText, setEditCommentText] = useState('');
   const [commentToDelete, setCommentToDelete] = useState(null); 
   const [notification, setNotification] = useState(null); 
+  
+  // State for Deleting the Post itself
+  const [showPostDeleteConfirm, setShowPostDeleteConfirm] = useState(false);
 
   // Optimistic UI States for Liking
   const [isLiked, setIsLiked] = useState(false);
@@ -41,6 +44,7 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit,
       setEditingCommentId(null);
       setEditCommentText('');
       setCommentToDelete(null);
+      setShowPostDeleteConfirm(false);
       setNotification(null);
     }
   }, [isOpen, post?._id]);
@@ -94,6 +98,11 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit,
 
   const handleDeleteClick = (e) => {
     e.stopPropagation();
+    setShowOptions(false);
+    setShowPostDeleteConfirm(true); // Trigger the confirmation modal instead of deleting right away
+  };
+
+  const executeDeletePost = () => {
     if (onDelete) {
         onDelete(post._id);
         onClose(); 
@@ -173,10 +182,26 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit,
     }
   };
 
-  const authorName = post.userId ? `${post.userId.firstName} ${post.userId.lastName}` : (post.user || 'Unknown User');
+  // 🚨 FIX: Bulletproof Author Name Extraction to prevent "undefined undefined"
+  let authorName = 'Unknown User';
+  if (post?.userId && typeof post.userId === 'object') {
+    authorName = `${post.userId.firstName || ''} ${post.userId.lastName || ''}`.trim() || 'Unknown User';
+  } else if (post?.user && typeof post.user === 'object') {
+    authorName = `${post.user.firstName || ''} ${post.user.lastName || ''}`.trim() || 'Unknown User';
+  } else if (typeof post?.user === 'string') {
+    authorName = post.user;
+  } else if (typeof post?.userId === 'string') {
+    authorName = 'User';
+  }
   
-  let profilePicUrl = post.userId?.profilePic || post.userAvatar;
-  if (profilePicUrl && typeof profilePicUrl !== 'string') profilePicUrl = profilePicUrl.url || profilePicUrl.uri || profilePicUrl.src;
+  if (typeof authorName !== 'string' || !authorName.trim()) {
+    authorName = 'Unknown User';
+  }
+  
+  let profilePicUrl = post?.userId?.profilePic || post?.user?.profilePic || post?.userAvatar;
+  if (profilePicUrl && typeof profilePicUrl !== 'string') {
+      profilePicUrl = profilePicUrl.url || profilePicUrl.uri || profilePicUrl.src;
+  }
   profilePicUrl = formatWebImage(profilePicUrl);
 
   const getValidImages = () => {
@@ -453,6 +478,41 @@ const PostDetailModal = ({ post, currentUser, isOpen, onClose, onDelete, onEdit,
               </AnimatePresence>
 
             </div>
+
+            {/* Custom Delete POST Confirmation Modal */}
+            <AnimatePresence>
+              {showPostDeleteConfirm && (
+                <div className="absolute inset-0 z-[110] flex items-center justify-center p-4 bg-white/80 backdrop-blur-md md:rounded-[2rem]">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                    className="bg-white rounded-3xl w-full max-w-[320px] shadow-2xl border border-slate-100 overflow-hidden p-6 text-center"
+                  >
+                    <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+                      <Trash2 className="w-8 h-8 text-[#E76F51]" />
+                    </div>
+                    <h3 className="text-xl font-black text-[#293241] mb-2">Delete Post?</h3>
+                    <p className="text-sm font-bold text-slate-500 mb-6 px-2 leading-relaxed">Are you sure you want to permanently delete this post? This action cannot be undone.</p>
+                    <div className="flex gap-3">
+                      <button 
+                        onClick={() => setShowPostDeleteConfirm(false)}
+                        className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        onClick={executeDeletePost}
+                        className="flex-1 py-3.5 bg-[#E76F51] hover:bg-red-600 text-white font-bold rounded-xl transition-colors shadow-lg shadow-[#E76F51]/20"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
           </motion.div>
         </div>
       )}
