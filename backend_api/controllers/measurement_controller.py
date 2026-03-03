@@ -227,7 +227,7 @@ def process_measurement(image_file):
                     # --- FALLBACK LOGIC ---
                     if detected_gender == "Not Defined":
                         detected_gender = "Male"
-                        gender_confidence = 15.0
+                        gender_confidence = 45.0
 
                     # Draw Results
                     cv2.rectangle(original_img, (x1, y1), (x2, y2), (0, 255, 0), 4)
