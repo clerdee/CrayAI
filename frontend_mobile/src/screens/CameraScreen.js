@@ -12,7 +12,9 @@ import { aiClient } from '../api/client';
 const { width, height } = Dimensions.get('window');
 const SCAN_WIDTH = width * 0.75;
 const SCAN_HEIGHT = height * 0.55;
-const SAMPLES_NEEDED = 3; 
+
+// CHANGED: Reduced from 3 to 1 to make scanning 3x faster
+const SAMPLES_NEEDED = 1; 
 
 const MODES = ['SCAN', 'PHOTO'];
 
@@ -27,7 +29,6 @@ export default function CameraScreen({ navigation, route }) {
   const [liveMask, setLiveMask] = useState(null);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   
-  // ADDED: gender and genderConfidence storage
   const scanBuffer = useRef({ 
     widths: [], 
     heights: [], 
@@ -62,13 +63,13 @@ export default function CameraScreen({ navigation, route }) {
     scanLineAnim.setValue(0);
 
     Animated.loop(Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.15, duration: 800, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true })
+          Animated.timing(pulseAnim, { toValue: 1.15, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true })
     ])).start();
     
     Animated.loop(Animated.sequence([
-          Animated.timing(scanLineAnim, { toValue: 1, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          Animated.timing(scanLineAnim, { toValue: 0, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
+          Animated.timing(scanLineAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(scanLineAnim, { toValue: 0, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
     ])).start();
   };
 
@@ -85,7 +86,6 @@ export default function CameraScreen({ navigation, route }) {
     setLiveMask(null);
     setErrorModalVisible(false);
     
-    // Reset Buffer
     scanBuffer.current = { 
         widths: [], heights: [], genders: [], 
         lastImage: null, algaeLevel: 0, algaeDesc: '', 
@@ -93,22 +93,25 @@ export default function CameraScreen({ navigation, route }) {
     };
 
     startAnimations();
-    searchTimerRef.current = setTimeout(() => { setScanStatus('detecting'); }, 1500);
+    
+    // CHANGED: Drastically reduced artificial animation delays
+    searchTimerRef.current = setTimeout(() => { setScanStatus('detecting'); }, 400); // Was 1500
     lockTimerRef.current = setTimeout(() => { 
         setScanStatus('locked');
         Vibration.vibrate(50);
         performScanLoop(0); 
-    }, 3500);
+    }, 1000); // Was 3500
   };
 
   const performScanLoop = async (currentCount = 0) => {
     if (!cameraRef.current) return;
     
-    setScanStatus(`SCANNING ${currentCount + 1}/${SAMPLES_NEEDED}`);
+    setScanStatus('ANALYZING DATA...');
     setIsScanningLoop(true);
 
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.4, base64: false, skipProcessing: true });
+      // CHANGED: Reduced quality slightly to 0.3 for faster cloud uploads
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.3, base64: false, skipProcessing: true });
       const formData = new FormData();
       formData.append('photo', { uri: photo.uri, type: 'image/jpeg', name: 'scan.jpg' });
 
@@ -142,10 +145,8 @@ export default function CameraScreen({ navigation, route }) {
         scanBuffer.current.widths.push(target.width_cm);
         scanBuffer.current.heights.push(target.height_cm);
         
-        // --- FIX: Check both snake_case and camelCase to be safe ---
         const conf = target.gender_confidence || target.genderConfidence || 0;
 
-        // Push object with gender info
         scanBuffer.current.genders.push({ 
             gender: target.gender || "Not Defined", 
             confidence: conf
@@ -182,7 +183,6 @@ export default function CameraScreen({ navigation, route }) {
     const avgW = widths.reduce((a, b) => a + b, 0) / widths.length;
     const avgH = heights.reduce((a, b) => a + b, 0) / heights.length;
     
-    // Logic to pick the best gender (pick the one with highest confidence)
     const bestGenderObj = scanBuffer.current.genders.reduce((prev, current) => {
         return (prev.confidence > current.confidence) ? prev : current;
     }, { gender: "Not Defined", confidence: 0 });
@@ -199,8 +199,8 @@ export default function CameraScreen({ navigation, route }) {
         processing_time: `${scanBuffer.current.processingTime}s`,
         model_version: scanBuffer.current.modelVersion,
         scan_id: generatedScanId,
-        gender: bestGenderObj.gender,            // <--- PASSING GENDER
-        gender_confidence: bestGenderObj.confidence // <--- PASSING CONFIDENCE
+        gender: bestGenderObj.gender,            
+        gender_confidence: bestGenderObj.confidence 
     });
 
     setIsScanningLoop(false);
@@ -217,7 +217,7 @@ export default function CameraScreen({ navigation, route }) {
     startAnimations();
 
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.4, base64: false, skipProcessing: true });
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.3, base64: false, skipProcessing: true });
       const formData = new FormData();
       formData.append('photo', { uri: photo.uri, type: 'image/jpeg', name: 'photo.jpg' });
 
@@ -243,8 +243,6 @@ export default function CameraScreen({ navigation, route }) {
         setIsScanningLoop(false);
 
         const generatedScanId = `CRY-${Math.floor(Date.now() / 1000)}`;
-
-        // --- FIX: Check both snake_case and camelCase ---
         const conf = target.gender_confidence || target.genderConfidence || 0;
 
         navigation.navigate('Results', { 
@@ -258,7 +256,7 @@ export default function CameraScreen({ navigation, route }) {
             model_version: data.model_version || 'Local Fallback',
             scan_id: generatedScanId,
             gender: target.gender || "Not Defined",
-            gender_confidence: conf  // <--- FIXED
+            gender_confidence: conf  
         });
         setScanStatus('READY');
       } else {
@@ -276,8 +274,8 @@ export default function CameraScreen({ navigation, route }) {
 
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: false, // <-- CHANGED THIS: Disable forced cropping
-      quality: 1,           // <-- CHANGED THIS: Removed the aspect ratio array
+      allowsEditing: false, 
+      quality: 1,           
     });
 
     if (!result.canceled) {
@@ -313,8 +311,6 @@ export default function CameraScreen({ navigation, route }) {
           setIsScanningLoop(false);
 
           const generatedScanId = `CRY-${Math.floor(Date.now() / 1000)}`;
-
-          // --- FIX: Check both snake_case and camelCase ---
           const conf = target.gender_confidence || target.genderConfidence || 0;
 
           navigation.navigate('Results', { 
@@ -328,7 +324,7 @@ export default function CameraScreen({ navigation, route }) {
               model_version: data.model_version || 'Local Fallback',
               scan_id: generatedScanId,
               gender: target.gender || "Not Defined",
-              gender_confidence: conf // <--- FIXED
+              gender_confidence: conf 
           });
           
           if (selectedMode === 'PHOTO') setScanStatus('READY');
@@ -386,7 +382,6 @@ export default function CameraScreen({ navigation, route }) {
     <View style={styles.container}>
       <StatusBar hidden={true} />
       
-      {/* 1. CameraView closed immediately. No children inside! */}
       <CameraView 
         ref={cameraRef} 
         style={StyleSheet.absoluteFillObject} 
@@ -395,7 +390,6 @@ export default function CameraScreen({ navigation, route }) {
         mode="picture" 
       />
         
-      {/* 2. All overlays are now Siblings, floating on top securely */}
       {liveMask && (isScanningLoop || errorModalVisible) && (
           <Image source={{ uri: liveMask }} style={[StyleSheet.absoluteFillObject, { opacity: 0.8 }]} resizeMode="contain" />
       )}
@@ -408,7 +402,7 @@ export default function CameraScreen({ navigation, route }) {
                   </View>
                   <Text style={styles.errorTitle}>Detection Failed</Text>
                   <Text style={styles.errorDesc}>
-                      We couldn't find a crayfish in the frame. Please adjust your camera and ensure the subject is clearly visible from 6 inches.
+                      We couldn't detect a clear image of the crayfish or the calibration markers. Please ensure the subject is inside the A5 container, well-lit, and the 2x2cm corner markers are visible.
                   </Text>
                   <TouchableOpacity style={styles.retryButton} onPress={handleRetryScan}>
                       <Ionicons name="refresh" size={20} color="#FFF" />
@@ -476,11 +470,15 @@ export default function CameraScreen({ navigation, route }) {
             </View>
 
             <View style={styles.actionRow}>
-              <TouchableOpacity onPress={handleGalleryPick} style={styles.sideActionBtn}>
-                  <Ionicons name="images-outline" size={26} color="#FFF" />
-              </TouchableOpacity>
+              {selectedMode === 'PHOTO' ? (
+                <TouchableOpacity onPress={handleGalleryPick} style={styles.sideActionBtn}>
+                    <Ionicons name="images-outline" size={26} color="#FFF" />
+                </TouchableOpacity>
+              ) : (
+                <View style={{ width: 55, height: 55 }} />
+              )}
+
               <View style={styles.shutterContainer}>
-                  
                   <TouchableOpacity 
                       onPress={() => {
                           if (selectedMode === 'SCAN') startScanSequence();
@@ -516,15 +514,37 @@ export default function CameraScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              
               <View style={styles.guideStep}>
                   <View style={styles.stepIconContainer}>
-                    <MaterialCommunityIcons name="hand-back-left" size={28} color="#4CC9F0" />
+                    <MaterialCommunityIcons name="cube-scan" size={28} color="#4CC9F0" />
                   </View>
                   <View style={styles.stepTextContainer}>
-                    <Text style={styles.stepHeader}>1. Anchor Gesture</Text>
-                    <Text style={styles.stepDesc}>Place your middle finger on the surface and rest your phone on your extended thumb (~6 inches) for calibration.</Text>
+                    <Text style={styles.stepHeader}>1. Use the A5 Container</Text>
+                    <Text style={styles.stepDesc}>Ensure the crayfish is placed flat inside the standardized A5 container.</Text>
                   </View>
               </View>
+
+              <View style={styles.guideStep}>
+                  <View style={styles.stepIconContainer}>
+                    <MaterialCommunityIcons name="target" size={28} color="#FFD166" />
+                  </View>
+                  <View style={styles.stepTextContainer}>
+                    <Text style={styles.stepHeader}>2. Align Calibration Markers</Text>
+                    <Text style={styles.stepDesc}>Make sure all four 2x2cm blue squares in the corners of the container are visible in the frame.</Text>
+                  </View>
+              </View>
+
+              <View style={styles.guideStep}>
+                  <View style={styles.stepIconContainer}>
+                    <MaterialCommunityIcons name="lightbulb-on-outline" size={28} color="#06D6A0" />
+                  </View>
+                  <View style={styles.stepTextContainer}>
+                    <Text style={styles.stepHeader}>3. Check Lighting</Text>
+                    <Text style={styles.stepDesc}>Scan in a well-lit area. Avoid harsh shadows or strong glare reflecting off the water or container.</Text>
+                  </View>
+              </View>
+
               <TouchableOpacity style={styles.primaryBtn} onPress={() => setModalVisible(false)}>
                 <Text style={styles.primaryBtnText}>I'm Ready</Text>
               </TouchableOpacity>
