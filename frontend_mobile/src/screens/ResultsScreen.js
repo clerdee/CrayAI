@@ -238,32 +238,43 @@ export default function ResultsScreen({ route, navigation }) {
     }
   };
 
-  // --- CORE FUNCTION: UPLOAD AND SAVE TO RECENT SCANS ---
   const uploadAndSaveScan = async () => {
     // 1. Upload the image to Cloudinary first
     const cloudinaryResult = await uploadToCloudinary(imageUri);
 
-    // 2. Prepare the exact payload matching your backend controller structure
+    // 2. Prepare the NESTED payload matching backend controller structure
     const scanDataPayload = {
       scanId: scan_id,
-      imageUrl: cloudinaryResult.url,             // RESTORED TO ORIGINAL FORMAT
-      imagePublicId: cloudinaryResult.public_id,  // RESTORED TO ORIGINAL FORMAT
-      width_cm: parseFloat(cmW),
-      height_cm: parseFloat(cmH),
-      estimated_age: results.age,
-      gender: results.gender, 
+      gender: results.gender,
       gender_confidence: results.confidence,
-      algae_label: currentAlgae.label,
-      turbidity_level: parseInt(turbidity_level),
-      location: userLocation,
-      processing_time: processing_time,
-      model_version: model_version
+      
+      image: {
+        url: cloudinaryResult.url,
+        public_id: cloudinaryResult.public_id
+      },
+     
+      morphometrics: {
+        width_cm: parseFloat(cmW),
+        height_cm: parseFloat(cmH),
+        estimated_age: results.age
+      },
+      
+      environment: {
+        algae_label: currentAlgae.label,
+        turbidity_level: parseInt(turbidity_level)
+      },
+      
+      // ✅ NESTED: metadata object
+      metadata: {
+        location: userLocation,
+        processing_time: processing_time,
+        model_version: model_version
+      }
     };
 
-    // 3. Save to Database (Fixed Endpoint to '/scans/create')
+    // 3. Save to Database
     await client.post('/scans/create', scanDataPayload);
-    
-    // Return URL for posting to community if needed
+
     return cloudinaryResult.url; 
   };
 

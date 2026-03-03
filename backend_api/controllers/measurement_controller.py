@@ -6,8 +6,9 @@ import os
 # --- CONFIGURATION ---
 DEFAULT_PIXELS_PER_CM = 65.0 
 MIN_CRAYFISH_LENGTH_CM = 2.0 
-AI_MODEL_VERSION = "CrayAI Dual-Core v2.5 (Male Fallback)"
-REFERENCE_BOX_SIZE_CM = 2.0  
+AI_MODEL_VERSION = "CrayAI Dual-Core v2.5"
+REFERENCE_BOX_SIZE_CM = 2.0
+MIN_GENDER_CONFIDENCE = 30.0  # ✅ NEW: Only accept gender predictions >= 30%
 
 # --- MODEL PATHS ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
@@ -223,6 +224,13 @@ def process_measurement(image_file):
                                         break
                         except Exception as err:
                             print(f"⚠️ Gender analysis failed but scan continues: {err}")
+
+                    # ✅ NEW: MINIMUM CONFIDENCE THRESHOLD CHECK
+                    # If detected gender has low confidence, treat it as "Not Defined"
+                    if detected_gender != "Not Defined" and gender_confidence < MIN_GENDER_CONFIDENCE:
+                        print(f"⚠️ Low confidence gender detection ({gender_confidence}%) - using fallback")
+                        detected_gender = "Not Defined"
+                        gender_confidence = 0.0
 
                     # --- FALLBACK LOGIC ---
                     if detected_gender == "Not Defined":
