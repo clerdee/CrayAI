@@ -1,14 +1,15 @@
 import React, { useState, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, Image, FlatList, 
-  TouchableOpacity, Dimensions, StatusBar, ActivityIndicator, Alert 
+  TouchableOpacity, Dimensions, StatusBar, ActivityIndicator, Alert, ScrollView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import client from '../api/client';
 import BottomNavBar from '../components/BottomNavBar';
-import PostDetailModal from '../components/PostDetailModal'; 
+import PostDetailModal from '../components/PostDetailModal';
+import ScanDetailsModal from '../components/ScanDetailsModal';
 
 const { width } = Dimensions.get('window');
 const GRID_SIZE = width / 3;
@@ -19,6 +20,7 @@ export default function ProfileScreen({ navigation, route }) {
 
   const [userData, setUserData] = useState(null);
   const [userPosts, setUserPosts] = useState([]); 
+  const [userScans, setUserScans] = useState([]);
   const [stats, setStats] = useState({ followers: 0, following: 0 });
   const [isFollowing, setIsFollowing] = useState(false); 
   const [loading, setLoading] = useState(true);
@@ -29,15 +31,20 @@ export default function ProfileScreen({ navigation, route }) {
   const [loggedInUserId, setLoggedInUserId] = useState(null);
 
   const [selectedPost, setSelectedPost] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [postModalVisible, setPostModalVisible] = useState(false);
+  
+  const [selectedScan, setSelectedScan] = useState(null);
+  const [scanModalVisible, setScanModalVisible] = useState(false);
+  
+  const [activeTab, setActiveTab] = useState('posts');
 
   useFocusEffect(
     useCallback(() => {
-      loadProfileAndPosts();
+      loadProfileAndContent();
     }, [targetUserId, isViewingSelf])
   );
 
-  const loadProfileAndPosts = async () => {
+  const loadProfileAndContent = async () => {
     setLoading(true);
     try {
       let profileId = targetUserId;
@@ -48,9 +55,7 @@ export default function ProfileScreen({ navigation, route }) {
          setLoggedInUserId(myRes.data.user._id || myRes.data.user.id);
       }
 
-      // A. FETCH PROFILE DATA
       if (isViewingSelf) {
-        // View Own Profile
         if (myRes.data.success) {
           profileData = myRes.data.user;
           profileId = myRes.data.user._id || myRes.data.user.id; 
@@ -62,7 +67,6 @@ export default function ProfileScreen({ navigation, route }) {
           });
         }
       } else {
-        // View Others
         const res = await client.get(`/auth/users/${targetUserId}`);
         if (res.data.success) {
           profileData = res.data.user;
@@ -75,19 +79,26 @@ export default function ProfileScreen({ navigation, route }) {
         }
       }
 
-      // B. FETCH USER'S POSTS (SCANS)
       const feedRes = await client.get('/posts/feed'); 
-      
       if (feedRes.data.success) {
         const allPosts = feedRes.data.posts;
-        
-        // Filter posts that belong to this profile
         const myPosts = allPosts.filter(post => {
           const posterId = post.userId?._id || post.userId; 
           return posterId.toString() === profileId.toString();
         });
-
         setUserPosts(myPosts);
+      }
+
+      if (isViewingSelf) {
+        try {
+          const scansRes = await client.get('/scans/me');
+          if (scansRes.data.success) {
+            setUserScans(scansRes.data.records || []);
+          }
+        } catch (error) {
+          console.log('Error fetching scans:', error);
+          setUserScans([]);
+        }
       }
 
     } catch (error) {
@@ -97,7 +108,14 @@ export default function ProfileScreen({ navigation, route }) {
     }
   };
 
-  // 4. HANDLE FOLLOW / UNFOLLOW
+  const handlePostDeleted = (postId) => {
+    setUserPosts(prev => prev.filter(p => p._id !== postId));
+  };
+
+  const handleScanDeleted = (scanId) => {
+    setUserScans(prev => prev.filter(s => s._id !== scanId));
+  };
+
   const handleFollowToggle = async () => {
     if (isViewingSelf) return;
     setFollowLoading(true);
@@ -122,7 +140,6 @@ export default function ProfileScreen({ navigation, route }) {
     }
   };
 
-  // 5. HANDLE MESSAGE BUTTON PRESS
   const handleMessagePress = async () => {
     if (isViewingSelf || !userData) return;
     setMessageLoading(true);
@@ -148,10 +165,14 @@ export default function ProfileScreen({ navigation, route }) {
     }
   };
 
-  // 6. HANDLE OPEN MODAL
   const openPostDetail = (post) => {
     setSelectedPost(post);
-    setModalVisible(true);
+    setPostModalVisible(true);
+  };
+
+  const openScanDetail = (scan) => {
+    setSelectedScan(scan);
+    setScanModalVisible(true);
   };
 
   const formatDate = (dateString) => {
@@ -160,7 +181,7 @@ export default function ProfileScreen({ navigation, route }) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const renderGridItem = ({ item }) => {
+  const renderPostGridItem = ({ item }) => {
     const hasMedia = item.media && item.media.length > 0;
     let imageSource = require('../../assets/crayfish.png'); 
 
@@ -190,6 +211,29 @@ export default function ProfileScreen({ navigation, route }) {
     );
   };
 
+  const renderScanGridItem = ({ item }) => {
+    const imageSource = item.image?.url 
+      ? { uri: item.image.url }
+      : require('../../assets/crayfish.png');
+
+    return (
+      <TouchableOpacity 
+        style={styles.gridItem} 
+        onPress={() => openScanDetail(item)}
+      >
+        <Image source={imageSource} style={styles.gridImage} resizeMode="cover" />
+        <View style={styles.dateBadge}>
+          <Text style={styles.dateText}>
+            {formatDate(item.createdAt)}
+          </Text>
+        </View>
+        <View style={styles.scanBadge}>
+          <Text style={styles.scanBadgeText}>{item.gender || 'Unknown'}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.centerContent]}>
@@ -197,6 +241,8 @@ export default function ProfileScreen({ navigation, route }) {
       </View>
     );
   }
+
+  const displayData = activeTab === 'posts' ? userPosts : userScans;
 
   return (
     <View style={styles.container}>
@@ -311,22 +357,50 @@ export default function ProfileScreen({ navigation, route }) {
         {userData?.bio || "This researcher hasn't added a bio yet."}
       </Text>
 
-      {/* --- SCANS GRID --- */}
+      {/* ✅ TABS SECTION (Only for self profile) */}
+      {isViewingSelf && (
+        <View style={styles.tabContainer}>
+          <TouchableOpacity 
+            style={[styles.tab, activeTab === 'posts' && styles.activeTab]}
+            onPress={() => setActiveTab('posts')}
+          >
+            <Ionicons name="image-outline" size={16} color={activeTab === 'posts' ? '#3D5A80' : '#AAA'} />
+            <Text style={[styles.tabText, activeTab === 'posts' && styles.activeTabText]}>
+              My Posts
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tab, activeTab === 'scans' && styles.activeTab]}
+            onPress={() => setActiveTab('scans')}
+          >
+            <Ionicons name="document-outline" size={16} color={activeTab === 'scans' ? '#3D5A80' : '#AAA'} />
+            <Text style={[styles.tabText, activeTab === 'scans' && styles.activeTabText]}>
+              My Scans
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* --- GRID HEADER --- */}
       <View style={styles.gridHeader}>
         <Text style={styles.gridTitle}>
-          {isViewingSelf ? "My Posts" : "Recent Contributions"}
+          {activeTab === 'posts' ? "My Posts" : "My Scans"}
         </Text>
-        <Text style={styles.scanCount}>{userPosts.length} Posts</Text>
+        <Text style={styles.scanCount}>{displayData.length} {activeTab === 'posts' ? 'Posts' : 'Scans'}</Text>
       </View>
 
-      {userPosts.length === 0 ? (
+      {/* --- CONTENT GRID --- */}
+      {displayData.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyStateText}>No scans uploaded yet.</Text>
+          <Text style={styles.emptyStateText}>
+            {activeTab === 'posts' ? 'No posts uploaded yet.' : 'No scans recorded yet.'}
+          </Text>
         </View>
       ) : (
         <FlatList
-          data={userPosts}
-          renderItem={renderGridItem}
+          data={displayData}
+          renderItem={activeTab === 'posts' ? renderPostGridItem : renderScanGridItem}
           keyExtractor={item => item._id}
           numColumns={3}
           contentContainerStyle={styles.gridContainer}
@@ -334,15 +408,25 @@ export default function ProfileScreen({ navigation, route }) {
         />
       )}
 
+      {/* ✅ POST DETAIL MODAL */}
       <PostDetailModal 
-        visible={modalVisible} 
+        visible={postModalVisible} 
         post={selectedPost} 
         currentUserId={loggedInUserId}
         onUpdate={(updatedPost) => {
           setUserPosts(prev => prev.map(p => p._id === updatedPost._id ? updatedPost : p));
           setSelectedPost(updatedPost);
         }}
-        onClose={() => setModalVisible(false)} 
+        onDelete={handlePostDeleted}
+        onClose={() => setPostModalVisible(false)} 
+      />
+
+      {/* ✅ SCAN DETAIL MODAL */}
+      <ScanDetailsModal 
+        visible={scanModalVisible}
+        scan={selectedScan}
+        onDelete={handleScanDeleted}
+        onClose={() => setScanModalVisible(false)}
       />
 
       {/* --- BOTTOM NAV --- */}
@@ -397,7 +481,42 @@ const styles = StyleSheet.create({
   divider: { width: 1, backgroundColor: '#ECF0F1', height: '80%' },
 
   bioText: { marginHorizontal: 30, marginTop: 20, marginBottom: 10, fontSize: 14, color: '#555', lineHeight: 20, textAlign: 'center' },
-  gridHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#ECF0F1' },
+  
+  tabContainer: { 
+    flexDirection: 'row', 
+    marginHorizontal: 20, 
+    marginVertical: 12, 
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 4,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4
+  },
+  tab: { 
+    flex: 1, 
+    flexDirection: 'row',
+    alignItems: 'center', 
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6
+  },
+  activeTab: { 
+    backgroundColor: '#E8F0F7'
+  },
+  tabText: { 
+    fontSize: 12, 
+    fontWeight: '600', 
+    color: '#AAA'
+  },
+  activeTabText: { 
+    color: '#3D5A80', 
+    fontWeight: '700'
+  },
+
+  gridHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#ECF0F1' },
   gridTitle: { fontSize: 14, fontWeight: '800', color: '#3D5A80', textTransform: 'uppercase' },
   scanCount: { fontSize: 12, color: '#98C1D9', fontWeight: '600' },
   gridContainer: { paddingBottom: 100 },
@@ -406,6 +525,20 @@ const styles = StyleSheet.create({
   dateBadge: { position: 'absolute', bottom: 5, left: 5, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   dateText: { color: '#FFF', fontSize: 9, fontWeight: '700' },
   multiIcon: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 4, padding: 2 },
+  scanBadge: { 
+    position: 'absolute', 
+    top: 5, 
+    left: 5, 
+    backgroundColor: '#3D5A80', 
+    paddingHorizontal: 6, 
+    paddingVertical: 2, 
+    borderRadius: 4 
+  },
+  scanBadgeText: { 
+    color: '#FFF', 
+    fontSize: 8, 
+    fontWeight: '700' 
+  },
   emptyState: { padding: 40, alignItems: 'center' },
   emptyStateText: { color: '#999', fontSize: 14, fontStyle: 'italic' },
   bottomNavWrapper: { position: 'absolute', bottom: 0, width: '100%' }

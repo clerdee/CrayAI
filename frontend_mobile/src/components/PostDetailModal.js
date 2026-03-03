@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, Modal, Image, TouchableOpacity, 
   ScrollView, Dimensions, TouchableWithoutFeedback, TextInput, 
-  Switch, ActivityIndicator, Alert, Platform // <-- ADDED Platform HERE
+  Switch, ActivityIndicator, Alert, Platform
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import client from '../api/client';
@@ -12,7 +12,6 @@ import { BAD_WORDS } from '../data/badWords';
 
 const { width, height } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.9;
-// FIXED HEIGHT: 65% of screen height slightly taller to accommodate edit inputs nicely
 const CARD_HEIGHT = height * 0.65;
 
 // --- HELPERS ---
@@ -60,7 +59,7 @@ const maskProfanity = (text) => {
 
 // --- COMPONENT ---
 
-export default function PostDetailModal({ visible, post, onClose, currentUserId, onUpdate }) {
+export default function PostDetailModal({ visible, post, onClose, currentUserId, onUpdate, onDelete }) {
   const scrollRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [viewMode, setViewMode] = useState('details'); // 'details' | 'comments' | 'edit'
@@ -71,6 +70,7 @@ export default function PostDetailModal({ visible, post, onClose, currentUserId,
   const [editPrice, setEditPrice] = useState('');
   const [editIsSold, setEditIsSold] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -94,7 +94,7 @@ export default function PostDetailModal({ visible, post, onClose, currentUserId,
 
   const totalImages = post.media ? post.media.length : 0;
   
-  // SECURE EDIT CHECK: Only the creator can edit
+  // SECURE EDIT CHECK: Only the creator can edit/delete
   const postUserId = typeof post.userId === 'object' ? post.userId?._id : post.userId;
   const isMyPost = String(postUserId) === String(currentUserId);
 
@@ -130,7 +130,6 @@ export default function PostDetailModal({ visible, post, onClose, currentUserId,
 
         const res = await client.put(`/posts/${post._id}`, payload);
         if (res.data?.post) {
-            // Send updated post back to parent screen
             if (onUpdate) onUpdate(res.data.post);
             setViewMode('details');
         }
@@ -141,6 +140,32 @@ export default function PostDetailModal({ visible, post, onClose, currentUserId,
         setIsSaving(false);
     }
   };
+
+const handleDeletePost = async () => {
+  Alert.alert(
+    "Delete Post",
+    "Are you sure you want to delete this post? This action cannot be undone.",
+    [
+      { text: "Cancel", onPress: () => {}, style: "cancel" },
+      {
+        text: "Delete",
+        onPress: async () => {
+          setIsDeleting(true);
+          try {
+            await client.delete(`/posts/${post._id}`);
+            onClose(); 
+            if (onDelete) onDelete(post._id);
+          } catch (error) {
+            console.error("Failed to delete post:", error);
+            Alert.alert("Error", "Could not delete your post.");
+            setIsDeleting(false);
+          }
+        },
+        style: "destructive"
+      }
+    ]
+  );
+};
 
   return (
     <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
@@ -165,11 +190,20 @@ export default function PostDetailModal({ visible, post, onClose, currentUserId,
                         <Text style={styles.dateText}>{formatFullDate(post.createdAt)}</Text>
                       </View>
                     </View>
-                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
                       {isMyPost && (
-                        <TouchableOpacity onPress={() => setViewMode('edit')} style={[styles.iconBtn, { marginRight: 8, backgroundColor: '#EBF5FB' }]}>
-                          <Ionicons name="pencil" size={20} color="#3D5A80" />
-                        </TouchableOpacity>
+                        <>
+                          <TouchableOpacity onPress={() => setViewMode('edit')} style={[styles.iconBtn, { backgroundColor: '#EBF5FB' }]}>
+                            <Ionicons name="pencil" size={20} color="#3D5A80" />
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            onPress={handleDeletePost} 
+                            style={[styles.iconBtn, { backgroundColor: '#FFE5E5' }]}
+                            disabled={isDeleting}
+                          >
+                            <Ionicons name="trash" size={20} color="#E11A22" />
+                          </TouchableOpacity>
+                        </>
                       )}
                       <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
                         <Ionicons name="close" size={24} color="#546E7A" />

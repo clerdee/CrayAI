@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Modal, View, Text, StyleSheet, Image, TouchableOpacity, 
-  ScrollView, Dimensions, Platform 
+  ScrollView, Dimensions, Platform, Alert, ActivityIndicator
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native'; // <--- IMPORT THIS
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import client from '../api/client';
 
 const { height } = Dimensions.get('window');
 
-export default function ScanDetailsModal({ visible, onClose, scan }) {
-  const navigation = useNavigation(); // <--- ENABLE NAVIGATION
+export default function ScanDetailsModal({ visible, onClose, scan, onDelete }) {
+  const navigation = useNavigation();
+  const [isDeleting, setIsDeleting] = useState(false);
 
   if (!scan) return null;
 
@@ -47,20 +49,46 @@ export default function ScanDetailsModal({ visible, onClose, scan }) {
   const genderColor = isFemale ? '#E76F51' : isMale ? '#3D5A80' : '#95A5A6';
   const genderIcon = isFemale ? 'venus' : isMale ? 'mars' : 'genderless';
 
-  // --- NEW: HANDLE SHARE LOGIC ---
+  // --- HANDLE SHARE LOGIC ---
   const handlePostToFeed = () => {
-    onClose(); // Close modal first
+    onClose();
     
-    // Auto-generate caption from saved data
     const genderText = gender !== "Not Defined" ? gender : "";
     const caption = `Shared from my history! 🕰️\n\nFound a ${genderText} Crayfish 🦞\n📏 Size: ${width_cm}cm W x ${height_cm}cm H\n🎂 Age: ${age}\n💧 Water Turbidity: Level ${turbidity}\n🌿 Algae: ${algae}`;
 
-    // Navigate to Community Screen with pre-filled data
     navigation.navigate('Community', {
         prefillImage: scan.image?.url,
         prefillCaption: caption
     });
   };
+
+const handleDeleteScan = async () => {
+  Alert.alert(
+    "Delete Scan",
+    "Are you sure you want to delete this scan record? This action cannot be undone.",
+    [
+      { text: "Cancel", onPress: () => {}, style: "cancel" },
+      {
+        text: "Delete",
+        onPress: async () => {
+          setIsDeleting(true);
+          try {
+            await client.delete(`/scans/${scan._id}/hard-delete`);
+            onClose(); 
+            
+            if (onDelete) onDelete(scan._id); 
+            
+          } catch (error) {
+            console.error("Failed to delete scan:", error);
+            Alert.alert("Error", "Could not delete this scan.");
+            setIsDeleting(false);
+          }
+        },
+        style: "destructive"
+      }
+    ]
+  );
+};
 
   return (
     <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
@@ -72,9 +100,22 @@ export default function ScanDetailsModal({ visible, onClose, scan }) {
             <Image source={{ uri: scan.image?.url }} style={styles.image} resizeMode="cover" />
             <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={styles.topGradient} />
             
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-              <Ionicons name="close" size={24} color="#FFF" />
-            </TouchableOpacity>
+            <View style={styles.headerBtns}>
+              <TouchableOpacity 
+                style={[styles.closeBtn, { marginRight: 8 }]} 
+                onPress={handleDeleteScan}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Ionicons name="trash" size={20} color="#E11A22" />
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+                <Ionicons name="close" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.idBadge}>
                 <Text style={styles.idText}>ID: {scan.scanId}</Text>
@@ -155,7 +196,7 @@ export default function ScanDetailsModal({ visible, onClose, scan }) {
             <View style={{height: 100}} />
           </ScrollView>
 
-          {/* --- NEW: FIXED BOTTOM SHARE BUTTON --- */}
+          {/* --- FIXED BOTTOM SHARE BUTTON --- */}
           <View style={styles.footerAction}>
             <TouchableOpacity style={styles.shareBtn} onPress={handlePostToFeed}>
                 <LinearGradient 
@@ -197,7 +238,23 @@ const styles = StyleSheet.create({
   image: { width: '100%', height: '100%' },
   topGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 100 },
   
-  closeBtn: { position: 'absolute', top: Platform.OS === 'ios' ? 40 : 20, right: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', zIndex: 10 },
+  headerBtns: { 
+    position: 'absolute', 
+    top: Platform.OS === 'ios' ? 40 : 20, 
+    right: 20, 
+    flexDirection: 'row', 
+    alignItems: 'center',
+    gap: 8
+  },
+  closeBtn: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 20, 
+    backgroundColor: 'rgba(0,0,0,0.4)', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    zIndex: 10 
+  },
   idBadge: { position: 'absolute', bottom: 15, left: 20, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   idText: { color: '#FFF', fontSize: 12, fontWeight: '700', letterSpacing: 1 },
 
@@ -226,7 +283,6 @@ const styles = StyleSheet.create({
   detailSubValue: { fontSize: 12, color: '#7F8C8D', marginTop: 2 },
   divider: { height: 1, backgroundColor: '#F0F0F0', marginLeft: 53, marginVertical: 5 },
 
-  // --- NEW FOOTER STYLES ---
   footerAction: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFF', padding: 20, borderTopWidth: 1, borderTopColor: '#F0F0F0', elevation: 20, shadowColor: '#000', shadowOffset: {width:0, height: -5}, shadowOpacity: 0.1, shadowRadius: 10 },
   shareBtn: { borderRadius: 16, overflow: 'hidden', elevation: 5 },
   shareBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 10 },
