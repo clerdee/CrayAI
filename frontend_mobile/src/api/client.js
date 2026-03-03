@@ -8,7 +8,7 @@ if (!NETWORK_IP) {
   console.warn('⚠️ WARNING: NETWORK_IP is missing in config.js!');
 }
 
-// 1. URLs (Cleaned up the console logs)
+// 1. URLs 
 const API_URL = `${NETWORK_IP}/api/`;
 const AI_URL = `${NETWORK_IP}/api/`;
 
@@ -23,7 +23,7 @@ export const aiClient = axios.create({
   timeout: 120000,
 });
 
-// 3. REQUEST INTERCEPTOR (Kept the crucial Auth Token injection, removed all logs)
+// 3. REQUEST INTERCEPTOR 
 client.interceptors.request.use(
   async (requestConfig) => {
     const skipAuth = requestConfig.url && (
@@ -46,7 +46,7 @@ client.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// 4. RESPONSE INTERCEPTOR (Removed the massive success/error logs, kept a simple error catch)
+// 4. RESPONSE INTERCEPTOR 
 client.interceptors.response.use(
   (response) => response,
   (error) => {

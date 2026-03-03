@@ -276,9 +276,8 @@ export default function CameraScreen({ navigation, route }) {
 
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 1,
+      allowsEditing: false, // <-- CHANGED THIS: Disable forced cropping
+      quality: 1,           // <-- CHANGED THIS: Removed the aspect ratio array
     });
 
     if (!result.canceled) {
