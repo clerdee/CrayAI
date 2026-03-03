@@ -9,6 +9,7 @@ import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
 import { useNavigate, useLocation } from 'react-router-dom'; 
 import client from '../../api/client';
+import { CLOUDINARY_CONFIG } from '../../config/cloudinary'; 
 
 const ALGAE_LEVELS = [
   { label: "Low", color: "#0FA958" },
@@ -191,10 +192,10 @@ const ScanPage = () => {
     try {
       const uploadData = new FormData();
       uploadData.append('file', scanResult.markedImageBase64 || selectedFile); 
-      uploadData.append('upload_preset', 'CrayAI');
-      uploadData.append('cloud_name', 'dvdrak5wl');
+      uploadData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset || 'CrayAI');
+      uploadData.append('cloud_name', CLOUDINARY_CONFIG.cloudName || 'dvdrak5wl');
 
-      const cloudRes = await fetch(`${import.meta.env.VITE_CLOUDINARY_API_URL}/image/upload`, {
+      const cloudRes = await fetch(CLOUDINARY_CONFIG.apiUrl, {
           method: 'POST',
           body: uploadData
       });
