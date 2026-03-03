@@ -2,10 +2,8 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { UploadCloud, Zap, Ruler, RefreshCw, Image as ImageIcon, Activity, Droplets, Maximize2, GitCommit } from 'lucide-react';
 
-// --- HELPER: CONVERT CM TO INCHES ---
 const cmToInches = (cm) => (cm / 2.54).toFixed(2);
 
-// --- HELPER: ALGAE LABELS ---
 const getAlgaeLabel = (level) => {
   const levels = ["Low (Clean)", "Moderate", "High", "Critical"];
   const colors = ["text-green-600 bg-green-50 border-green-200", "text-yellow-600 bg-yellow-50 border-yellow-200", "text-orange-600 bg-orange-50 border-orange-200", "text-red-600 bg-red-50 border-red-200"];
@@ -16,7 +14,7 @@ const VisionSimulator = () => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [resultImage, setResultImage] = useState(null);
-  const [scanData, setScanData] = useState(null); // Store full backend response
+  const [scanData, setScanData] = useState(null); 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -67,7 +65,7 @@ const VisionSimulator = () => {
   const algaeInfo = scanData ? getAlgaeLabel(scanData.algae_level) : null;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-140px)] p-6 bg-slate-50/50">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[600px] h-[calc(100vh-260px)] p-6 bg-slate-50/50 border border-slate-200 rounded-3xl shadow-sm">
       
       {/* --- LEFT: VISUALIZER --- */}
       <div className="lg:col-span-2 flex flex-col gap-4">
@@ -101,7 +99,7 @@ const VisionSimulator = () => {
                 <input type="file" className="hidden" onChange={handleImageChange} accept="image/*" />
                 <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 group-hover:bg-slate-100 rounded-xl border border-dashed border-slate-300 transition-colors">
                     <ImageIcon className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />
-                    <span className="text-sm font-semibold text-slate-500 group-hover:text-slate-700">
+                    <span className="text-sm font-semibold text-slate-500 group-hover:text-slate-700 truncate">
                         {selectedImage ? selectedImage.name : "Select Image..."}
                     </span>
                 </div>
@@ -122,7 +120,7 @@ const VisionSimulator = () => {
         </div>
         
         {error && (
-            <div className="p-4 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm font-medium">
+            <div className="p-4 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm font-medium shadow-sm">
                 ⚠️ {error}
             </div>
         )}

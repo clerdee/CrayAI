@@ -1,7 +1,6 @@
-// src/pages/admin/Training/TrainingData.jsx
 import React, { useState } from 'react';
 import AdminLayout from '../../../layouts/AdminLayout'; 
-import { Image as ImageIcon, MessageSquare } from 'lucide-react';
+import { Image as ImageIcon, MessageSquare, Cpu } from 'lucide-react';
 
 // Import the separated modes
 import VisionMode from './VisionMode';
@@ -12,36 +11,53 @@ const TrainingData = () => {
   const [trainingMode, setTrainingMode] = useState('vision'); 
 
   return (
-    <AdminLayout title="AI Training Center">
+    <AdminLayout title="AI Sandbox & Training">
       
-      {/* 1. MAIN TOGGLE (The "Controller") */}
-      <div className="flex justify-center mb-8">
-        <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 inline-flex">
+      {/* --- PAGE HEADER --- */}
+      <div className="mb-6">
+        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <Cpu className="w-6 h-6 text-indigo-600" />
+            AI Engine Control Center
+        </h2>
+        <p className="text-slate-500 text-sm mt-1">
+            Test the live Vision classification model or manage the Chatbot's NLP training dataset.
+        </p>
+      </div>
+
+      {/* --- MAIN TOGGLE (Segmented Control Design) --- */}
+      <div className="flex mb-8">
+        <div className="bg-slate-100 p-1.5 rounded-2xl flex gap-1 shadow-inner border border-slate-200">
             <button 
                 onClick={() => setTrainingMode('vision')}
-                className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${
-                    trainingMode === 'vision' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${
+                    trainingMode === 'vision' 
+                    ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' 
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
                 }`}
             >
-                <ImageIcon className="w-4 h-4" /> Vision (Classification)
+                <ImageIcon className="w-4 h-4" /> Live Vision Tester
             </button>
             <button 
                 onClick={() => setTrainingMode('chatbot')}
-                className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${
-                    trainingMode === 'chatbot' ? 'bg-teal-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${
+                    trainingMode === 'chatbot' 
+                    ? 'bg-white text-teal-700 shadow-sm border border-slate-200' 
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
                 }`}
             >
-                <MessageSquare className="w-4 h-4" /> Chatbot (NLP)
+                <MessageSquare className="w-4 h-4" /> Chatbot NLP Dataset
             </button>
         </div>
       </div>
 
-      {/* 2. CONDITIONAL RENDER (Swaps the component based on toggle) */}
-      {trainingMode === 'vision' ? (
-          <VisionMode />
-      ) : (
-          <ChatbotMode />
-      )}
+      {/* --- CONDITIONAL RENDER --- */}
+      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+        {trainingMode === 'vision' ? (
+            <VisionMode />
+        ) : (
+            <ChatbotMode />
+        )}
+      </div>
 
     </AdminLayout>
   );

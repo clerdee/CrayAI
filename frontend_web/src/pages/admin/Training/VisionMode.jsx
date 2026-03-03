@@ -1,45 +1,27 @@
-import React, { useState } from 'react';
-import { Layers, ScanEye } from 'lucide-react';
-import VisionDataset from './VisionDataset';
+import React from 'react';
+import { ScanEye } from 'lucide-react';
 import VisionSimulator from './VisionSimulator';
 
 const VisionMode = () => {
-  const [activeTab, setActiveTab] = useState('dataset'); 
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       
-      {/* --- SUB-TABS (Dataset vs Simulator) --- */}
-      <div className="bg-white p-1.5 rounded-xl border border-slate-200 inline-flex gap-1 shadow-sm">
-        <button 
-          onClick={() => setActiveTab('dataset')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-            activeTab === 'dataset' 
-              ? 'bg-slate-800 text-white shadow-md' 
-              : 'text-slate-500 hover:bg-slate-50'
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5" />
-          Dataset Gallery
-        </button>
-
-        <button 
-          onClick={() => setActiveTab('simulator')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-            activeTab === 'simulator' 
-              ? 'bg-teal-600 text-white shadow-md shadow-teal-100' 
-              : 'text-slate-500 hover:bg-slate-50'
-          }`}
-        >
-          <ScanEye className="w-3.5 h-3.5" />
-          Simulator
-        </button>
+      {/* Context Banner */}
+      <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-start gap-3 shadow-sm">
+        <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600 shrink-0">
+          <ScanEye className="w-5 h-5" />
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-indigo-900">Vision System Simulator</h3>
+          <p className="text-xs text-indigo-700/80 mt-0.5 leading-relaxed max-w-4xl">
+            Upload an image here to bypass the mobile app and ping the Python AI backend directly. 
+            This simulates exactly what researchers experience when scanning crayfish demographics and water conditions in the field.
+          </p>
+        </div>
       </div>
 
-      {/* --- CONTENT AREA --- */}
-      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-        {activeTab === 'dataset' ? <VisionDataset /> : <VisionSimulator />}
-      </div>
+      {/* Direct render of the Simulator */}
+      <VisionSimulator />
 
     </div>
   );
