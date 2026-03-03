@@ -69,7 +69,6 @@ const UserManagement = () => {
     try {
       const token = localStorage.getItem('token');
       
-      // ✅ UPDATED: Matches your route '/admin/users/:id/promote'
       await axios.put(`${API_BASE_URL}/auth/admin/users/${promotingUser._id}/promote`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -339,13 +338,13 @@ const UserManagement = () => {
                                       </button>
                                     )}
 
-                                    <button 
+                                    {/* <button 
                                         onClick={() => setDeletingUser(user)}
                                         className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors tooltip"
                                         title="Delete Permanently"
                                     >
                                         <Trash2 className="w-5 h-5" />
-                                    </button>
+                                    </button> */}
                                 </div>
                             </td>
                         </tr>
