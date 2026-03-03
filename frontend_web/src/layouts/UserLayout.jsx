@@ -119,7 +119,7 @@ const UserLayout = ({ children }) => {
 
       {/* --- CRAYBOT CHAT WINDOW MODAL --- */}
       {isChatOpen && (
-        <div className="fixed bottom-24 right-6 z-[60] w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300">
+        <div className="fixed bottom-24 right-6 z-[60] w-80 sm:w-96 h-[500px] max-h-[80vh] bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300">
           
           {/* CUSTOM CONFIRMATION OVERLAY */}
           {showClearConfirm && (
@@ -148,7 +148,7 @@ const UserLayout = ({ children }) => {
           )}
 
           {/* Modal Header */}
-          <div className="bg-[#E76F51] p-4 flex justify-between items-center text-white">
+          <div className="bg-[#E76F51] p-4 flex justify-between items-center text-white shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center p-1">
                 <img src="/crayfish.png" alt="CrayBot" className="w-full h-full object-contain filter brightness-0 invert" />
@@ -178,10 +178,10 @@ const UserLayout = ({ children }) => {
           </div>
 
           {/* Modal Messages Area */}
-          <div className="flex-1 p-4 h-80 overflow-y-auto bg-slate-50 flex flex-col gap-3">
+          <div className="flex-1 p-4 overflow-y-auto bg-slate-50 flex flex-col gap-3">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
+                <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                   msg.sender === 'user'
                     ? 'bg-[#3D5A80] text-white rounded-br-none'
                     : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none shadow-sm'
@@ -202,7 +202,7 @@ const UserLayout = ({ children }) => {
           </div>
 
           {/* Modal Input Area */}
-          <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-100 flex gap-2 items-center relative z-10">
+          <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-100 flex gap-2 items-center shrink-0">
             <input
               type="text"
               value={inputText}
