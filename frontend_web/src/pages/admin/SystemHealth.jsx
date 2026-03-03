@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import AdminLayout from '../../layouts/AdminLayout';
-import { Server, Database, BrainCircuit, Cloud, Activity, AlertCircle, RefreshCw } from 'lucide-react';
+import { Server, Database, BrainCircuit, Cloud, Activity, RefreshCw } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const SystemHealth = () => {
   const [isRefreshing, setIsRefreshing] = useState(true);
   
-  // Real State Data
+  // Real State Data with new metrics
   const [healthData, setHealthData] = useState({
     services: [
       { id: 'node', ping: '--' },
@@ -17,7 +17,15 @@ const SystemHealth = () => {
       { id: 'cloudinary', ping: '--' }
     ],
     ai: { avgProcessingTime: '--', version: '--', uptime: '--' },
-    database: { usedMB: 0, totalMB: 512, scansCount: 0, postsCount: 0 }
+    database: { 
+        usedMB: 0, 
+        totalMB: 512, 
+        scansCount: 0, 
+        postsCount: 0,
+        usersCount: 0,
+        commentsCount: 0,
+        notificationsCount: 0 
+    }
   });
 
   const fetchHealthData = async () => {
@@ -123,12 +131,14 @@ const SystemHealth = () => {
         </div>
 
         {/* Database Storage Card */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col">
           <div className="flex items-center gap-3 mb-6">
             <Database className="w-5 h-5 text-teal-500" />
             <h3 className="font-bold text-slate-800 text-lg">MongoDB Storage</h3>
           </div>
-          <div className="space-y-5">
+          
+          <div className="space-y-5 flex-1 flex flex-col">
+            {/* Storage Progress Bar */}
             <div>
               <div className="flex justify-between text-sm mb-2">
                 <span className="font-medium text-slate-600">Storage Used ({healthData.database.usedMB}MB / {healthData.database.totalMB}MB)</span>
@@ -142,16 +152,30 @@ const SystemHealth = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-6">
-              <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
-                <p className="text-xs text-slate-500 mb-1">Total Scans (Vectors)</p>
-                <p className="text-xl font-bold text-slate-800">{healthData.database.scansCount.toLocaleString()}</p>
+            {/* Comprehensive Data Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-auto pt-4 border-t border-slate-50">
+              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex flex-col items-center justify-center transition-colors hover:bg-slate-100">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-0.5">Users</p>
+                <p className="text-xl font-black text-slate-700">{healthData.database.usersCount.toLocaleString()}</p>
               </div>
-              <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
-                <p className="text-xs text-slate-500 mb-1">Community Posts</p>
-                <p className="text-xl font-bold text-slate-800">{healthData.database.postsCount.toLocaleString()}</p>
+              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex flex-col items-center justify-center transition-colors hover:bg-slate-100">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-0.5">AI Scans</p>
+                <p className="text-xl font-black text-slate-700">{healthData.database.scansCount.toLocaleString()}</p>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex flex-col items-center justify-center transition-colors hover:bg-slate-100">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-0.5">Posts</p>
+                <p className="text-xl font-black text-slate-700">{healthData.database.postsCount.toLocaleString()}</p>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex flex-col items-center justify-center transition-colors hover:bg-slate-100">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-0.5">Comments</p>
+                <p className="text-xl font-black text-slate-700">{healthData.database.commentsCount.toLocaleString()}</p>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex flex-col items-center justify-center sm:col-span-2 transition-colors hover:bg-slate-100">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-0.5">System Notifications</p>
+                <p className="text-xl font-black text-slate-700">{healthData.database.notificationsCount.toLocaleString()}</p>
               </div>
             </div>
+
           </div>
         </div>
       </div>

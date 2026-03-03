@@ -4,6 +4,7 @@ const Comment = require('../models/Comment');
 const User = require('../models/User');
 const ScanRecord = require('../models/ScanRecord');
 const Settings = require('../models/Settings');
+const Notification = require('../models/Notification');
 
 // 1. GET ALL CONTENT (Posts & Comments) FOR MODERATION
 exports.getModerationContent = async (req, res) => {
@@ -226,8 +227,13 @@ exports.getSystemHealth = async (req, res) => {
       dbSizeMB = 12.5; 
     }
 
-    const scansCount = await ScanRecord.countDocuments();
-    const postsCount = await Post.countDocuments();
+    const [scansCount, postsCount, usersCount, commentsCount, notificationsCount] = await Promise.all([
+        ScanRecord.countDocuments(),
+        Post.countDocuments(),
+        User.countDocuments(),
+        Comment.countDocuments(),
+        Notification.countDocuments()
+    ]);
 
     const recentScans = await ScanRecord.find({ processing_time: { $exists: true } })
         .sort({ createdAt: -1 })
@@ -264,7 +270,10 @@ exports.getSystemHealth = async (req, res) => {
         usedMB: dbSizeMB,
         totalMB: 512, 
         scansCount,
-        postsCount
+        postsCount,
+        usersCount,          
+        commentsCount,        
+        notificationsCount     
       }
     });
 
