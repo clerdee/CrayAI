@@ -201,7 +201,6 @@ export default function ResultsScreen({ route, navigation }) {
     scanDate: `${formattedDate} • ${formattedTime}`, 
   };
 
-  // Determine main theme color based on gender
   const isFemale = results.gender === 'Female' || results.gender === 'Berried';
   const isMale = results.gender === 'Male';
   const mainColor = isFemale ? '#FF69B4' : (isMale ? '#3D5A80' : '#3D5A80');
@@ -209,34 +208,46 @@ export default function ResultsScreen({ route, navigation }) {
 
   const handleDiscard = () => navigation.navigate('Camera', { resetScan: Date.now() });
 
+  // --- CLOUDINARY UPLOAD FUNCTION ---
+  const uploadToCloudinary = async (base64Image) => {
+    try {
+      const data = new FormData();
+      data.append('file', base64Image); // Send base64 directly
+      data.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
+      data.append('cloud_name', CLOUDINARY_CONFIG.cloudName);
+      data.append('folder', 'scanrecords');
+
+      const response = await fetch(CLOUDINARY_CONFIG.apiUrl, {
+        method: 'POST',
+        body: data,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const result = await response.json();
+      if (result.secure_url) {
+        return { url: result.secure_url, public_id: result.public_id };
+      } else {
+        throw new Error('Cloudinary upload failed');
+      }
+    } catch (error) {
+      console.error('Cloudinary Upload Error:', error);
+      throw error;
+    }
+  };
+
   // --- CORE FUNCTION: UPLOAD AND SAVE TO RECENT SCANS ---
-const uploadAndSaveScan = async () => {
-    const formData = new FormData();
-    formData.append('file', {
-      uri: imageUri,
-      type: 'image/jpeg',
-      name: 'scan_result.jpg',
-    });
+  const uploadAndSaveScan = async () => {
+    // 1. Upload the image to Cloudinary first
+    const cloudinaryResult = await uploadToCloudinary(imageUri);
 
-    formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset); 
-    formData.append('cloud_name', CLOUDINARY_CONFIG.cloudName); 
-    formData.append('folder', 'scanrecords');
-    
-    const cloudinaryRes = await fetch(CLOUDINARY_CONFIG.apiUrl, {
-      method: 'POST',
-      body: formData
-    });
-    const cloudinaryData = await cloudinaryRes.json();
-    
-    const uploadedImageUrl = cloudinaryData.secure_url;
-    const uploadedPublicId = cloudinaryData.public_id;
-
-    if (!uploadedImageUrl) throw new Error("Cloudinary upload failed");
-
+    // 2. Prepare the exact payload matching your backend controller structure
     const scanDataPayload = {
       scanId: scan_id,
-      imageUrl: uploadedImageUrl,
-      imagePublicId: uploadedPublicId,
+      imageUrl: cloudinaryResult.url,             // RESTORED TO ORIGINAL FORMAT
+      imagePublicId: cloudinaryResult.public_id,  // RESTORED TO ORIGINAL FORMAT
       width_cm: parseFloat(cmW),
       height_cm: parseFloat(cmH),
       estimated_age: results.age,
@@ -249,14 +260,13 @@ const uploadAndSaveScan = async () => {
       model_version: model_version
     };
 
-    // This creates the record in your database 
+    // 3. Save to Database (Fixed Endpoint to '/scans/create')
     await client.post('/scans/create', scanDataPayload);
     
-    // Return the URL so the feed can use it without re-uploading
-    return uploadedImageUrl; 
+    // Return URL for posting to community if needed
+    return cloudinaryResult.url; 
   };
 
-  // --- ACTION 1: ONLY SAVE RECORD ---
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -270,17 +280,13 @@ const uploadAndSaveScan = async () => {
     }
   };
 
-  // --- ACTION 2: SAVE RECORD & POST TO FEED ---
   const handlePostToFeed = async () => {
     setIsPosting(true);
     try {
-      // 1. Save it to "Recent Scans" database first
       const uploadedImageUrl = await uploadAndSaveScan();
 
-      // 2. Format the auto-caption
       const autoCaption = `Just scanned a ${results.gender !== "Not Defined" ? results.gender : ""} Australian Red Claw Crayfish! 🦞\n\n📏 Size: ${results.sizeCm}\n🎂 Est. Age: ${results.age}\n💧 Water Turbidity: Level ${turbidity_level}\n🌿 Algae: ${currentAlgae.label}`;
 
-      // 3. Navigate to Community passing the Cloudinary URL (so it doesn't upload again)
       navigation.navigate('Community', {
         prefillImage: uploadedImageUrl,
         prefillCaption: autoCaption

@@ -16,15 +16,17 @@ const SCAN_HEIGHT = height * 0.55;
 // CHANGED: Reduced from 3 to 1 to make scanning 3x faster
 const SAMPLES_NEEDED = 1; 
 
-const MODES = ['SCAN', 'PHOTO'];
+const MODES = ['PHOTO', 'SCAN'];
 
 export default function CameraScreen({ navigation, route }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [flashMode, setFlashMode] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedMode, setSelectedMode] = useState('SCAN'); 
+  
+  // 1. SET PHOTO AS DEFAULT MODE
+  const [selectedMode, setSelectedMode] = useState('PHOTO'); 
 
-  const [scanStatus, setScanStatus] = useState('searching'); 
+  const [scanStatus, setScanStatus] = useState('READY'); 
   const [isScanningLoop, setIsScanningLoop] = useState(false);
   const [liveMask, setLiveMask] = useState(null);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
@@ -78,6 +80,17 @@ export default function CameraScreen({ navigation, route }) {
     scanLineAnim.stopAnimation();
   };
 
+  // 2. NEW: CLEANUP FUNCTION FOR CLOSE BUTTON
+  const handleClose = () => {
+    clearTimeout(searchTimerRef.current);
+    clearTimeout(lockTimerRef.current);
+    setIsScanningLoop(false);
+    stopAnimations();
+    setLiveMask(null);
+    setScanStatus('READY');
+    navigation.navigate('Home');
+  };
+
   const startScanSequence = () => {
     clearTimeout(searchTimerRef.current);
     clearTimeout(lockTimerRef.current);
@@ -94,13 +107,12 @@ export default function CameraScreen({ navigation, route }) {
 
     startAnimations();
     
-    // CHANGED: Drastically reduced artificial animation delays
-    searchTimerRef.current = setTimeout(() => { setScanStatus('detecting'); }, 400); // Was 1500
+    searchTimerRef.current = setTimeout(() => { setScanStatus('detecting'); }, 400);
     lockTimerRef.current = setTimeout(() => { 
         setScanStatus('locked');
         Vibration.vibrate(50);
         performScanLoop(0); 
-    }, 1000); // Was 3500
+    }, 1000); 
   };
 
   const performScanLoop = async (currentCount = 0) => {
@@ -110,7 +122,6 @@ export default function CameraScreen({ navigation, route }) {
     setIsScanningLoop(true);
 
     try {
-      // CHANGED: Reduced quality slightly to 0.3 for faster cloud uploads
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.3, base64: false, skipProcessing: true });
       const formData = new FormData();
       formData.append('photo', { uri: photo.uri, type: 'image/jpeg', name: 'scan.jpg' });
@@ -452,7 +463,7 @@ export default function CameraScreen({ navigation, route }) {
       )}
 
       <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.blurBtn}>
+          <TouchableOpacity onPress={handleClose} style={styles.blurBtn}>
               <Ionicons name="close" size={24} color="#FFF" />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setFlashMode(!flashMode)} style={styles.blurBtn}>
@@ -470,12 +481,13 @@ export default function CameraScreen({ navigation, route }) {
             </View>
 
             <View style={styles.actionRow}>
+              {/* HIDE GALLERY IN SCAN MODE */}
               {selectedMode === 'PHOTO' ? (
                 <TouchableOpacity onPress={handleGalleryPick} style={styles.sideActionBtn}>
                     <Ionicons name="images-outline" size={26} color="#FFF" />
                 </TouchableOpacity>
               ) : (
-                <View style={{ width: 55, height: 55 }} />
+                <View style={{ width: 55, height: 55 }} /> /* Empty placeholder to keep alignment */
               )}
 
               <View style={styles.shutterContainer}>
