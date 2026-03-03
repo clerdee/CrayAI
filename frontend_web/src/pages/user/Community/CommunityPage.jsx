@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, LayoutGrid, CheckCircle2, AlertCircle } from 'lucide-react';
-import { useLocation } from 'react-router-dom'; // 1. Import useLocation
+import { Plus, Users, LayoutGrid, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { useLocation } from 'react-router-dom'; 
 import client from '../../../api/client';
 import PostCard from './PostCard';
 import CreatePostModal from './CreatePostModal';
@@ -9,23 +9,21 @@ import PostDetailModal from './PostDetailModal';
 import EditPostModal from './EditPostModal';
 
 const CommunityPage = () => {
-  const location = useLocation(); // 2. Get location
+  const location = useLocation(); 
   const [currentUser, setCurrentUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [filter, setFilter] = useState('All');
   
-  // Modal & Notification States
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
   const [postToEdit, setPostToEdit] = useState(null);
   
-  // 3. State for data coming from History Page
   const [preFilledData, setPreFilledData] = useState(null); 
   
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
 
-  // 4. Check for Redirect Data on Load
   useEffect(() => {
     if (location.state?.newPostText || location.state?.newPostImage) {
         setPreFilledData({
@@ -33,18 +31,23 @@ const CommunityPage = () => {
             image: location.state.newPostImage
         });
         setIsCreateOpen(true);
-        // Clean up state so it doesn't persist on reload
         window.history.replaceState({}, document.title);
     }
   }, [location]);
 
   useEffect(() => {
     fetchData();
+    
+    const refreshInterval = setInterval(() => {
+      fetchData();
+    }, 10000); 
+
+    return () => clearInterval(refreshInterval); 
   }, []);
 
   const fetchData = async () => {
-    setIsLoading(true);
     try {
+      setIsRefreshing(true);
       const token = localStorage.getItem('token');
       const userRes = await client.get('/auth/profile', { headers: { Authorization: `Bearer ${token}` } });
       if (userRes.data?.success) setCurrentUser(userRes.data.user);
@@ -56,8 +59,14 @@ const CommunityPage = () => {
     } catch (error) {
       console.error("Failed to fetch community data:", error);
     } finally {
+      setIsRefreshing(false);
       setIsLoading(false);
     }
+  };
+
+  const handleManualRefresh = async () => {
+    await fetchData();
+    showToast("Feed refreshed!", "success");
   };
 
   const showToast = (message, type = 'success') => {
@@ -71,7 +80,7 @@ const CommunityPage = () => {
     const completePost = { ...newPost, user: currentUser };
     setPosts([completePost, ...posts]);
     showToast("Post created successfully!", "success");
-    setPreFilledData(null); // Clear pre-fill after success
+    setPreFilledData(null); 
   };
 
   const handlePostUpdated = (updatedPost) => {
@@ -170,12 +179,24 @@ const CommunityPage = () => {
             <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">Connect, Share, and Trade</p>
           </div>
           
-          <button 
-            onClick={() => { setIsCreateOpen(true); setPreFilledData(null); }}
-            className="flex items-center gap-2 bg-[#E76F51] hover:bg-[#D65A3E] text-white px-6 py-3 rounded-full font-black uppercase tracking-widest text-xs transition-colors shadow-md shadow-[#E76F51]/20"
-          >
-            <Plus className="w-4 h-4" /> New Post
-          </button>
+          <div className="flex items-center gap-3">
+            {/* ✅ REFRESH BUTTON */}
+            <button 
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="flex items-center gap-2 bg-slate-200 hover:bg-slate-300 text-[#293241] px-4 py-3 rounded-full font-black uppercase tracking-widest text-xs transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Refreshing' : 'Refresh'}
+            </button>
+
+            <button 
+              onClick={() => { setIsCreateOpen(true); setPreFilledData(null); }}
+              className="flex items-center gap-2 bg-[#E76F51] hover:bg-[#D65A3E] text-white px-6 py-3 rounded-full font-black uppercase tracking-widest text-xs transition-colors shadow-md shadow-[#E76F51]/20"
+            >
+              <Plus className="w-4 h-4" /> New Post
+            </button>
+          </div>
         </div>
       </div>
 
@@ -223,7 +244,7 @@ const CommunityPage = () => {
         isOpen={isCreateOpen} 
         onClose={() => { setIsCreateOpen(false); setPreFilledData(null); }} 
         onPostCreated={handlePostCreated} 
-        initialData={preFilledData} // 5. Pass data to modal
+        initialData={preFilledData}
       />
 
       <PostDetailModal 
