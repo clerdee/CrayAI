@@ -6,7 +6,7 @@ import os
 # --- CONFIGURATION ---
 DEFAULT_PIXELS_PER_CM = 65.0 
 MIN_CRAYFISH_LENGTH_CM = 2.0 
-AI_MODEL_VERSION = "CrayAI Tri-Core v3.0"
+AI_MODEL_VERSION = "CrayAI Tri-Core v3.1"
 REFERENCE_BOX_SIZE_CM = 2.0
 MIN_GENDER_CONFIDENCE = 30.0  
 
@@ -42,7 +42,6 @@ def get_gender_model():
     return gender_model
 
 def get_env_model():
-    """Loads the new Environmental Model."""
     global env_model
     if env_model is None:
         try:
@@ -54,25 +53,23 @@ def get_env_model():
     return env_model
 
 def analyze_environment_ai(img):
-    """Replaces the old OpenCV math with the new AI predictions."""
     model = get_env_model()
-    
-    # Defaults
     algae_level = 0
     algae_desc = "Low (Minimal Algae)"
     turbidity_level = 1
     
     if model:
         try:
-            results = model.predict(source=img, conf=0.3) # Slightly lower conf for environment features
+            results = model.predict(source=img, conf=0.3)
             detected_classes = []
             
             for r in results:
-                for box in r.boxes:
-                    cls_id = int(box.cls[0])
-                    detected_classes.append(model.names[cls_id])
+                # ✅ SAFE EXTRACTION: Bypasses the NoneType error
+                if getattr(r, 'boxes', None) is not None and r.boxes.cls is not None:
+                    for cls_tensor in r.boxes.cls:
+                        cls_id = int(cls_tensor)
+                        detected_classes.append(model.names[cls_id])
             
-            # --- APPLY THE MAPPING LOGIC ---
             if 'Algae' in detected_classes:
                 algae_level = 2
                 algae_desc = "High (Dense Bloom)"
@@ -91,9 +88,9 @@ def analyze_environment_ai(img):
 
 def estimate_age(size_cm):
     if not size_cm or size_cm <= 0: return "Unknown"
-    if size_cm < 3: return "Crayling (< 1 month)"
-    elif 3 <= size_cm < 7: return "Juvenile (1-3 months)"
-    elif 7 <= size_cm < 11: return "Sub-Adult (3-6 months)"
+    if size_cm < 2: return "Crayling (< 1 month)"
+    elif 2 <= size_cm < 6: return "Juvenile (1-3 months)"
+    elif 6 <= size_cm < 12: return "Sub-Adult (3-6 months)"
     else: return "Adult/Breeder (> 6 months)"
 
 def calculate_dynamic_scale(img):
@@ -130,24 +127,24 @@ def process_measurement(image_file):
         if original_img is None:
             return {"success": False, "error": "Invalid Image"}
 
-        # 1. Math and Environment
         pixels_per_cm = calculate_dynamic_scale(original_img)
         algae_level, algae_desc, turbidity_level = analyze_environment_ai(original_img)
         
         results_data = []
         raw_boxes = []
 
-        # 2. Main Crayfish Detection
         c_model = get_ai_model()
         
         if c_model:
             results = c_model.predict(source=original_img, conf=0.6)
             for result in results:
-                for box in result.boxes:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    h_cm = (y2 - y1) / pixels_per_cm
-                    if h_cm >= MIN_CRAYFISH_LENGTH_CM:
-                        raw_boxes.append(box)
+                # ✅ SAFE EXTRACTION FOR CRAYFISH
+                if getattr(result, 'boxes', None) is not None and result.boxes.xyxy is not None:
+                    for box_tensor in result.boxes.xyxy:
+                        x1, y1, x2, y2 = map(int, box_tensor)
+                        h_cm = (y2 - y1) / pixels_per_cm
+                        if h_cm >= MIN_CRAYFISH_LENGTH_CM:
+                            raw_boxes.append((x1, y1, x2, y2))
 
             if len(raw_boxes) == 0:
                 h, w = original_img.shape[:2]
@@ -155,13 +152,10 @@ def process_measurement(image_file):
                 cv2.putText(original_img, "NO CRAYFISH DETECTED", (int(w * 0.1), int(h / 2)), 
                             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
             else:
-                # 3. Gender Detection (Only runs if crayfish are found)
                 g_model = get_gender_model()
 
-                for box in raw_boxes:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                for (x1, y1, x2, y2) in raw_boxes:
                     width_px, height_px = x2 - x1, y2 - y1
-                    
                     w_cm = width_px / pixels_per_cm
                     h_cm = height_px / pixels_per_cm
                     age_category = estimate_age(h_cm)
@@ -174,23 +168,19 @@ def process_measurement(image_file):
                             crayfish_crop = original_img[max(0, y1):max(0, y2), max(0, x1):max(0, x2)]
                             if crayfish_crop.size > 0:
                                 gender_results = g_model.predict(source=crayfish_crop, conf=0.4) 
-                                found_valid_gender = False
+                                
                                 for g_res in gender_results:
-                                    all_detections = []
-                                    if getattr(g_res, 'boxes', None) is not None:
-                                        all_detections.extend(g_res.boxes)
-                                    for det in all_detections:
-                                        class_id = int(det.cls[0])
-                                        label = g_model.names[class_id]
-                                        conf = float(det.conf[0]) * 100
-                                        
-                                        valid_labels = ["Male", "Female", "Berried", "male", "female", "berried", "male_crayfish", "female_crayfish"]
-                                        if label in valid_labels and conf > gender_confidence:
-                                            detected_gender = label.replace('_crayfish', '').capitalize()
-                                            gender_confidence = round(conf, 1)
-                                            found_valid_gender = True
-                                    if found_valid_gender:
-                                        break
+                                    # ✅ SAFE EXTRACTION FOR GENDER (Fixes the 45% fallback issue)
+                                    if getattr(g_res, 'boxes', None) is not None and g_res.boxes.cls is not None:
+                                        for cls_tensor, conf_tensor in zip(g_res.boxes.cls, g_res.boxes.conf):
+                                            class_id = int(cls_tensor)
+                                            label = g_model.names[class_id]
+                                            conf = float(conf_tensor) * 100
+                                            
+                                            valid_labels = ["Male", "Female", "Berried", "male", "female", "berried", "male_crayfish", "female_crayfish"]
+                                            if label in valid_labels and conf > gender_confidence:
+                                                detected_gender = label.replace('_crayfish', '').capitalize()
+                                                gender_confidence = round(conf, 1)
                         except Exception as err:
                             print(f"⚠️ Gender analysis failed: {err}")
 
@@ -202,7 +192,7 @@ def process_measurement(image_file):
                         detected_gender = "Male"
                         gender_confidence = 45.0
 
-                    # Drawing logic
+                    # Draw Results
                     cv2.rectangle(original_img, (x1, y1), (x2, y2), (0, 255, 0), 4)
                     label_color = (255, 105, 180) if "Female" in detected_gender or "Berried" in detected_gender else (255, 0, 0)
                     cv2.putText(original_img, f"{detected_gender} ({gender_confidence}%)", (x1, max(30, y1 - 40)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, label_color, 3)
@@ -217,7 +207,6 @@ def process_measurement(image_file):
                         "gender_confidence": gender_confidence
                     })
 
-        # Draw Scale Debug Info
         h_img, w_img = original_img.shape[:2]
         cv2.putText(original_img, f"Scale: {pixels_per_cm:.1f} px/cm", (w_img - 300, h_img - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
 
