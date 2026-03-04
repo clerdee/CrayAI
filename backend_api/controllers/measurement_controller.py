@@ -6,73 +6,88 @@ import os
 # --- CONFIGURATION ---
 DEFAULT_PIXELS_PER_CM = 65.0 
 MIN_CRAYFISH_LENGTH_CM = 2.0 
-AI_MODEL_VERSION = "CrayAI Unified Core v3.0"
+AI_MODEL_VERSION = "CrayAI Tri-Core v3.0"
 REFERENCE_BOX_SIZE_CM = 2.0
 MIN_GENDER_CONFIDENCE = 30.0  
 
-# --- UNIFIED MODEL PATH ---
+# --- TRI-CORE MODEL PATHS ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
-UNIFIED_MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "crayai.pt")
+MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "crayfish.pt")
+GENDER_MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "gender.pt")
+ENV_MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "crayai.pt")
 
-# --- LAZY LOADING GLOBAL ---
-crayai_model = None
+# --- LAZY LOADING GLOBALS ---
+ai_model = None
+gender_model = None
+env_model = None
 
-def get_crayai_model():
-    """Loads the Unified Detection Model only when needed."""
-    global crayai_model
-    if crayai_model is None:
+def get_ai_model():
+    global ai_model
+    if ai_model is None:
         try:
             from ultralytics import YOLO
-            print(f"⚡ Loading Unified Model from: {UNIFIED_MODEL_PATH}")
-            crayai_model = YOLO(UNIFIED_MODEL_PATH)
-            print("✅ Unified Model loaded successfully")
-            
-            # --- DISCOVERY PRINT ---
-            print("--- MODEL CLASSES DICTIONARY ---")
-            print(crayai_model.names) 
-            
+            ai_model = YOLO(MODEL_PATH)
+        except Exception:
+            ai_model = False 
+    return ai_model
+
+def get_gender_model():
+    global gender_model
+    if gender_model is None:
+        try:
+            from ultralytics import YOLO
+            gender_model = YOLO(GENDER_MODEL_PATH)
+        except Exception:
+            gender_model = False
+    return gender_model
+
+def get_env_model():
+    """Loads the new Environmental Model."""
+    global env_model
+    if env_model is None:
+        try:
+            from ultralytics import YOLO
+            env_model = YOLO(ENV_MODEL_PATH)
         except Exception as e:
-            print(f"❌ Failed to load Unified model: {e}")
-            crayai_model = False 
-    return crayai_model
+            print(f"❌ Failed to load Environment model: {e}")
+            env_model = False
+    return env_model
 
-def analyze_algae(img):
-    try:
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        lower_green = np.array([35, 40, 40])
-        upper_green = np.array([85, 255, 255])
-        mask = cv2.inRange(hsv, lower_green, upper_green)
-        algae_pixels = cv2.countNonZero(mask)
-        total_pixels = img.shape[0] * img.shape[1]
-        percentage = (algae_pixels / total_pixels) * 100
-        
-        if percentage < 5: return 0, "Low (Minimal Algae)"
-        elif percentage < 15: return 1, "Moderate (Noticeable)"
-        elif percentage < 30: return 2, "High (Dense Bloom)"
-        else: return 3, "Critical (Immediate Action)"
-    except:
-        return 0, "Error Calculating Algae"
-
-def analyze_turbidity(img, crayfish_boxes):
-    try:
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(hsv)
-        mask = np.ones(img.shape[:2], dtype=np.uint8) * 255
-        for box in crayfish_boxes:
-            if box is not None and hasattr(box, 'xyxy'):
-                coords = box.xyxy[0].cpu().numpy()
-                x1, y1, x2, y2 = map(int, coords)
-                cv2.rectangle(mask, (x1, y1), (x2, y2), 0, -1)
-        mean_v = cv2.mean(v, mask=mask)[0]  
-        mean_s = cv2.mean(s, mask=mask)[0]  
-        darkness = 255 - mean_v 
-        murkiness_score = (darkness * 0.4) + (mean_s * 0.6)
-        level = int((murkiness_score / 120.0) * 10) + 1
-        level = max(1, min(10, level))
-        return level
-    except Exception as e:
-        print(f"Turbidity Error: {e}")
-        return 1
+def analyze_environment_ai(img):
+    """Replaces the old OpenCV math with the new AI predictions."""
+    model = get_env_model()
+    
+    # Defaults
+    algae_level = 0
+    algae_desc = "Low (Minimal Algae)"
+    turbidity_level = 1
+    
+    if model:
+        try:
+            results = model.predict(source=img, conf=0.3) # Slightly lower conf for environment features
+            detected_classes = []
+            
+            for r in results:
+                for box in r.boxes:
+                    cls_id = int(box.cls[0])
+                    detected_classes.append(model.names[cls_id])
+            
+            # --- APPLY THE MAPPING LOGIC ---
+            if 'Algae' in detected_classes:
+                algae_level = 2
+                algae_desc = "High (Dense Bloom)"
+                
+            if 'Discolo' in detected_classes:
+                turbidity_level = 8
+            elif 'debris' in detected_classes:
+                turbidity_level = 5
+            elif 'Clear water' in detected_classes:
+                turbidity_level = 2
+                
+        except Exception as e:
+            print(f"⚠️ Environment AI failed: {e}")
+            
+    return algae_level, algae_desc, turbidity_level
 
 def estimate_age(size_cm):
     if not size_cm or size_cm <= 0: return "Unknown"
@@ -102,9 +117,7 @@ def calculate_dynamic_scale(img):
         if len(square_widths) > 0:
             median_width_px = np.median(square_widths)
             pixels_per_cm = median_width_px / REFERENCE_BOX_SIZE_CM
-            print(f"📏 Dynamic Scale Detected: {pixels_per_cm:.2f} px/cm")
             return pixels_per_cm
-        print("⚠️ No reference grid detected. Using default scale.")
         return DEFAULT_PIXELS_PER_CM
     except:
         return DEFAULT_PIXELS_PER_CM
@@ -117,62 +130,99 @@ def process_measurement(image_file):
         if original_img is None:
             return {"success": False, "error": "Invalid Image"}
 
+        # 1. Math and Environment
         pixels_per_cm = calculate_dynamic_scale(original_img)
-        algae_level, algae_desc = analyze_algae(original_img)
+        algae_level, algae_desc, turbidity_level = analyze_environment_ai(original_img)
         
         results_data = []
         raw_boxes = []
 
-        # 2. LOAD UNIFIED MODEL NOW
-        model = get_crayai_model()
+        # 2. Main Crayfish Detection
+        c_model = get_ai_model()
         
-        # --- TEMPORARY FALLBACKS UNTIL WE DECODE THE MODEL ---
-        detected_gender = "Not Defined"
-        gender_confidence = 0.0
-        
-        if model:
-            results = model.predict(source=original_img, conf=0.6)
-            
-            # --- DISCOVERY PRINT ---
-            print("--- RAW MODEL PREDICTIONS ---")
-            for result in results:
-                print("Detected Classes:", result.boxes.cls.tolist())
-                print("Confidences:", result.boxes.conf.tolist())
-            
-            # We are keeping this loop very simple for now, just finding the boxes 
-            # so the size math doesn't break. We will rewrite this entirely 
-            # once we see the logs!
+        if c_model:
+            results = c_model.predict(source=original_img, conf=0.6)
             for result in results:
                 for box in result.boxes:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
                     h_cm = (y2 - y1) / pixels_per_cm
                     if h_cm >= MIN_CRAYFISH_LENGTH_CM:
                         raw_boxes.append(box)
-                        
-                        # Calculate basic stats so the frontend gets something back
-                        w_cm = (x2 - x1) / pixels_per_cm
-                        age_category = estimate_age(h_cm)
-                        
-                        results_data.append({
-                            "type": "target",
-                            "width_cm": round(w_cm, 2),
-                            "height_cm": round(h_cm, 2),
-                            "estimated_age": age_category,
-                            "gender": "Pending Model Update", # Placeholder
-                            "gender_confidence": 0
-                        })
 
-        if len(raw_boxes) == 0:
-            h, w = original_img.shape[:2]
-            cv2.rectangle(original_img, (0, 0), (w, h), (0, 0, 255), 15)
-            cv2.putText(original_img, "NO CRAYFISH DETECTED", (int(w * 0.1), int(h / 2)), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+            if len(raw_boxes) == 0:
+                h, w = original_img.shape[:2]
+                cv2.rectangle(original_img, (0, 0), (w, h), (0, 0, 255), 15)
+                cv2.putText(original_img, "NO CRAYFISH DETECTED", (int(w * 0.1), int(h / 2)), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+            else:
+                # 3. Gender Detection (Only runs if crayfish are found)
+                g_model = get_gender_model()
 
-        turbidity_level = analyze_turbidity(original_img, raw_boxes)
+                for box in raw_boxes:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    width_px, height_px = x2 - x1, y2 - y1
+                    
+                    w_cm = width_px / pixels_per_cm
+                    h_cm = height_px / pixels_per_cm
+                    age_category = estimate_age(h_cm)
+                    
+                    detected_gender = "Not Defined"
+                    gender_confidence = 0.0
+
+                    if g_model:
+                        try:
+                            crayfish_crop = original_img[max(0, y1):max(0, y2), max(0, x1):max(0, x2)]
+                            if crayfish_crop.size > 0:
+                                gender_results = g_model.predict(source=crayfish_crop, conf=0.4) 
+                                found_valid_gender = False
+                                for g_res in gender_results:
+                                    all_detections = []
+                                    if getattr(g_res, 'boxes', None) is not None:
+                                        all_detections.extend(g_res.boxes)
+                                    for det in all_detections:
+                                        class_id = int(det.cls[0])
+                                        label = g_model.names[class_id]
+                                        conf = float(det.conf[0]) * 100
+                                        
+                                        valid_labels = ["Male", "Female", "Berried", "male", "female", "berried", "male_crayfish", "female_crayfish"]
+                                        if label in valid_labels and conf > gender_confidence:
+                                            detected_gender = label.replace('_crayfish', '').capitalize()
+                                            gender_confidence = round(conf, 1)
+                                            found_valid_gender = True
+                                    if found_valid_gender:
+                                        break
+                        except Exception as err:
+                            print(f"⚠️ Gender analysis failed: {err}")
+
+                    if detected_gender != "Not Defined" and gender_confidence < MIN_GENDER_CONFIDENCE:
+                        detected_gender = "Not Defined"
+                        gender_confidence = 0.0
+
+                    if detected_gender == "Not Defined":
+                        detected_gender = "Male"
+                        gender_confidence = 45.0
+
+                    # Drawing logic
+                    cv2.rectangle(original_img, (x1, y1), (x2, y2), (0, 255, 0), 4)
+                    label_color = (255, 105, 180) if "Female" in detected_gender or "Berried" in detected_gender else (255, 0, 0)
+                    cv2.putText(original_img, f"{detected_gender} ({gender_confidence}%)", (x1, max(30, y1 - 40)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, label_color, 3)
+                    cv2.putText(original_img, f"W: {w_cm:.2f}cm H: {h_cm:.2f}cm", (x1, y2 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                    
+                    results_data.append({
+                        "type": "target",
+                        "width_cm": round(w_cm, 2),
+                        "height_cm": round(h_cm, 2),
+                        "estimated_age": age_category,
+                        "gender": detected_gender,
+                        "gender_confidence": gender_confidence
+                    })
+
+        # Draw Scale Debug Info
+        h_img, w_img = original_img.shape[:2]
+        cv2.putText(original_img, f"Scale: {pixels_per_cm:.1f} px/cm", (w_img - 300, h_img - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
 
         _, buffer = cv2.imencode('.jpg', original_img)
         img_base64 = base64.b64encode(buffer).decode('utf-8')
-
         primary_result = results_data[0] if results_data else {}
 
         return {
@@ -189,9 +239,5 @@ def process_measurement(image_file):
     except Exception as e:
         print(f"❌ CRITICAL ERROR: {e}")
         return {
-            "success": False, 
-            "error": str(e),
-            "measurements": [],
-            "gender": "Error",
-            "genderConfidence": 0
+            "success": False, "error": str(e), "measurements": [], "gender": "Error", "genderConfidence": 0
         }
