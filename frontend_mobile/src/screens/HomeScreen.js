@@ -18,8 +18,44 @@ import Sidebar from '../components/Sidebar';
 import FloatingChatbot from '../components/FloatingChatbot';
 import ScanDetailsModal from '../components/ScanDetailsModal'; 
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const SLIDESHOW_IMAGES = [
+  {
+
+    uri: require('../../assets/arc-crayfish.jpg'),
+    caption: 'Precision Classification',
+    sub: 'Identify gender, size & health in seconds.',
+  },
+  {
+    uri: require('../../assets/blue.jpg'),
+    caption: 'Species Recognition',
+    sub: 'AI-powered detection of 10+ crayfish varieties.',
+  },
+  {
+    uri: require('../../assets/water.jpg'),
+    caption: 'Water Quality Monitoring',
+    sub: 'Real-time turbidity & algae level tracking.',
+  },
+  {
+    uri: require('../../assets/age.jpg'),
+    caption: 'Growth & Age Tracking',
+    sub: 'Monitor morphometrics across your colony.',
+  },
+  {
+    uri: require('../../assets/market.jpg'),
+    caption: 'Market Intelligence',
+    sub: 'Community-driven pricing & economics data.',
+  },
+];
+
+const FEATURE_CARDS = [
+  { icon: 'scan', color: '#3D5A80', bg: '#E0E7ED', label: 'AI Scanner', desc: 'Instant species ID' },
+  { icon: 'water', color: '#2A9D8F', bg: '#D0F0EC', label: 'Water Quality', desc: 'Turbidity alerts' },
+  { icon: 'stats-chart', color: '#E76F51', bg: '#FAE0D8', label: 'Analytics', desc: 'Growth insights' },
+  { icon: 'chatbubble-ellipses', color: '#8AB4F8', bg: '#E0EAFF', label: 'CrayBot AI', desc: 'Ask anything' },
+];
 
 export default function HomeScreen({ navigation }) {
   const [sidebarVisible, setSidebarVisible] = useState(false);
@@ -33,16 +69,72 @@ export default function HomeScreen({ navigation }) {
   const [stats, setStats] = useState({ total: 0, warnings: 0, berried: 0 });
   const [currentDate, setCurrentDate] = useState(new Date());
   
-  // --- REAL DYNAMIC MARKET DATA STATE ---
   const [marketProjections, setMarketProjections] = useState(MONTH_NAMES.map(m => ({ month: m, price: 0 })));
-  const [marketMonthIndex, setMarketMonthIndex] = useState(new Date().getMonth()); // Default to current month
+  const [marketMonthIndex, setMarketMonthIndex] = useState(new Date().getMonth()); 
 
-  // --- MODAL STATE ---
   const [selectedScan, setSelectedScan] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
 
   const [notification, setNotification] = useState({ visible: false, message: '', type: 'info' });
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // ─── Slideshow state ────────────────────────────────────────────────────────
+  const [slideIndex, setSlideIndex] = useState(0);
+  const slideOpacities = useRef(SLIDESHOW_IMAGES.map((_, i) => new Animated.Value(i === 0 ? 1 : 0))).current;
+  const textFade = useRef(new Animated.Value(1)).current;
+  const slideTimer = useRef(null);
+
+  const goToSlide = (nextIndex) => {
+    const currentIdx = slideIndex;
+    // Fade out text
+    Animated.timing(textFade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => {
+      // Cross-fade images
+      Animated.parallel([
+        Animated.timing(slideOpacities[currentIdx], { toValue: 0, duration: 600, useNativeDriver: true }),
+        Animated.timing(slideOpacities[nextIndex], { toValue: 1, duration: 600, useNativeDriver: true }),
+      ]).start();
+      setSlideIndex(nextIndex);
+      // Fade in new text
+      Animated.timing(textFade, { toValue: 1, duration: 350, useNativeDriver: true }).start();
+    });
+  };
+
+  const advanceSlide = useCallback(() => {
+    setSlideIndex(prev => {
+      const next = (prev + 1) % SLIDESHOW_IMAGES.length;
+      Animated.parallel([
+        Animated.timing(slideOpacities[prev], { toValue: 0, duration: 700, useNativeDriver: true }),
+        Animated.timing(slideOpacities[next], { toValue: 1, duration: 700, useNativeDriver: true }),
+      ]).start();
+      Animated.sequence([
+        Animated.timing(textFade, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(textFade, { toValue: 1, duration: 400, useNativeDriver: true }),
+      ]).start();
+      return next;
+    });
+  }, [slideOpacities, textFade]);
+
+  useEffect(() => {
+    slideTimer.current = setInterval(advanceSlide, 4000);
+    return () => clearInterval(slideTimer.current);
+  }, [advanceSlide]);
+
+  // ─── Feature card stagger animations ───────────────────────────────────────
+  const cardAnims = useRef(FEATURE_CARDS.map(() => new Animated.Value(0))).current;
+  const cardTranslates = useRef(FEATURE_CARDS.map(() => new Animated.Value(24))).current;
+
+  useEffect(() => {
+    const anims = FEATURE_CARDS.map((_, i) =>
+      Animated.parallel([
+        Animated.timing(cardAnims[i], { toValue: 1, duration: 400, delay: 600 + i * 100, useNativeDriver: true }),
+        Animated.timing(cardTranslates[i], { toValue: 0, duration: 400, delay: 600 + i * 100, useNativeDriver: true }),
+      ])
+    );
+    Animated.stagger(80, anims).start();
+  }, []);
+
+  useEffect(() => {
+  }, []);
 
   const showNotification = (message, type = 'info') => {
     setNotification({ visible: true, message, type });
@@ -86,7 +178,6 @@ export default function HomeScreen({ navigation }) {
 
   const fetchDashboardData = async () => {
     try {
-        // 1. FETCH PERSONAL SCANS
         const scanRes = await client.get('/scans/me');
         if (scanRes.data?.success) {
             const records = scanRes.data.records || [];
@@ -102,19 +193,14 @@ export default function HomeScreen({ navigation }) {
             setStats({ total, warnings, berried: 0 }); 
         }
 
-        // 2. FETCH COMMUNITY POSTS TO CALCULATE MARKET VALUE
         const feedRes = await client.get('/posts/feed');
         if (feedRes.data?.posts) {
-            // Find all posts that are listed for sale with a valid price
             const sales = feedRes.data.posts.filter(p => p.isForSale && p.price > 0);
-            
             let baseData = MONTH_NAMES.map(m => ({ month: m, price: 0 }));
             
             if (sales.length > 0) {
                 const monthlyTotals = {};
                 const monthlyCounts = {};
-
-                // Group prices by month
                 sales.forEach(sale => {
                     const monthIdx = new Date(sale.createdAt).getMonth();
                     if (!monthlyTotals[monthIdx]) {
@@ -125,7 +211,6 @@ export default function HomeScreen({ navigation }) {
                     monthlyCounts[monthIdx] += 1;
                 });
 
-                // Find the first known price so we can carry it over empty months
                 let lastKnownPrice = 0;
                 for (let i = 0; i < 12; i++) {
                     if (monthlyCounts[i]) {
@@ -134,14 +219,12 @@ export default function HomeScreen({ navigation }) {
                     }
                 }
 
-                // Populate the 12-month array
                 for (let i = 0; i < 12; i++) {
                     if (monthlyCounts[i]) {
                         const avg = Math.round(monthlyTotals[i] / monthlyCounts[i]);
                         baseData[i].price = avg;
                         lastKnownPrice = avg;
                     } else {
-                        // Carry over the last known average if a month had no sales
                         baseData[i].price = lastKnownPrice; 
                     }
                 }
@@ -182,7 +265,7 @@ export default function HomeScreen({ navigation }) {
     navigation.navigate('Login');
   };
 
-  // --- DEMOGRAPHICS LOGIC ---
+  // ─── Demographics logic (unchanged) ────────────────────────────────────────
   const categories = ['Gender', 'Size', 'Age'];
   const getAnalyticsData = () => {
     if (recentScans.length === 0) return { total: 0, items: [ { label: 'No Data', value: 0, pct: '0%', color: '#BDC3C7', icon: 'remove-outline' } ] };
@@ -230,7 +313,6 @@ export default function HomeScreen({ navigation }) {
   };
   const analyticsData = getAnalyticsData();
 
-  // --- TURBIDITY TREND DATA ---
   const getTurbidityTrendData = () => {
     if (recentScans.length === 0) return { labels: ["No Data"], data: [0] };
     const last5 = [...recentScans].slice(0, 5).reverse();
@@ -240,7 +322,6 @@ export default function HomeScreen({ navigation }) {
   };
   const turbidityTrend = getTurbidityTrendData();
 
-  // --- ALGAE DISTRIBUTION DATA ---
   const getAlgaeBarData = () => {
     if (recentScans.length === 0) return { labels: ["Low", "Mod", "High", "Crit"], data: [0, 0, 0, 0] };
     let low = 0, mod = 0, high = 0, crit = 0;
@@ -255,7 +336,6 @@ export default function HomeScreen({ navigation }) {
   };
   const algaeBarData = getAlgaeBarData();
 
-  // --- CHART CONFIGS ---
   const darkLineConfig = {
     backgroundGradientFrom: "#293241", backgroundGradientTo: "#293241",
     color: (opacity = 1) => `rgba(138, 180, 248, ${opacity})`, 
@@ -278,73 +358,177 @@ export default function HomeScreen({ navigation }) {
     strokeWidth: 2, decimalPlaces: 0, fillShadowGradient: '#3D5A80', fillShadowGradientOpacity: 0.1
   };
 
-  // Check if we actually have market data to display
   const hasMarketData = marketProjections.some(m => m.price > 0);
 
   const handleNextMonth = () => setMarketMonthIndex((prev) => (prev + 1) % 12);
   const handlePrevMonth = () => setMarketMonthIndex((prev) => (prev - 1 + 12) % 12);
 
   // ==========================================
-  // RENDER: GUEST MODE
+  // RENDER: IMPROVED GUEST MODE
   // ==========================================
   const renderGuestGuide = () => (
     <View style={styles.guestContainer}>
-      <View style={[styles.heroCard, styles.shadow]}>
-        <Image 
-          source={{ uri: 'https://images.unsplash.com/photo-1535591273668-578e31182c4f?q=80&w=1000' }} 
-          style={styles.heroImage} 
+
+      {/* ── HERO SLIDESHOW ─────────────────────────────────────────────── */}
+      <View style={styles.heroSlideshow}>
+        {/* Stacked crossfade images */}
+        {SLIDESHOW_IMAGES.map((slide, i) => (
+          <Animated.View
+            key={i}
+            style={[StyleSheet.absoluteFill, { opacity: slideOpacities[i] }]}
+          >
+          <Image
+            source={slide.uri} 
+            style={styles.heroSlideshowImage}
+            resizeMode="cover"
+          />
+          </Animated.View>
+        ))}
+
+        {/* Cinematic gradient overlay — dark top + heavy bottom */}
+        <LinearGradient
+          colors={[
+            'rgba(25, 35, 50, 0.35)',
+            'transparent',
+            'transparent',
+            'rgba(18, 28, 42, 0.92)',
+          ]}
+          locations={[0, 0.25, 0.5, 1]}
+          style={StyleSheet.absoluteFill}
         />
-        <LinearGradient 
-          colors={['transparent', 'rgba(41, 50, 65, 0.95)']} 
-          style={styles.heroGradient}
-        >
-          <View style={styles.heroContent}>
-            <View style={styles.newBadge}><Text style={styles.newBadgeText}>AI RESEARCH TOOL</Text></View>
-            <Text style={styles.heroTitle}>Precision Classification</Text>
-            <Text style={styles.heroSubtitle}>Identify gender, size, and health status in seconds.</Text>
+
+        {/* Top badge */}
+        <View style={styles.heroBadgeRow}>
+          <View style={styles.heroBadge}>
+            <View style={styles.liveDot} />
+            <Text style={styles.heroBadgeText}>AI RESEARCH TOOL</Text>
           </View>
-        </LinearGradient>
+        </View>
+
+        {/* Bottom text + dots */}
+        <View style={styles.heroBottom}>
+          <Animated.View style={{ opacity: textFade }}>
+            <Text style={styles.heroSlideTitle}>
+              {SLIDESHOW_IMAGES[slideIndex].caption}
+            </Text>
+            <Text style={styles.heroSlideSub}>
+              {SLIDESHOW_IMAGES[slideIndex].sub}
+            </Text>
+          </Animated.View>
+
+          {/* Progress dots */}
+          <View style={styles.dotRow}>
+            {SLIDESHOW_IMAGES.map((_, i) => (
+              <TouchableOpacity
+                key={i}
+                onPress={() => {
+                  clearInterval(slideTimer.current);
+                  goToSlide(i);
+                  slideTimer.current = setInterval(advanceSlide, 4000);
+                }}
+                style={[
+                  styles.dot,
+                  i === slideIndex ? styles.dotActive : styles.dotInactive,
+                ]}
+              />
+            ))}
+          </View>
+        </View>
       </View>
 
-      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Meet CrayBot 🤖</Text></View>
+      {/* ── FEATURE GRID ────────────────────────────────────────────────── */}
+      <View style={styles.featureGrid}>
+        {FEATURE_CARDS.map((f, i) => (
+          <Animated.View
+            key={i}
+            style={[
+              styles.featureCard,
+              {
+                opacity: cardAnims[i],
+                transform: [{ translateY: cardTranslates[i] }],
+              },
+            ]}
+          >
+            <View style={[styles.featureIconWrap, { backgroundColor: f.bg }]}>
+              <Ionicons name={f.icon} size={22} color={f.color} />
+            </View>
+            <Text style={styles.featureLabel}>{f.label}</Text>
+            <Text style={styles.featureDesc}>{f.desc}</Text>
+          </Animated.View>
+        ))}
+      </View>
+
+      {/* ── CRAYBOT TEASER ──────────────────────────────────────────────── */}
       <View style={[styles.botShowcase, styles.shadow]}>
         <View style={styles.botHeader}>
-          <View style={styles.botAvatarContainer}><Text style={{fontSize: 20}}>🦐</Text></View>
-          <View>
+          <View style={styles.botAvatarContainer}>
+            <Text style={{ fontSize: 22 }}>🦐</Text>
+          </View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.botName}>CrayBot AI</Text>
-            <Text style={styles.botStatus}>Online • Research Assistant</Text>
+            <View style={styles.botStatusRow}>
+              <View style={styles.onlineDot} />
+              <Text style={styles.botStatus}>Online · Research Assistant</Text>
+            </View>
+          </View>
+          <View style={styles.botBadge}>
+            <Text style={styles.botBadgeText}>FREE</Text>
           </View>
         </View>
+
         <View style={styles.mockChatContainer}>
-           <View style={styles.mockUserBubble}><Text style={styles.mockUserText}>Is this crayfish healthy? 📸</Text></View>
-           <View style={styles.mockBotBubble}><Text style={styles.mockBotText}>I've analyzed the image. This appears to be a <Text style={{fontWeight:'700', color: '#E76F51'}}>Female Red Claw</Text>.</Text></View>
+          <View style={styles.mockUserBubble}>
+            <Text style={styles.mockUserText}>Is this crayfish healthy? 📸</Text>
+          </View>
+          <View style={styles.mockBotBubble}>
+            <Text style={styles.mockBotText}>
+              Analyzed ✓ — This is a{' '}
+              <Text style={{ fontWeight: '800', color: '#E76F51' }}>Female Red Claw</Text>
+              , estimated{' '}
+              <Text style={{ fontWeight: '700', color: '#2A9D8F' }}>4–5 months</Text>
+              , in good health.
+            </Text>
+          </View>
         </View>
-        <TouchableOpacity style={styles.tryBotBtn} onPress={() => showNotification("Log in to chat with CrayBot!", "info")}>
-           <Text style={styles.tryBotText}>Ask a Question</Text>
-           <Ionicons name="chatbubble-ellipses" size={16} color="#3D5A80" />
+
+        <TouchableOpacity
+          style={styles.tryBotBtn}
+          onPress={() => showNotification('Log in to chat with CrayBot!', 'info')}
+        >
+          <Ionicons name="chatbubble-ellipses" size={16} color="#FFF" />
+          <Text style={styles.tryBotText}>Ask CrayBot a Question</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.modernCta}>
-        <View>
-          <Text style={styles.ctaHeading}>Join CrayAI</Text>
-          <Text style={styles.ctaSub}>Create your free account.</Text>
+      {/* ── CTA STRIP ────────────────────────────────────────────────────── */}
+      <LinearGradient
+        colors={['#3D5A80', '#293241']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.ctaStrip}
+      >
+        <View style={styles.ctaLeft}>
+          <Text style={styles.ctaHeading}>Join CrayAI Today</Text>
+          <Text style={styles.ctaSub}>Free account · No credit card needed</Text>
         </View>
-        <TouchableOpacity style={styles.ctaBtnModern} onPress={() => navigation.navigate('Login')}>
-          <Text style={styles.ctaBtnTextModern}>Get Started</Text>
-          <Feather name="arrow-right" size={18} color="#FFF" />
+        <TouchableOpacity
+          style={styles.ctaBtn}
+          onPress={() => navigation.navigate('Login')}
+        >
+          <Text style={styles.ctaBtnText}>Get Started</Text>
+          <Feather name="arrow-right" size={16} color="#3D5A80" />
         </TouchableOpacity>
-      </View>
+      </LinearGradient>
+
     </View>
   );
 
   // ==========================================
-  // RENDER: USER DASHBOARD
+  // RENDER: USER DASHBOARD (unchanged)
   // ==========================================
   const renderUserDashboard = () => (
     <View style={styles.dashboardContainer}>
       
-      {/* 1. HEADER */}
       <View style={styles.userHeader}>
         <View>
           <Text style={styles.userGreeting}>Welcome Back,</Text>
@@ -375,7 +559,6 @@ export default function HomeScreen({ navigation }) {
          </View>
       </View>
 
-      {/* 2. ACTIONS */}
       <View style={styles.actionRow}>
          <TouchableOpacity style={[styles.actionCard, styles.shadow, {backgroundColor: '#293241'}]} onPress={handleCameraPress}>
              <LinearGradient colors={['#3D5A80', '#293241']} style={styles.actionGradient}>
@@ -398,7 +581,6 @@ export default function HomeScreen({ navigation }) {
          </TouchableOpacity>
       </View>
 
-      {/* 3. RECENT CAROUSEL */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Recent Scans</Text>
         {recentScans.length > 0 && <TouchableOpacity onPress={() => navigation.navigate('History')}><Text style={styles.viewLink}>History</Text></TouchableOpacity>}
@@ -438,7 +620,6 @@ export default function HomeScreen({ navigation }) {
         </ScrollView>
       )}
 
-      {/* 4. DEMOGRAPHICS */}
       <View style={styles.sectionHeader}>
          <Text style={styles.sectionTitle}>Demographics</Text>
       </View>
@@ -477,7 +658,6 @@ export default function HomeScreen({ navigation }) {
          </View>
       </View>
 
-      {/* 5. FULL-BLEED DARK SECTION (Turbidity) */}
       <View style={styles.darkBleedSection}>
           <View style={styles.bleedHeader}>
               <View>
@@ -492,7 +672,7 @@ export default function HomeScreen({ navigation }) {
               labels: turbidityTrend.labels,
               datasets: [{ data: turbidityTrend.data }]
             }}
-            width={width} // Forces it edge-to-edge
+            width={width}
             height={180}
             yAxisInterval={2}
             fromZero={true}
@@ -503,7 +683,6 @@ export default function HomeScreen({ navigation }) {
           />
       </View>
 
-      {/* 6. FLAT INSET PANEL (Algae) */}
       <View style={styles.flatInsetPanel}>
           <View style={styles.cardHeaderWithNav}>
               <View>
@@ -528,7 +707,6 @@ export default function HomeScreen({ navigation }) {
           />
       </View>
 
-      {/* 7. ASYMMETRICAL CARD (Economics - REAL DATA NOW!) */}
       <View style={styles.sectionHeader}>
          <Text style={styles.sectionTitle}>Economics</Text>
       </View>
@@ -613,7 +791,6 @@ export default function HomeScreen({ navigation }) {
         <View style={{height: 100}} /> 
       </ScrollView>
 
-      {/* --- ADDED MODAL TO ROOT VIEW --- */}
       <ScanDetailsModal 
         visible={modalVisible} 
         onClose={() => setModalVisible(false)} 
@@ -628,7 +805,7 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 10 },
+  scrollContent: { paddingTop: 10 },
   shadow: { shadowColor: '#3D5A80', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
   
   toastContainer: { position: 'absolute', top: 60, left: 20, right: 20, zIndex: 99, alignItems: 'center' },
@@ -637,63 +814,53 @@ const styles = StyleSheet.create({
   toastInfo: { backgroundColor: '#2A9D8F' },    
   toastText: { color: '#FFF', fontWeight: '700', fontSize: 13, marginLeft: 10 },
 
-  dashboardContainer: { gap: 20 },
+  // ─── Dashboard styles (unchanged) ──────────────────────────────────────────
+  dashboardContainer: { gap: 20, paddingHorizontal: 20 },
   userHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   userGreeting: { fontSize: 12, color: '#7F8C8D', fontWeight: '600', textTransform: 'uppercase' },
   userName: { fontSize: 22, color: '#293241', fontWeight: '800' },
   dateBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E0E7ED', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 6 },
   dateText: { fontSize: 12, fontWeight: '700', color: '#3D5A80' },
-
   statsTicker: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#FFF', padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#EAECEE' },
   tickerItem: { alignItems: 'center', flex: 1 },
   tickerValue: { fontSize: 18, fontWeight: '800', color: '#3D5A80' },
   tickerLabel: { fontSize: 11, color: '#95A5A6', marginTop: 2 },
   tickerDivider: { width: 1, height: '80%', backgroundColor: '#EAECEE', alignSelf: 'center' },
-
   actionRow: { flexDirection: 'row', gap: 15, height: 110 },
   actionCard: { flex: 1, borderRadius: 24, overflow: 'hidden' },
   actionGradient: { flex: 1, padding: 16, justifyContent: 'space-between' },
   actionContentLight: { flex: 1, padding: 16, justifyContent: 'space-between', borderWidth: 1, borderColor: '#EAECEE', borderRadius: 24 },
   actionCardTitle: { fontSize: 16, fontWeight: '800', color: '#FFF' },
   actionCardSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '500' },
-
   carouselContainer: { marginHorizontal: -20, paddingHorizontal: 20, overflow: 'visible' },
   scanCard: { width: 140, height: 160, borderRadius: 20, overflow: 'hidden', marginRight: 15, backgroundColor: '#FFF' },
   scanCardImg: { width: '100%', height: '100%', resizeMode: 'cover' },
   scanCardGrad: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%', justifyContent: 'flex-end', padding: 12 },
   scanCardDate: { color: '#E0FBFC', fontSize: 10, fontWeight: '600', marginBottom: 2 },
   scanCardTitle: { color: '#FFF', fontSize: 13, fontWeight: '800' },
-
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 5 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#2C3E50' },
   viewLink: { fontSize: 12, color: '#3D5A80', fontWeight: '700' },
-
   statCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#EAECEE' },
   statCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   statTotalLabel: { fontSize: 11, color: '#95A5A6', fontWeight: '600', textTransform: 'uppercase' },
   statTotalValue: { fontSize: 22, fontWeight: '900', color: '#2C3E50' },
-  
   darkBleedSection: { backgroundColor: '#293241', marginHorizontal: -20, paddingVertical: 25, marginTop: 15 },
   bleedHeader: { paddingHorizontal: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   bleedTitle: { fontSize: 18, fontWeight: '800', color: '#FFF' },
   bleedSub: { fontSize: 12, color: '#8AB4F8', fontWeight: '500', marginTop: 2 },
-
   flatInsetPanel: { backgroundColor: '#F4F6F7', borderRadius: 24, padding: 20, marginTop: 10, borderWidth: 1, borderColor: '#EAECEE' },
-
   asymmetricalCard: {
     backgroundColor: '#FFF', borderTopLeftRadius: 40, borderBottomRightRadius: 40, borderTopRightRadius: 12, borderBottomLeftRadius: 12,
     padding: 20, marginTop: 5, elevation: 4, shadowColor: '#3D5A80', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 12, borderWidth: 1, borderColor: '#EAECEE'
   },
   moneyBadge: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E0FBFC', justifyContent: 'center', alignItems: 'center' },
-
   cardHeaderWithNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   cardSubTitle: { fontSize: 11, color: '#95A5A6', fontWeight: '600', marginTop: 2 },
-  
   monthNavRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
   navBtn: { padding: 10, backgroundColor: '#F4F6F7', borderRadius: 12 },
   monthNavLabel: { fontSize: 10, color: '#95A5A6', fontWeight: '600', textTransform: 'uppercase' },
   monthNavValue: { fontSize: 18, color: '#2C3E50', fontWeight: '800' },
-
   compactTabRow: { flexDirection: 'row', backgroundColor: '#F4F6F7', borderRadius: 10, padding: 3 },
   compactTab: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
   compactTabActive: { backgroundColor: '#FFF', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
@@ -709,35 +876,232 @@ const styles = StyleSheet.create({
   progressBarBg: { flex: 1, height: 6, backgroundColor: '#F0F0F0', borderRadius: 3 },
   progressBarFill: { height: '100%', borderRadius: 3 },
   statRowValue: { width: 35, fontSize: 12, fontWeight: '700', color: '#2C3E50', textAlign: 'right' },
-
   emptyStateContainer: { backgroundColor: '#FFF', borderRadius: 24, padding: 30, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F0F0F0', marginBottom: 10 },
   emptyIconBg: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#F4F6F7', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: '#2C3E50', marginBottom: 4 },
   emptySub: { fontSize: 12, color: '#95A5A6', textAlign: 'center' },
 
-  guestContainer: { marginTop: 5, paddingBottom: 20 },
-  heroCard: { height: 220, borderRadius: 24, marginBottom: 25, overflow: 'hidden', backgroundColor: '#293241' },
-  heroImage: { width: '100%', height: '100%', opacity: 0.9 },
-  heroGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '100%', justifyContent: 'flex-end', padding: 20 },
-  newBadge: { backgroundColor: '#E76F51', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 10 },
-  newBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
-  heroTitle: { color: '#FFF', fontSize: 22, fontWeight: '800', marginBottom: 5, width: '80%' },
-  heroSubtitle: { color: '#E0FBFC', fontSize: 14, fontWeight: '500' },
-  botShowcase: { backgroundColor: '#F8F9FA', borderRadius: 24, padding: 20, marginBottom: 25, borderWidth: 1, borderColor: '#FFF' },
-  botHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  botAvatarContainer: { width: 45, height: 45, borderRadius: 22.5, backgroundColor: '#E0FBFC', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  botName: { fontSize: 16, fontWeight: '800', color: '#2C3E50' },
-  botStatus: { fontSize: 12, color: '#27AE60', fontWeight: '600' },
-  mockChatContainer: { backgroundColor: '#FFF', borderRadius: 16, padding: 15, marginBottom: 15, borderWidth: 1, borderColor: '#E0E7ED' },
-  mockUserBubble: { alignSelf: 'flex-end', backgroundColor: '#3D5A80', padding: 10, borderRadius: 12, borderBottomRightRadius: 2, marginBottom: 10 },
+  // ─── NEW Guest styles ───────────────────────────────────────────────────────
+  guestContainer: { paddingBottom: 20 },
+
+  // Slideshow hero (edge-to-edge, taller)
+  heroSlideshow: {
+    width: width,
+    height: 300,
+    overflow: 'hidden',
+    marginBottom: 0,
+    backgroundColor: '#1A2332',
+  },
+  heroSlideshowImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroBadgeRow: {
+    position: 'absolute',
+    top: 18,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    gap: 6,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#4ADE80',
+  },
+  heroBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  heroBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  heroSlideTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '900',
+    marginBottom: 4,
+    letterSpacing: -0.3,
+  },
+  heroSlideSub: {
+    color: 'rgba(224, 251, 252, 0.85)',
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 14,
+  },
+  dotRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  dot: {
+    height: 4,
+    borderRadius: 2,
+  },
+  dotActive: {
+    width: 20,
+    backgroundColor: '#FFFFFF',
+  },
+  dotInactive: {
+    width: 6,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+  },
+
+  // Feature grid
+  featureGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
+  featureCard: {
+    width: (width - 52) / 2,
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#EAECEE',
+    shadowColor: '#3D5A80',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  featureIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  featureLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#2C3E50',
+    marginBottom: 2,
+  },
+  featureDesc: {
+    fontSize: 11,
+    color: '#95A5A6',
+    fontWeight: '500',
+  },
+
+  // CrayBot teaser
+  botShowcase: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 24,
+    padding: 20,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#EAECEE',
+  },
+  botHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    gap: 12,
+  },
+  botAvatarContainer: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#E0FBFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  botName: { fontSize: 15, fontWeight: '800', color: '#2C3E50' },
+  botStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#27AE60' },
+  botStatus: { fontSize: 11, color: '#27AE60', fontWeight: '600' },
+  botBadge: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  botBadgeText: { fontSize: 10, fontWeight: '800', color: '#0284C7' },
+  mockChatContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E0E7ED',
+    gap: 10,
+  },
+  mockUserBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#3D5A80',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 16,
+    borderBottomRightRadius: 4,
+  },
   mockUserText: { color: '#FFF', fontSize: 13, fontWeight: '500' },
-  mockBotBubble: { alignSelf: 'flex-start', backgroundColor: '#F4F6F7', padding: 10, borderRadius: 12, borderBottomLeftRadius: 2, maxWidth: '90%' },
-  mockBotText: { color: '#2C3E50', fontSize: 13 },
-  tryBotBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF', paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: '#3D5A80', gap: 8 },
-  tryBotText: { color: '#3D5A80', fontWeight: '700', fontSize: 13 },
-  modernCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', padding: 20, borderRadius: 24, borderWidth: 1, borderColor: '#E0E7ED' },
-  ctaHeading: { fontSize: 16, fontWeight: '800', color: '#3D5A80' },
-  ctaSub: { fontSize: 12, color: '#98C1D9', fontWeight: '600' },
-  ctaBtnModern: { backgroundColor: '#3D5A80', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  ctaBtnTextModern: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+  mockBotBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F4F6F7',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 16,
+    borderBottomLeftRadius: 4,
+    maxWidth: '92%',
+  },
+  mockBotText: { color: '#2C3E50', fontSize: 13, lineHeight: 19 },
+  tryBotBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3D5A80',
+    paddingVertical: 13,
+    borderRadius: 16,
+    gap: 8,
+  },
+  tryBotText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+
+  // CTA strip
+  ctaStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 20,
+    padding: 20,
+    borderRadius: 24,
+    marginBottom: 8,
+  },
+  ctaLeft: { flex: 1 },
+  ctaHeading: { fontSize: 16, fontWeight: '800', color: '#FFF' },
+  ctaSub: { fontSize: 11, color: 'rgba(224,251,252,0.75)', fontWeight: '500', marginTop: 2 },
+  ctaBtn: {
+    backgroundColor: '#E0FBFC',
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    borderRadius: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 12,
+  },
+  ctaBtnText: { color: '#3D5A80', fontWeight: '800', fontSize: 13 },
 });
