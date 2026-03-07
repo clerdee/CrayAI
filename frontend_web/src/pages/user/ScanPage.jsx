@@ -21,9 +21,9 @@ const ALGAE_LEVELS = [
 // --- 1. & 3. AGE CLASSIFICATION LOGIC WITH MONTHS ---
 const getAgeCategory = (lengthCm) => {
   if (!lengthCm) return { class: 'Unknown', months: '--' };
-  if (lengthCm < 3) return { class: 'Crayling', months: '< 1 month' };
-  if (lengthCm < 7) return { class: 'Juvenile', months: '1-3 months' };
-  if (lengthCm < 11) return { class: 'Sub-Adult', months: '3-6 months' };
+  if (lengthCm < 2) return { class: 'Crayling', months: '< 1 month' };
+  if (lengthCm < 6) return { class: 'Juvenile', months: '1-3 months' };
+  if (lengthCm < 12) return { class: 'Sub-Adult', months: '3-6 months' };
   return { class: 'Adult / Breeder', months: '> 6 months' };
 };
 
@@ -171,7 +171,7 @@ const ScanPage = () => {
       setScanResult({
         ...res.data,
         gender: res.data.gender || "Not Defined",
-        genderConfidence: res.data.genderConfidence || 0,
+        genderConfidence: res.data.genderConfidence ?? 0,
         generatedScanId: `CRY-${Math.floor(Date.now() / 1000)}`,
         actualProcessingTime: actualProcessingTime,
         markedImageBase64: aiMarkedImage
@@ -401,7 +401,9 @@ const ScanPage = () => {
                                </div>
                                <div className="text-right">
                                   <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Confidence</p>
-                                  <p className="text-lg font-bold">{scanResult.genderConfidence}%</p>
+                                  <p className="text-lg font-bold">
+                                    {scanResult.gender === "Not Defined" ? "--" : `${scanResult.genderConfidence}%`}
+                                  </p>
                                </div>
                             </div>
 
