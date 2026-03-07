@@ -50,5 +50,8 @@ def home():
     return "CrayAI API (Chatbot + Vision) is Running 🦞"
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PYTHON_PORT", 5001)) # Use Railway's port or default to 5001
-    app.run(host='0.0.0.0', debug=True, port=port)
+    # port = int(os.environ.get("PYTHON_PORT", 5001)) Use Railway's port or default to 5001
+    # app.run(host='0.0.0.0', debug=True, port=port)
+    port = int(os.environ.get("PORT", 7860))
+    app.run(host='0.0.0.0', port=port)
+    
