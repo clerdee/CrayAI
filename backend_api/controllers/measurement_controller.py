@@ -145,7 +145,8 @@ def process_measurement(image_file):
         model = get_ai_model()
         e_model = get_env_model()
         
-        ai_environment_status = "Unknown"
+        # --- 1. ENVIRONMENT MODEL ---
+        ai_environment_status = "Clear (No Issues Detected)"
         if e_model:
             try:
                 env_results = e_model.predict(source=original_img, conf=0.4)
@@ -158,6 +159,7 @@ def process_measurement(image_file):
             except Exception as e:
                 print(f"⚠️ Environment AI failed: {e}")
 
+        # --- 2. CRAYFISH DETECTION ---
         if model:
             results = model.predict(source=original_img, conf=0.6)
             
@@ -182,6 +184,7 @@ def process_measurement(image_file):
                     h_cm = (y2 - y1) / pixels_per_cm
                     age_category = estimate_age(h_cm)
                     
+                    # --- 3. BULLETPROOF GENDER CLASSIFICATION ---
                     detected_gender = "Not Defined"
                     gender_confidence = 0.0
 
@@ -192,26 +195,38 @@ def process_measurement(image_file):
                                 gender_results = g_model.predict(source=crayfish_crop, conf=0.4) 
                                 
                                 for g_res in gender_results:
-                                    all_detections = []
-                                    if getattr(g_res, 'boxes', None) is not None:
-                                        all_detections.extend(g_res.boxes)
-                                    if getattr(g_res, 'probs', None) is not None:
+                                    # Handle Object Detector Output
+                                    if hasattr(g_res, 'boxes') and g_res.boxes is not None:
+                                        for g_box in g_res.boxes:
+                                            class_id = int(g_box.cls[0])
+                                            label = g_model.names[class_id].lower() 
+                                            conf = float(g_box.conf[0]) * 100
+                                            
+                                            if 'berried' in label and conf > gender_confidence:
+                                                detected_gender = "Berried"
+                                                gender_confidence = round(conf, 1)
+                                            elif 'female' in label and conf > gender_confidence:
+                                                detected_gender = "Female"
+                                                gender_confidence = round(conf, 1)
+                                            elif 'male' in label and conf > gender_confidence:
+                                                detected_gender = "Male"
+                                                gender_confidence = round(conf, 1)
+
+                                    # Handle Image Classifier Output
+                                    elif hasattr(g_res, 'probs') and g_res.probs is not None:
                                         class_id = g_res.probs.top1
-                                        label = g_model.names[class_id]
+                                        label = g_model.names[class_id].lower()
                                         conf = float(g_res.probs.top1conf) * 100
-                                        detected_gender = label.replace('_crayfish', '').capitalize()
+                                        
+                                        if 'berried' in label:
+                                            detected_gender = "Berried"
+                                        elif 'female' in label:
+                                            detected_gender = "Female"
+                                        elif 'male' in label:
+                                            detected_gender = "Male"
+                                        
                                         gender_confidence = round(conf, 1)
-                                        break
-                                        
-                                    for det in all_detections:
-                                        class_id = int(det.cls[0])
-                                        label = g_model.names[class_id]
-                                        conf = float(det.conf[0]) * 100
-                                        
-                                        valid_labels = ["Male", "Female", "Berried", "male", "female", "berried", "male_crayfish", "female_crayfish"]
-                                        if label in valid_labels and conf > gender_confidence:
-                                            detected_gender = label.replace('_crayfish', '').capitalize()
-                                            gender_confidence = round(conf, 1)
+
                         except Exception as err:
                             print(f"⚠️ Gender analysis failed: {err}")
 
@@ -219,6 +234,7 @@ def process_measurement(image_file):
                         detected_gender = "Not Defined"
                         gender_confidence = 0.0
 
+                    # Draw Results
                     cv2.rectangle(original_img, (x1, y1), (x2, y2), (0, 255, 0), 4)
                     label_color = (255, 105, 180) if "Female" in detected_gender or "Berried" in detected_gender else (255, 0, 0)
                     cv2.putText(original_img, f"{detected_gender} ({gender_confidence}%)", (x1, max(30, y1 - 40)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, label_color, 3)
