@@ -2,10 +2,11 @@ from flask import Blueprint, request, jsonify
 from config.db import mongo
 from bson.objectid import ObjectId
 from datetime import datetime
-from services.ai_engine import find_best_match 
 from better_profanity import profanity
 import os
 from dotenv import load_dotenv
+
+# ❌ REMOVED: from services.ai_engine import find_best_match (Moved to Lazy Load below!)
 
 load_dotenv()
 
@@ -131,6 +132,8 @@ def ask_chatbot():
         match = None
         if len(approved_data) > 0:
             try:
+                # ✅ LAZY LOAD: We only import the AI engine right exactly when the user asks a question!
+                from services.ai_engine import find_best_match
                 match = find_best_match(user_query, approved_data)
             except Exception as e:
                 print(f"Local AI Match Error: {e}")
@@ -229,7 +232,7 @@ def get_stats():
             "accuracy": accuracy,
             "failed_count": failed_logs,
             "flagged_count": flagged_logs,
-            "gemini_fallback_count": success_gemini_logs # Added this to track how often Gemini is used
+            "gemini_fallback_count": success_gemini_logs 
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
