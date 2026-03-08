@@ -136,6 +136,14 @@ def process_measurement(image_file):
         if original_img is None:
             return {"success": False, "error": "Invalid Image"}
 
+        # --- ⚡ SPEED FIX: Shrink massive photos before AI processing ---
+        max_size = 800
+        h, w = original_img.shape[:2]
+        if max(h, w) > max_size:
+            scale = max_size / max(h, w)
+            original_img = cv2.resize(original_img, (int(w * scale), int(h * scale)))
+        # ----------------------------------------------------------------
+
         pixels_per_cm = calculate_dynamic_scale(original_img)
         algae_level, algae_desc = analyze_algae(original_img)
         
