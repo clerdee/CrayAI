@@ -169,7 +169,7 @@ def process_measurement(image_file):
 
         # --- 2. CRAYFISH DETECTION ---
         if model:
-            results = model.predict(source=original_img, conf=0.6)
+            results = model.predict(source=original_img, conf=0.8)
             
             for result in results:
                 for box in result.boxes:
@@ -258,22 +258,19 @@ def process_measurement(image_file):
                     })
 
         # --- 4. ENVIRONMENT SYNCHRONIZATION OVERRIDE ---
-        # Calculate raw turbidity first
         turbidity_level = analyze_turbidity(original_img, raw_boxes)
 
-        # Synchronize outputs based on the Algae Level (0: Low, 1: Moderate, 2: High, 3: Critical)
         if algae_level == 0:
             ai_environment_status = "Clear (No Issues Detected)"
-            turbidity_level = min(turbidity_level, 2)  # Force Turbidity to 1 or 2
+            turbidity_level = min(turbidity_level, 2) 
         elif algae_level == 1:
             if ai_environment_status == "Clear (No Issues Detected)":
                 ai_environment_status = "Moderate Issues (Monitor Tank)"
-            turbidity_level = max(3, min(turbidity_level, 6)) # Force Turbidity to 3-6 range
+            turbidity_level = max(3, min(turbidity_level, 6)) 
         elif algae_level >= 2:
             ai_environment_status = "Action Required: Clean Your Tank!"
-            turbidity_level = max(turbidity_level, 8)  # Force Turbidity to 8, 9, or 10
+            turbidity_level = max(turbidity_level, 8)  
 
-        # Draw Water Status Label (Now perfectly synchronized)
         h_img, w_img = original_img.shape[:2]
         cv2.putText(original_img, f"Water: {ai_environment_status}", (30, h_img - 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 200, 0), 3)
 
