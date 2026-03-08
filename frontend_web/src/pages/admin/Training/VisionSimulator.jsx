@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { UploadCloud, Zap, Ruler, RefreshCw, Image as ImageIcon, Activity, Droplets, Maximize2, GitCommit } from 'lucide-react';
 
+// Helper function to convert CM to Inches
 const cmToInches = (cm) => (cm / 2.54).toFixed(2);
 
 const getAlgaeLabel = (level) => {
@@ -175,14 +176,20 @@ const VisionSimulator = () => {
                                             <Maximize2 className="w-3 h-3" />
                                             <span className="text-[10px] font-black uppercase">Width</span>
                                         </div>
-                                        <p className="text-lg font-black text-slate-700">{item.width_cm}<span className="text-xs font-normal text-slate-400">cm</span></p>
+                                        <div className="flex items-baseline gap-1.5">
+                                            <p className="text-lg font-black text-slate-700">{item.width_cm}<span className="text-xs font-normal text-slate-400 ml-0.5">cm</span></p>
+                                            <p className="text-xs font-bold text-slate-400">({cmToInches(item.width_cm)}")</p>
+                                        </div>
                                     </div>
                                     <div className="bg-white p-3 rounded-xl border border-slate-200">
                                         <div className="flex items-center gap-1.5 text-slate-400 mb-1">
                                             <GitCommit className="w-3 h-3 rotate-90" />
                                             <span className="text-[10px] font-black uppercase">Height</span>
                                         </div>
-                                        <p className="text-lg font-black text-slate-700">{item.height_cm}<span className="text-xs font-normal text-slate-400">cm</span></p>
+                                        <div className="flex items-baseline gap-1.5">
+                                            <p className="text-lg font-black text-slate-700">{item.height_cm}<span className="text-xs font-normal text-slate-400 ml-0.5">cm</span></p>
+                                            <p className="text-xs font-bold text-slate-400">({cmToInches(item.height_cm)}")</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
