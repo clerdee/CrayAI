@@ -146,7 +146,18 @@ const VisionSimulator = () => {
                     <div className="space-y-3">
                         <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Environment</h4>
                         
-                        {/* Algae */}
+                        {/* NEW: AI Water Analysis */}
+                        <div className="flex justify-between items-center p-4 rounded-xl border border-indigo-100 bg-indigo-50 text-indigo-700">
+                            <div className="flex items-center gap-3">
+                                <Zap className="w-5 h-5" />
+                                <div>
+                                    <p className="text-xs font-bold uppercase opacity-70">AI Water Analysis</p>
+                                    <p className="font-bold">{scanData.ai_environment_status || "Unknown"}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Algae (OpenCV Fallback) */}
                         <div className={`flex justify-between items-center p-4 rounded-xl border ${algaeInfo.style}`}>
                             <div className="flex items-center gap-3">
                                 <Activity className="w-5 h-5" />
@@ -157,7 +168,7 @@ const VisionSimulator = () => {
                             </div>
                         </div>
 
-                        {/* Turbidity */}
+                        {/* Turbidity (OpenCV Fallback) */}
                         <div className="flex justify-between items-center p-4 rounded-xl border border-blue-100 bg-blue-50 text-blue-700">
                             <div className="flex items-center gap-3">
                                 <Droplets className="w-5 h-5" />
