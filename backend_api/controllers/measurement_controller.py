@@ -103,6 +103,7 @@ def estimate_age(size_cm):
     else: return "Adult/Breeder (> 6 months)"
 
 def calculate_dynamic_scale(img):
+    """Now returns a tuple: (pixels_per_cm, paper_detected_boolean)"""
     try:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -121,12 +122,12 @@ def calculate_dynamic_scale(img):
                 if 0.8 < aspect_ratio < 1.2 and 1000 < area < (img.shape[0] * img.shape[1] * 0.1):
                     square_widths.append(w)
 
-        if square_widths:
+        if len(square_widths) > 0:
             pixels_per_cm = np.median(square_widths) / REFERENCE_BOX_SIZE_CM
-            return pixels_per_cm
-        return DEFAULT_PIXELS_PER_CM
+            return pixels_per_cm, True 
+        return DEFAULT_PIXELS_PER_CM, False 
     except:
-        return DEFAULT_PIXELS_PER_CM
+        return DEFAULT_PIXELS_PER_CM, False
 
 def process_measurement(image_file):
     try:
@@ -136,15 +137,13 @@ def process_measurement(image_file):
         if original_img is None:
             return {"success": False, "error": "Invalid Image"}
 
-        # --- ⚡ SPEED FIX: Shrink massive photos before AI processing ---
         max_size = 800
         h, w = original_img.shape[:2]
         if max(h, w) > max_size:
             scale = max_size / max(h, w)
             original_img = cv2.resize(original_img, (int(w * scale), int(h * scale)))
-        # ----------------------------------------------------------------
 
-        pixels_per_cm = calculate_dynamic_scale(original_img)
+        pixels_per_cm, paper_detected = calculate_dynamic_scale(original_img)
         algae_level, algae_desc = analyze_algae(original_img)
         
         results_data = []
@@ -153,7 +152,7 @@ def process_measurement(image_file):
         model = get_ai_model()
         e_model = get_env_model()
         
-        # --- 1. ENVIRONMENT MODEL ---
+        # --- 1. ENVIRONMENT MODEL (ALWAYS RUNS) ---
         ai_environment_status = "Clear (No Issues Detected)"
         if e_model:
             try:
@@ -167,9 +166,9 @@ def process_measurement(image_file):
             except Exception as e:
                 print(f"⚠️ Environment AI failed: {e}")
 
-        # --- 2. CRAYFISH DETECTION ---
-        if model:
-            results = model.predict(source=original_img, conf=0.8)
+        # --- 2. CRAYFISH DETECTION (ONLY RUNS IF PAPER IS FOUND) ---
+        if model and paper_detected:
+            results = model.predict(source=original_img, conf=0.6)
             
             for result in results:
                 for box in result.boxes:
@@ -240,7 +239,6 @@ def process_measurement(image_file):
                         detected_gender = "Not Defined"
                         gender_confidence = 0.0
 
-                    # Draw Crayfish Results
                     cv2.rectangle(original_img, (x1, y1), (x2, y2), (0, 255, 0), 4)
                     label_color = (255, 105, 180) if "Female" in detected_gender or "Berried" in detected_gender else (255, 0, 0)
                     cv2.putText(original_img, f"{detected_gender} ({gender_confidence}%)", (x1, max(30, y1 - 40)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, label_color, 3)
@@ -257,12 +255,18 @@ def process_measurement(image_file):
                         "gender_confidence": gender_confidence
                     })
 
+        elif not paper_detected:
+            h_img, w_img = original_img.shape[:2]
+            cv2.rectangle(original_img, (0, 0), (w_img, h_img), (255, 165, 0), 15) # Orange border
+            cv2.putText(original_img, "PAPER NOT FOUND - WATER ONLY", (int(w_img * 0.05), int(h_img / 2)), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 165, 0), 3)
+
         # --- 4. ENVIRONMENT SYNCHRONIZATION OVERRIDE ---
         turbidity_level = analyze_turbidity(original_img, raw_boxes)
 
         if algae_level == 0:
             ai_environment_status = "Clear (No Issues Detected)"
-            turbidity_level = min(turbidity_level, 2) 
+            turbidity_level = min(turbidity_level, 2)  
         elif algae_level == 1:
             if ai_environment_status == "Clear (No Issues Detected)":
                 ai_environment_status = "Moderate Issues (Monitor Tank)"
@@ -282,7 +286,7 @@ def process_measurement(image_file):
         return {
             "image": img_base64, 
             "measurements": results_data,
-            "success": len(results_data) > 0,
+            "success": True, 
             "ai_environment_status": ai_environment_status, 
             "algae_level": algae_level,     
             "algae_desc": algae_desc,       
