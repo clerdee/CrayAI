@@ -6,14 +6,13 @@ import os
 # --- CONFIGURATION ---
 DEFAULT_PIXELS_PER_CM = 65.0 
 MIN_CRAYFISH_LENGTH_CM = 2.0 
-AI_MODEL_VERSION = "CrayAI Tri-Core v3.0" # Updated version name!
+AI_MODEL_VERSION = "CrayAI Tri-Core v3.0"
 REFERENCE_BOX_SIZE_CM = 2.0
 MIN_GENDER_CONFIDENCE = 30.0 
 
 # --- MODEL PATHS ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
 MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "crayfish.pt")
-# Updated paths for the new models
 GENDER_MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "new_model.pt") 
 ENV_MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "environment.pt")
 
@@ -60,7 +59,6 @@ def get_env_model():
     return env_model
 
 # --- OPENCV FALLBACK FUNCTIONS ---
-# Keeping these just in case the AI environment model misses something
 def analyze_algae(img):
     try:
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -144,16 +142,13 @@ def process_measurement(image_file):
         results_data = []
         raw_boxes = []
 
-        # 1. LOAD MODELS NOW
         model = get_ai_model()
         e_model = get_env_model()
         
-        # --- NEW: RUN ENVIRONMENT MODEL ---
         ai_environment_status = "Unknown"
         if e_model:
             try:
                 env_results = e_model.predict(source=original_img, conf=0.4)
-                # Check if it's a classification model (probs) or detection model (boxes)
                 if hasattr(env_results[0], 'probs') and env_results[0].probs is not None:
                     class_id = env_results[0].probs.top1
                     ai_environment_status = e_model.names[class_id]
@@ -163,7 +158,6 @@ def process_measurement(image_file):
             except Exception as e:
                 print(f"⚠️ Environment AI failed: {e}")
 
-        # --- RUN CRAYFISH DETECTION ---
         if model:
             results = model.predict(source=original_img, conf=0.6)
             
@@ -188,7 +182,6 @@ def process_measurement(image_file):
                     h_cm = (y2 - y1) / pixels_per_cm
                     age_category = estimate_age(h_cm)
                     
-                    # --- NEW GENDER CLASSIFICATION ---
                     detected_gender = "Not Defined"
                     gender_confidence = 0.0
 
@@ -203,7 +196,6 @@ def process_measurement(image_file):
                                     if getattr(g_res, 'boxes', None) is not None:
                                         all_detections.extend(g_res.boxes)
                                     if getattr(g_res, 'probs', None) is not None:
-                                        # Handles if classmate trained gender as a classifier instead of detector
                                         class_id = g_res.probs.top1
                                         label = g_model.names[class_id]
                                         conf = float(g_res.probs.top1conf) * 100
@@ -227,7 +219,6 @@ def process_measurement(image_file):
                         detected_gender = "Not Defined"
                         gender_confidence = 0.0
 
-                    # Draw Results
                     cv2.rectangle(original_img, (x1, y1), (x2, y2), (0, 255, 0), 4)
                     label_color = (255, 105, 180) if "Female" in detected_gender or "Berried" in detected_gender else (255, 0, 0)
                     cv2.putText(original_img, f"{detected_gender} ({gender_confidence}%)", (x1, max(30, y1 - 40)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, label_color, 3)
@@ -244,7 +235,6 @@ def process_measurement(image_file):
                         "gender_confidence": gender_confidence
                     })
 
-        # Draw AI Environment Label
         h_img, w_img = original_img.shape[:2]
         cv2.putText(original_img, f"Water: {ai_environment_status}", (30, h_img - 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 200, 0), 3)
 
@@ -258,7 +248,7 @@ def process_measurement(image_file):
             "image": img_base64, 
             "measurements": results_data,
             "success": len(results_data) > 0,
-            "ai_environment_status": ai_environment_status, # NEW AI WATER DATA
+            "ai_environment_status": ai_environment_status, 
             "algae_level": algae_level,     
             "algae_desc": algae_desc,       
             "turbidity_level": turbidity_level, 
