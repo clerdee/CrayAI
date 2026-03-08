@@ -179,9 +179,9 @@ def process_measurement(image_file):
                         raw_boxes.append(box)
 
             if len(raw_boxes) == 0:
-                h, w = original_img.shape[:2]
-                cv2.rectangle(original_img, (0, 0), (w, h), (0, 0, 255), 15)
-                cv2.putText(original_img, "NO CRAYFISH DETECTED", (int(w * 0.1), int(h / 2)), 
+                h_img, w_img = original_img.shape[:2]
+                cv2.rectangle(original_img, (0, 0), (w_img, h_img), (0, 0, 255), 15)
+                cv2.putText(original_img, "NO CRAYFISH DETECTED", (int(w_img * 0.1), int(h_img / 2)), 
                             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
             else:
                 g_model = get_gender_model()
@@ -203,7 +203,6 @@ def process_measurement(image_file):
                                 gender_results = g_model.predict(source=crayfish_crop, conf=0.4) 
                                 
                                 for g_res in gender_results:
-                                    # Handle Object Detector Output
                                     if hasattr(g_res, 'boxes') and g_res.boxes is not None:
                                         for g_box in g_res.boxes:
                                             class_id = int(g_box.cls[0])
@@ -220,7 +219,6 @@ def process_measurement(image_file):
                                                 detected_gender = "Male"
                                                 gender_confidence = round(conf, 1)
 
-                                    # Handle Image Classifier Output
                                     elif hasattr(g_res, 'probs') and g_res.probs is not None:
                                         class_id = g_res.probs.top1
                                         label = g_model.names[class_id].lower()
@@ -242,7 +240,7 @@ def process_measurement(image_file):
                         detected_gender = "Not Defined"
                         gender_confidence = 0.0
 
-                    # Draw Results
+                    # Draw Crayfish Results
                     cv2.rectangle(original_img, (x1, y1), (x2, y2), (0, 255, 0), 4)
                     label_color = (255, 105, 180) if "Female" in detected_gender or "Berried" in detected_gender else (255, 0, 0)
                     cv2.putText(original_img, f"{detected_gender} ({gender_confidence}%)", (x1, max(30, y1 - 40)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, label_color, 3)
@@ -259,10 +257,26 @@ def process_measurement(image_file):
                         "gender_confidence": gender_confidence
                     })
 
+        # --- 4. ENVIRONMENT SYNCHRONIZATION OVERRIDE ---
+        # Calculate raw turbidity first
+        turbidity_level = analyze_turbidity(original_img, raw_boxes)
+
+        # Synchronize outputs based on the Algae Level (0: Low, 1: Moderate, 2: High, 3: Critical)
+        if algae_level == 0:
+            ai_environment_status = "Clear (No Issues Detected)"
+            turbidity_level = min(turbidity_level, 2)  # Force Turbidity to 1 or 2
+        elif algae_level == 1:
+            if ai_environment_status == "Clear (No Issues Detected)":
+                ai_environment_status = "Moderate Issues (Monitor Tank)"
+            turbidity_level = max(3, min(turbidity_level, 6)) # Force Turbidity to 3-6 range
+        elif algae_level >= 2:
+            ai_environment_status = "Action Required: Clean Your Tank!"
+            turbidity_level = max(turbidity_level, 8)  # Force Turbidity to 8, 9, or 10
+
+        # Draw Water Status Label (Now perfectly synchronized)
         h_img, w_img = original_img.shape[:2]
         cv2.putText(original_img, f"Water: {ai_environment_status}", (30, h_img - 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 200, 0), 3)
 
-        turbidity_level = analyze_turbidity(original_img, raw_boxes)
         _, buffer = cv2.imencode('.jpg', original_img)
         img_base64 = base64.b64encode(buffer).decode('utf-8')
 
