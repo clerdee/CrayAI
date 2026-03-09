@@ -169,7 +169,7 @@ def process_measurement(image_file):
 
         # --- 2. CRAYFISH DETECTION (ONLY RUNS IF PAPER IS FOUND) ---
         if model and paper_detected:
-            results = model.predict(source=original_img, conf=0.6, iou=0.3)
+            results = model.predict(source=original_img, conf=0.6)
             
             for result in results:
                 for box in result.boxes:
