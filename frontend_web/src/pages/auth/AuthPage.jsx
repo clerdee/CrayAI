@@ -12,6 +12,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const MOBILE_REGEX = /^9\d{9}$/; 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_REGEX = /^[a-zA-Z\s]+$/; 
+const GMAIL_ONLY_REGEX = /^[a-zA-Z0-9._%+-]+@gmail\.com$/i;
 
 const AuthPage = () => {
   const navigate = useNavigate();
@@ -27,6 +28,7 @@ const AuthPage = () => {
 
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpCode, setOtpCode] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -47,12 +49,25 @@ const AuthPage = () => {
     setIsRegister(location.pathname === '/register');
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (resendCooldown <= 0) return undefined;
+
+    const timer = setTimeout(() => {
+      setResendCooldown((prev) => prev - 1);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
   const showToast = (message, type = 'error') => {
     setToast({ show: true, message, type });
     setTimeout(() => {
       setToast((prev) => ({ ...prev, show: false }));
     }, 4000);
   };
+
+  const normalizeOtpInput = (value) =>
+  (value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -208,6 +223,7 @@ const AuthPage = () => {
     if (!selectedFile) { showToast("Profile picture is required.", "error"); return; }
     if (!NAME_REGEX.test(firstName) || !NAME_REGEX.test(lastName)) { showToast("Names must only contain letters.", "error"); return; }
     if (!EMAIL_REGEX.test(email)) { showToast("Please enter a valid email address.", "error"); return; }
+    if (!GMAIL_ONLY_REGEX.test(email.trim())) { showToast("Please use a valid Gmail address (example@gmail.com).", "error"); return; }
     if (!MOBILE_REGEX.test(mobileNumber)) { showToast("Mobile Number must be 10 digits and start with 9.", "error"); return; }
     if (streetAddress.trim().length <= 5) { showToast("Street Address must be more than 5 characters.", "error"); return; }
     if (!city) { showToast("Please select a City from the list.", "error"); return; }
@@ -217,7 +233,8 @@ const AuthPage = () => {
     setLoading(true);
 
     try {
-      await axios.post(`${API_BASE_URL}/auth/signup`, { email, password: regPassword });
+      const normalizedEmail = email.trim().toLowerCase();
+      await axios.post(`${API_BASE_URL}/auth/signup`, { email: normalizedEmail, password: regPassword });
       showToast("Account created! Check email for OTP.", "success");
       setShowOtpModal(true);
     } catch (error) {
@@ -232,7 +249,8 @@ const AuthPage = () => {
   // 3. HANDLE OTP VERIFICATION
   // ============================================================
   const handleVerifyOtp = async () => {
-    if (otpCode.length !== 6) { showToast("Please enter the 6-digit code.", "error"); return; }
+    const normalizedOtp = normalizeOtpInput(otpCode);
+    if (normalizedOtp.length !== 6) { showToast("Please enter the 6-character code.", "error"); return; }
 
     setLoading(true);
     let imageUrl = ''; 
@@ -267,8 +285,9 @@ const AuthPage = () => {
         profilePic: imageUrl 
       };
 
+      const normalizedEmail = email.trim().toLowerCase();
       const response = await axios.post(`${API_BASE_URL}/auth/verify-otp`, {
-        email, otp: otpCode, profileData 
+        email: normalizedEmail, otp: normalizedOtp, profileData 
       });
 
       if (response.data.success) {
@@ -280,14 +299,29 @@ const AuthPage = () => {
 
         showToast("Verification Successful!", "success");
         setShowOtpModal(false);
-        
-        // 🚨 FIXED: Route back to the landing page upon successful registration
+      
         setTimeout(() => {
             navigate('/');
         }, 1500);
       }
     } catch (error) {
       showToast(error.response?.data?.message || 'Invalid OTP', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+   const handleResendOtp = async () => {
+    if (loading || resendCooldown > 0) return;
+
+    try {
+      setLoading(true);
+      const normalizedEmail = email.trim().toLowerCase();
+      await axios.post(`${API_BASE_URL}/auth/resend-otp`, { email: normalizedEmail });
+      showToast('New OTP sent to your Gmail.', 'success');
+      setResendCooldown(30);
+    } catch (error) {
+      showToast(error.response?.data?.message || 'Failed to resend OTP.', 'error');
     } finally {
       setLoading(false);
     }
@@ -313,8 +347,30 @@ const AuthPage = () => {
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl scale-100">
             <h3 className="text-2xl font-bold text-slate-900 mb-2">Check your Email</h3>
             <p className="text-slate-500 text-sm mb-6">Enter the code sent to <b>{email}</b></p>
-            <input type="text" maxLength="6" className="w-full text-center text-3xl font-bold border-b-2 py-2 mb-6 outline-none focus:border-teal-500 bg-transparent" placeholder="000000" value={otpCode} onChange={(e) => setOtpCode(e.target.value)} />
+
+              <input
+              type="text"
+              maxLength="6"
+              inputMode="text"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              className="w-full text-center text-3xl font-bold border-b-2 py-2 mb-6 outline-none focus:border-teal-500 bg-transparent uppercase tracking-[0.35em]"
+              placeholder="ABC123"
+              value={otpCode}
+              onChange={(e) => setOtpCode(normalizeOtpInput(e.target.value))}
+              />
+
             <button onClick={handleVerifyOtp} disabled={loading} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-teal-600 transition disabled:opacity-50">{loading ? 'Verifying...' : 'Verify'}</button>
+
+            <button
+              onClick={handleResendOtp}
+              disabled={loading || resendCooldown > 0}
+              className="mt-3 text-teal-600 text-sm hover:text-teal-700 disabled:opacity-50"
+            >
+              {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend Code'}
+            </button>
+            
             <button onClick={() => setShowOtpModal(false)} className="mt-4 text-slate-400 text-sm hover:text-slate-600">Cancel</button>
           </div>
         </div>
@@ -350,7 +406,7 @@ const AuthPage = () => {
             <div className="w-full max-w-xl flex flex-col gap-5 py-8">
             <div className="text-center">
                 <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Create Account</h1>
-                <p className="text-slate-500 text-sm mt-1">Fill in your details to get started.</p>
+                <p className="text-slate-500 text-sm mt-1">Fill in your details to get started (Gmail required).</p>
             </div>
             <div className="flex justify-center my-1">
                 <label className="relative cursor-pointer group">
