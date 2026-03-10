@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const transport = require('../config/mailtrap'); 
+const transport = require('../config/mailer'); 
 const Notification = require('../models/Notification'); 
 const { createNotification } = require('../utils/notificationHelper');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
