@@ -626,14 +626,17 @@ exports.socialLogin = async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { userId: user._id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
+    const isProfileComplete = Boolean(user.phone && user.city);
+
     res.status(200).json({
       success: true,
       token,
+      isProfileComplete,
       user: {
         id: user._id,
         firstName: user.firstName,
@@ -641,7 +644,10 @@ exports.socialLogin = async (req, res) => {
         email: user.email,
         role: user.role,
         profilePic: user.profilePic,
-        isVerified: user.isVerified
+        isVerified: user.isVerified,
+        phone: user.phone,
+        street: user.street,
+        city: user.city
       }
     });
 
