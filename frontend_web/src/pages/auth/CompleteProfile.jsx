@@ -9,21 +9,18 @@ const MOBILE_REGEX = /^9\d{9}$/;
 const CompleteProfile = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState(null); // To store the read-only social data
+  const [user, setUser] = useState(null); 
   
-  // Editable fields
   const [mobileNumber, setMobileNumber] = useState('');
   const [streetAddress, setStreetAddress] = useState('');
   const [city, setCity] = useState('');
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // Load user data from localStorage on mount
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     } else {
-      // If no user found, they shouldn't be here
       navigate('/login');
     }
   }, [navigate]);
@@ -64,7 +61,7 @@ const CompleteProfile = () => {
 
       if (response.data.success) {
         localStorage.setItem('user', JSON.stringify(response.data.user));
-        showToast("Profile completed! Redirecting...", "success");
+        showToast("Profile completed! Please login...", "success");
         
         setTimeout(() => {
           navigate('/dashboard');
@@ -78,7 +75,7 @@ const CompleteProfile = () => {
     }
   };
 
-  if (!user) return null; // Wait for useEffect
+  if (!user) return null; 
 
   return (
     <div className="min-h-screen w-full bg-[#F6F9FC] flex items-center justify-center p-4 font-sans selection:bg-teal-100 selection:text-teal-900">
