@@ -6,6 +6,7 @@ import LandingPage from './pages/LandingPage';
 import AboutUs from './pages/AboutUs';
 import TheRedClaw from './pages/TheRedClaw';
 import AuthPage from './pages/auth/AuthPage';
+import CompleteProfile from './pages/auth/CompleteProfile';
 
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AIScanLogs from './pages/admin/AIScanLogs';
@@ -71,6 +72,7 @@ const App = () => {
       <Route path="/red-claw" element={<TheRedClaw />} />
       <Route path="/login" element={<AuthPage />} />
       <Route path="/register" element={<AuthPage />} />
+      <Route path="/complete-profile" element={<CompleteProfile />} />
 
       {/* USER ROUTES (Researchers) */}
       <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['user']}><UserLayout><UserDashboard /></UserLayout></ProtectedRoute>} />
