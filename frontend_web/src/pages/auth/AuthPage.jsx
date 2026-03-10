@@ -91,62 +91,54 @@ const AuthPage = () => {
     
     try {
       const result = await signInWithPopup(auth, provider);
-      const user = result.user;
+      const firebaseUser = result.user;
 
-      const idToken = await user.getIdToken();
+      const idToken = await firebaseUser.getIdToken();
 
       const socialData = {
         idToken,
-        firstName: user.displayName ? user.displayName.split(' ')[0] : 'User',
-        lastName: user.displayName ? user.displayName.split(' ').slice(1).join(' ') : '',
-        profilePic: user.photoURL
+        firstName: firebaseUser.displayName ? firebaseUser.displayName.split(' ')[0] : 'User',
+        lastName: firebaseUser.displayName ? firebaseUser.displayName.split(' ').slice(1).join(' ') : '',
+        profilePic: firebaseUser.photoURL
       };
 
       const response = await axios.post(`${API_BASE_URL}/auth/social-login`, socialData);
 
-    if (response.data.success) {
-            const token = response.data.token; 
-            const fullUserData = response.data.user; 
-            const isProfileComplete = response.data.isProfileComplete; 
+      if (response.data.success) {
+        const { token, user: fullUserData, isProfileComplete } = response.data;
 
-            if (!token) {
-                showToast("Authentication error: No token received.", "error");
-                setLoading(false);
-                return;
-            }
+        if (fullUserData.accountStatus === 'Inactive') {
+          const reason = fullUserData.deactivationReason || "No specific reason provided.";
+          showToast(`Account Deactivated. Reason: ${reason}`, "error");
+          setLoading(false);
+          return; 
+        }
 
-            if (fullUserData.accountStatus === 'Inactive') {
-                const reason = fullUserData.deactivationReason || "No specific reason provided.";
-                showToast(`Account Deactivated. Reason: ${reason}`, "error");
-                setLoading(false);
-                return; 
-            }
+        window.localStorage.setItem('token', token);
+        window.localStorage.setItem('user', JSON.stringify(fullUserData));
 
-            window.localStorage.setItem('token', token);
-            window.localStorage.setItem('user', JSON.stringify(fullUserData));
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        showToast(`Welcome ${fullUserData.firstName}!`, 'success');
 
-            showToast(`Welcome ${fullUserData.firstName}!`, 'success');
-    
-            setTimeout(() => {
-                if (!isProfileComplete) {
-                    navigate('/complete-profile'); 
-                } else if (fullUserData.role === 'admin') {
-                    navigate('/admin/dashboard');
-                } else {
-                    navigate('/dashboard');
-                }
-            }, 1500); 
+        setTimeout(() => {
+          if (!isProfileComplete) {
+            navigate('/complete-profile'); 
+          } else if (fullUserData.role === 'admin') {
+            navigate('/admin/dashboard');
+          } else {
+            navigate('/dashboard');
           }
-
+        }, 1500); 
+      }
     } catch (error) {
       console.error("Social Login Error:", error);
+      
       if (error.code === 'auth/popup-closed-by-user') {
         showToast('Login cancelled by user.', 'error');
       } else if (error.code === 'auth/cancelled-popup-request') {
       } else if (error.code === 'auth/account-exists-with-different-credential') {
-        showToast('Account exists with a different login method.', 'error');
+        showToast('An account already exists with the same email using a different login method.', 'error');
       } else {
         const errorMsg = error.response?.data?.message || 'Social authentication failed.';
         showToast(errorMsg, 'error');

@@ -624,17 +624,12 @@ exports.socialLogin = async (req, res) => {
     const account = verifyResponse.data?.users?.[0];
     const normalizedEmail = (account?.email || '').trim().toLowerCase();
     const uid = account?.localId;
-    const providerId = account?.providerUserInfo?.[0]?.providerId || account?.providerUserInfo?.find((p) => ['google.com', 'github.com'].includes(p.providerId))?.providerId;
+    
+    const providerInfo = account?.providerUserInfo || [];
+    const providerId = providerInfo.find(p => p.providerId === 'google.com' || p.providerId === 'github.com')?.providerId;
 
     if (!normalizedEmail || !uid) {
       return res.status(400).json({ success: false, message: 'Invalid social token payload.' });
-    }
-
-    if (!['google.com', 'github.com'].includes(providerId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Only Google and GitHub social login are supported for web.'
-      });
     }
 
     let user = await User.findOne({ email: normalizedEmail });
@@ -645,23 +640,23 @@ exports.socialLogin = async (req, res) => {
         firstName: firstName || account?.displayName?.split(' ')[0] || 'User',
         lastName: lastName || account?.displayName?.split(' ').slice(1).join(' ') || '',
         profilePic: profilePic || account?.photoUrl || '',
-        provider: providerId,
+        provider: providerId || 'social', 
         firebaseUid: uid,
         password: null,
         isVerified: true,
         accountStatus: 'Active',
         role: 'user'
       });
-
-     } else {
+    } else {
       user.firebaseUid = uid;
       if (!user.provider || user.provider === 'local') user.provider = providerId;
       if (!user.profilePic && account?.photoUrl) user.profilePic = account.photoUrl;
+      
       if (!user.firstName && account?.displayName) {
         user.firstName = account.displayName.split(' ')[0] || 'User';
       }
       if (!user.lastName && account?.displayName) {
-        user.lastName = account.displayName.split(' ').slice(1).join(' ');
+        user.lastName = account.displayName.split(' ').slice(1).join(' ') || '';
       }
       await user.save();
     }
