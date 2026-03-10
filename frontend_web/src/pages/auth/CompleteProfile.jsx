@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { PH_CITIES } from '../../data/cities'; 
@@ -9,10 +9,24 @@ const MOBILE_REGEX = /^9\d{9}$/;
 const CompleteProfile = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState(null); // To store the read-only social data
+  
+  // Editable fields
   const [mobileNumber, setMobileNumber] = useState('');
   const [streetAddress, setStreetAddress] = useState('');
   const [city, setCity] = useState('');
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+  // Load user data from localStorage on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    } else {
+      // If no user found, they shouldn't be here
+      navigate('/login');
+    }
+  }, [navigate]);
 
   const showToast = (message, type = 'error') => {
     setToast({ show: true, message, type });
@@ -38,7 +52,7 @@ const CompleteProfile = () => {
       const token = localStorage.getItem('token');
       
       const response = await axios.put(
-        `${API_BASE_URL}/auth/profile`, 
+        `${API_BASE_URL}/auth/profile/update`, 
         {
           phone: `+63${mobileNumber}`,
           street: streetAddress,
@@ -49,7 +63,6 @@ const CompleteProfile = () => {
       );
 
       if (response.data.success) {
-        // Update local storage with the complete user data
         localStorage.setItem('user', JSON.stringify(response.data.user));
         showToast("Profile completed! Redirecting...", "success");
         
@@ -58,11 +71,14 @@ const CompleteProfile = () => {
         }, 1500);
       }
     } catch (error) {
-      showToast(error.response?.data?.message || 'Failed to update profile.', 'error');
+      const msg = error.response?.data?.message || 'Failed to update profile.';
+      showToast(msg, 'error');
     } finally {
       setLoading(false);
     }
   };
+
+  if (!user) return null; // Wait for useEffect
 
   return (
     <div className="min-h-screen w-full bg-[#F6F9FC] flex items-center justify-center p-4 font-sans selection:bg-teal-100 selection:text-teal-900">
@@ -74,48 +90,59 @@ const CompleteProfile = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-[2rem] p-8 md:p-12 max-w-lg w-full shadow-xl border border-slate-100 relative overflow-hidden">
-        {/* Decorative Background Blob */}
-        <div className="absolute -top-24 -right-24 w-48 h-48 bg-teal-50 rounded-full blur-3xl opacity-60"></div>
+      <div className="bg-white rounded-[2rem] p-8 md:p-10 max-w-2xl w-full shadow-xl border border-slate-100 flex flex-col md:flex-row gap-10">
+        
+        {/* LEFT CONTAINER: Read-Only Social Info */}
+        <div className="md:w-1/3 flex flex-col items-center text-center border-b md:border-b-0 md:border-r border-slate-100 pb-8 md:pb-0 md:pr-10">
+          <div className="relative mb-4">
+             <img 
+               src={user.profilePic || 'https://via.placeholder.com/150'} 
+               alt="Profile" 
+               className="w-24 h-24 rounded-full object-cover border-4 border-teal-50 shadow-sm"
+             />
+             <div className="absolute bottom-0 right-0 bg-teal-500 text-white p-1 rounded-full text-[10px]">
+               {user.provider?.includes('google') ? 'G' : 'GH'}
+             </div>
+          </div>
+          <h2 className="text-lg font-bold text-slate-900">{user.firstName} {user.lastName}</h2>
+          <p className="text-xs text-slate-500 break-all">{user.email}</p>
+          <div className="mt-4 px-3 py-1 bg-slate-50 rounded-full border border-slate-100">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Verified Account</span>
+          </div>
+        </div>
 
-        <div className="relative z-10">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-teal-50 text-2xl mb-6 border border-teal-100">🦞</div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">Almost there!</h1>
-          <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-            Since you signed in with a social account, we just need a few details about your location to sync your field data properly.
+        {/* RIGHT CONTAINER: Editable Fields */}
+        <div className="md:w-2/3">
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-2">Complete Your Profile</h1>
+          <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+            We've synced your account. Just add your contact details to finish.
           </p>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-            
             <div className="relative">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 ml-1">Mobile Number</label>
                 <span className="absolute bottom-[13px] left-0 pl-4 flex items-center text-slate-500 font-bold text-sm border-r border-slate-300 pr-2 pointer-events-none">+63</span>
-                <input type="tel" required maxLength="10" className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-16 pr-4 font-medium text-slate-900 focus:outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 transition-all" placeholder="9XX XXX XXXX" value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, ''))} />
+                <input type="tel" required maxLength="10" className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-16 pr-4 font-medium text-slate-900 focus:outline-none focus:border-teal-500 transition-all" placeholder="9XX XXX XXXX" value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, ''))} />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 ml-1">Street Address</label>
-              <input type="text" required className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 font-medium text-slate-900 focus:outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 transition-all" placeholder="Lot, Block, Street Name..." value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} />
+              <input type="text" required className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 font-medium text-slate-900 focus:outline-none focus:border-teal-500 transition-all" placeholder="Lot, Block, Street..." value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 ml-1">City</label>
-                  <select required className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 font-medium text-slate-900 cursor-pointer focus:outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 transition-all" value={city} onChange={(e) => setCity(e.target.value)}>
+                  <select required className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 font-medium text-slate-900 cursor-pointer focus:outline-none focus:border-teal-500 transition-all" value={city} onChange={(e) => setCity(e.target.value)}>
                     <option value="" disabled>Select City</option>
                     {PH_CITIES.map((c) => (<option key={c} value={c}>{c}</option>))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 ml-1">Country</label>
-                  <input type="text" className="w-full bg-slate-100 border border-slate-200 rounded-xl py-3 px-4 font-medium text-slate-500 cursor-not-allowed" value="Philippines" readOnly />
-                </div>
             </div>
 
-            <button type="submit" disabled={loading} className="w-full bg-slate-900 text-white font-bold text-sm rounded-xl py-4 mt-4 hover:bg-teal-600 hover:shadow-lg hover:shadow-teal-500/30 transition-all disabled:opacity-70 disabled:hover:bg-slate-900">
-              {loading ? 'Saving details...' : 'Complete Profile'}
+            <button type="submit" disabled={loading} className="w-full bg-slate-900 text-white font-bold text-sm rounded-xl py-4 mt-4 hover:bg-teal-600 hover:shadow-lg transition-all disabled:opacity-70">
+              {loading ? 'Saving details...' : 'Finalize Registration'}
             </button>
-
           </form>
         </div>
       </div>
