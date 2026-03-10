@@ -30,8 +30,33 @@ exports.registerUser = async (req, res) => {
       });
     }
     let user = await User.findOne({ email: normalizedEmail });
-    if (user) {
+    if (user && user.isVerified) {
       return res.status(400).json({ message: 'User already exists' });
+    }
+
+        if (user && !user.isVerified) {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      const otp = generateOtpCode();
+      const otpExpiry = Date.now() + 10 * 60 * 1000;
+
+      user.password = hashedPassword;
+      user.otpCode = otp;
+      user.otpExpires = otpExpiry;
+      await user.save();
+
+      await transport.sendMail({
+        from: `"CrayAI Team" <${MAIL_FROM}>`,
+        to: normalizedEmail,
+        subject: 'Your CrayAI Verification Code',
+        text: `Welcome! Your verification code is: ${otp}`,
+        html: `<b>Welcome!</b><br>Your verification code is: <h2>${otp}</h2>`
+      });
+
+      return res.status(200).json({
+        message: 'OTP re-sent. Please verify your email to finish account creation.'
+      });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -78,7 +103,14 @@ exports.verifyOTP = async (req, res) => {
       return res.status(400).json({ message: 'User not found' });
     }
 
-       if (user.otpCode !== otpCandidate || user.otpExpires < Date.now()) {
+    if (user.otpCode !== otpCandidate || user.otpExpires < Date.now()) {
+      if (user.otpExpires < Date.now() && !user.isVerified) {
+        await User.deleteOne({ _id: user._id });
+        return res.status(400).json({
+          message: 'OTP expired. Please register again to create your account.'
+        });
+      }
+
       return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
 
@@ -569,6 +601,11 @@ exports.deleteUser = async (req, res) => {
 exports.socialLogin = async (req, res) => {
   try {
     const { email, firstName, lastName, profilePic, providerId, uid } = req.body;
+    const normalizedEmail = (email || '').trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      return res.status(400).json({ success: false, message: 'Email is required.' });
+    }
 
     let user = await User.findOne({ email: normalizedEmail });
 

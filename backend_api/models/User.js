@@ -58,4 +58,15 @@ const userSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
+  userSchema.index(
+  { otpExpires: 1 },
+  {
+    expireAfterSeconds: 0,
+    partialFilterExpression: {
+      isVerified: false,
+      otpExpires: { $type: 'date' }
+    }
+  }
+);
+
 module.exports = mongoose.model('User', userSchema);
