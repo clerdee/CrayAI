@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const transport = require('../config/mailer'); 
 const Notification = require('../models/Notification'); 
 const { createNotification } = require('../utils/notificationHelper');
+const { generateWelcomeEmail } = require('../utils/emailTemplates');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const MAIL_FROM = process.env.MAIL_FROM || process.env.MAIL_USER || 'no-reply@crayai.com';
 const GMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@gmail\.com$/i;
@@ -51,7 +52,7 @@ exports.registerUser = async (req, res) => {
         to: normalizedEmail,
         subject: 'Your CrayAI Verification Code',
         text: `Welcome! Your verification code is: ${otp}`,
-        html: `<b>Welcome!</b><br>Your verification code is: <h2>${otp}</h2>`
+        html: generateWelcomeEmail(otp)
       });
 
       return res.status(200).json({
@@ -79,7 +80,7 @@ exports.registerUser = async (req, res) => {
       to: normalizedEmail,
       subject: 'Your CrayAI Verification Code',
       text: `Welcome! Your verification code is: ${otp}`,
-      html: `<b>Welcome!</b><br>Your verification code is: <h2>${otp}</h2>`
+      html: generateWelcomeEmail(otp)
     });
 
     res.status(201).json({ message: 'OTP sent to email. Please verify.' });
@@ -197,7 +198,7 @@ exports.resendOTP = async (req, res) => {
       to: normalizedEmail,
       subject: 'New Verification Code',
       text: `Your new code is: ${otp}`,
-      html: `<b>New Code Requested:</b><br>Your verification code is: <h2>${otp}</h2>`
+      html: generateWelcomeEmail(otp)
     });
 
     res.json({ message: 'New OTP sent to your email.' });

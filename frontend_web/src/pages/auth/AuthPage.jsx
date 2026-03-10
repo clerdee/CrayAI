@@ -344,34 +344,60 @@ const AuthPage = () => {
       {/* OTP MODAL */}
       {showOtpModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl scale-100">
-            <h3 className="text-2xl font-bold text-slate-900 mb-2">Check your Email</h3>
-            <p className="text-slate-500 text-sm mb-6">Enter the code sent to <b>{email}</b></p>
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl relative scale-100">
+            
+            {/* 1. New 'X' Close Button */}
+            <button 
+              onClick={() => setShowOtpModal(false)} 
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
 
-              <input
+            {/* 2. Premium Icon Header */}
+            <div className="mx-auto flex items-center justify-center w-16 h-16 rounded-full bg-teal-50 text-teal-600 mb-5 shadow-sm">
+               <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+            </div>
+
+            <h3 className="text-2xl font-bold text-slate-900 mb-2">Check your Email</h3>
+            <p className="text-slate-500 text-sm mb-6">Enter the 6-digit code sent to <br/><b className="text-slate-800">{email}</b></p>
+
+            <input
               type="text"
               maxLength="6"
               inputMode="text"
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck={false}
-              className="w-full text-center text-3xl font-bold border-b-2 py-2 mb-6 outline-none focus:border-teal-500 bg-transparent uppercase tracking-[0.35em]"
+              className="w-full text-center text-3xl font-bold border-b-2 border-slate-200 py-3 mb-8 outline-none focus:border-teal-500 bg-transparent uppercase tracking-[0.35em] transition-colors"
               placeholder="ABC123"
               value={otpCode}
               onChange={(e) => setOtpCode(normalizeOtpInput(e.target.value))}
-              />
+            />
 
-            <button onClick={handleVerifyOtp} disabled={loading} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-teal-600 transition disabled:opacity-50">{loading ? 'Verifying...' : 'Verify'}</button>
+            {/* 3. Proper Flex Container for the buttons */}
+            <div className="flex flex-col gap-4">
+              <button 
+                onClick={handleVerifyOtp} 
+                disabled={loading || otpCode.length !== 6} 
+                className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-teal-600 hover:shadow-lg hover:shadow-teal-500/30 transition-all disabled:opacity-50 disabled:hover:bg-slate-900 disabled:hover:shadow-none"
+              >
+                {loading ? 'Verifying...' : 'Verify Email'}
+              </button>
 
-            <button
-              onClick={handleResendOtp}
-              disabled={loading || resendCooldown > 0}
-              className="mt-3 text-teal-600 text-sm hover:text-teal-700 disabled:opacity-50"
-            >
-              {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend Code'}
-            </button>
-            
-            <button onClick={() => setShowOtpModal(false)} className="mt-4 text-slate-400 text-sm hover:text-slate-600">Cancel</button>
+              {/* 4. Resend Code Section separated nicely */}
+              <div className="flex items-center justify-center gap-1.5 text-sm mt-1">
+                <span className="text-slate-500">Didn't receive the code?</span>
+                <button
+                  onClick={handleResendOtp}
+                  disabled={loading || resendCooldown > 0}
+                  className="text-teal-600 font-bold hover:text-teal-700 hover:underline disabled:opacity-50 disabled:hover:no-underline transition-all"
+                >
+                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend'}
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
