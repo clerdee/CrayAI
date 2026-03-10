@@ -51,11 +51,9 @@ const AuthPage = () => {
 
   useEffect(() => {
     if (resendCooldown <= 0) return undefined;
-
     const timer = setTimeout(() => {
       setResendCooldown((prev) => prev - 1);
     }, 1000);
-
     return () => clearTimeout(timer);
   }, [resendCooldown]);
 
@@ -83,7 +81,7 @@ const AuthPage = () => {
   };
 
   // ============================================================
-  // 0. HANDLE SOCIAL LOGIN (GOOGLE & GITHUB)
+  // 0. HANDLE SOCIAL LOGIN (UPDATED DEFERRED LOGIC)
   // ============================================================
   const handleSocialLogin = async (provider) => {
     if (loading) return; 
@@ -92,53 +90,37 @@ const AuthPage = () => {
     try {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
-
       const idToken = await firebaseUser.getIdToken();
 
-      const socialData = {
-        idToken,
-        firstName: firebaseUser.displayName ? firebaseUser.displayName.split(' ')[0] : 'User',
-        lastName: firebaseUser.displayName ? firebaseUser.displayName.split(' ').slice(1).join(' ') : '',
-        profilePic: firebaseUser.photoURL
-      };
-
-      const response = await axios.post(`${API_BASE_URL}/auth/social-login`, socialData);
+      const response = await axios.post(`${API_BASE_URL}/auth/social-login`, { idToken });
 
       if (response.data.success) {
-        const { token, user: fullUserData, isProfileComplete } = response.data;
+        if (response.data.isProfileComplete) {
 
-        if (fullUserData.accountStatus === 'Inactive') {
-          const reason = fullUserData.deactivationReason || "No specific reason provided.";
-          showToast(`Account Deactivated. Reason: ${reason}`, "error");
-          setLoading(false);
-          return; 
+          const { token, user: fullUserData } = response.data;
+
+          window.localStorage.setItem('token', token);
+          window.localStorage.setItem('user', JSON.stringify(fullUserData));
+          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+          showToast(`Welcome back, ${fullUserData.firstName}!`, 'success');
+          setTimeout(() => {
+            navigate(fullUserData.role === 'admin' ? '/admin/dashboard' : '/dashboard');
+          }, 1500);
+        } else {
+
+          window.localStorage.setItem('tempSocialData', JSON.stringify(response.data.tempData));
+          
+          showToast('Verification successful! Please complete your profile.', 'success');
+          setTimeout(() => {
+            navigate('/complete-profile');
+          }, 1000);
         }
-
-        window.localStorage.setItem('token', token);
-        window.localStorage.setItem('user', JSON.stringify(fullUserData));
-
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-        showToast(`Welcome ${fullUserData.firstName}!`, 'success');
-
-        setTimeout(() => {
-          if (!isProfileComplete) {
-            navigate('/complete-profile'); 
-          } else if (fullUserData.role === 'admin') {
-            navigate('/admin/dashboard');
-          } else {
-            navigate('/dashboard');
-          }
-        }, 1500); 
       }
     } catch (error) {
       console.error("Social Login Error:", error);
-      
       if (error.code === 'auth/popup-closed-by-user') {
         showToast('Login cancelled by user.', 'error');
-      } else if (error.code === 'auth/cancelled-popup-request') {
-      } else if (error.code === 'auth/account-exists-with-different-credential') {
-        showToast('An account already exists with the same email using a different login method.', 'error');
       } else {
         const errorMsg = error.response?.data?.message || 'Social authentication failed.';
         showToast(errorMsg, 'error');
@@ -340,59 +322,44 @@ const AuthPage = () => {
       {showOtpModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl relative scale-100">
-            
-            {/* 1. New 'X' Close Button */}
             <button 
               onClick={() => setShowOtpModal(false)} 
               className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
-
-            {/* 2. Premium Icon Header */}
             <div className="mx-auto flex items-center justify-center w-16 h-16 rounded-full bg-teal-50 text-teal-600 mb-5 shadow-sm">
                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
             </div>
-
             <h3 className="text-2xl font-bold text-slate-900 mb-2">Check your Email</h3>
             <p className="text-slate-500 text-sm mb-6">Enter the 6-digit code sent to <br/><b className="text-slate-800">{email}</b></p>
-
             <input
               type="text"
               maxLength="6"
-              inputMode="text"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
               className="w-full text-center text-3xl font-bold border-b-2 border-slate-200 py-3 mb-8 outline-none focus:border-teal-500 bg-transparent uppercase tracking-[0.35em] transition-colors"
               placeholder="ABC123"
               value={otpCode}
               onChange={(e) => setOtpCode(normalizeOtpInput(e.target.value))}
             />
-
-            {/* 3. Proper Flex Container for the buttons */}
             <div className="flex flex-col gap-4">
               <button 
                 onClick={handleVerifyOtp} 
                 disabled={loading || otpCode.length !== 6} 
-                className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-teal-600 hover:shadow-lg hover:shadow-teal-500/30 transition-all disabled:opacity-50 disabled:hover:bg-slate-900 disabled:hover:shadow-none"
+                className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-teal-600 hover:shadow-lg hover:shadow-teal-500/30 transition-all disabled:opacity-50"
               >
                 {loading ? 'Verifying...' : 'Verify Email'}
               </button>
-
-              {/* 4. Resend Code Section separated nicely */}
               <div className="flex items-center justify-center gap-1.5 text-sm mt-1">
                 <span className="text-slate-500">Didn't receive the code?</span>
                 <button
                   onClick={handleResendOtp}
                   disabled={loading || resendCooldown > 0}
-                  className="text-teal-600 font-bold hover:text-teal-700 hover:underline disabled:opacity-50 disabled:hover:no-underline transition-all"
+                  className="text-teal-600 font-bold hover:text-teal-700 hover:underline disabled:opacity-50 transition-all"
                 >
                   {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend'}
                 </button>
               </div>
             </div>
-
           </div>
         </div>
       )}
@@ -492,8 +459,11 @@ const AuthPage = () => {
             <button type="submit" disabled={loading} className="primary-btn py-3.5 text-base disabled:opacity-70">{loading ? 'Signing In...' : 'Sign In to Dashboard'}</button>
           </form>
 
-          {/* --- SOCIAL LOGIN BUTTONS --- */}
-          <div className="relative flex py-2 items-center"><div className="flex-grow border-t border-slate-100"></div><span className="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase tracking-wider">Or continue with</span><div className="flex-grow border-t border-slate-100"></div></div>
+          <div className="relative flex py-2 items-center">
+            <div className="flex-grow border-t border-slate-100"></div>
+            <span className="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase tracking-wider">Or continue with</span>
+            <div className="flex-grow border-t border-slate-100"></div>
+          </div>
           
           <div className="grid grid-cols-2 gap-4">
             <button 

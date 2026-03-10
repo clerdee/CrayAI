@@ -634,58 +634,63 @@ exports.socialLogin = async (req, res) => {
 
     let user = await User.findOne({ email: normalizedEmail });
 
-    if (!user) {
-      user = await User.create({
+    // ============================================================
+    // CASE A: USER EXISTS (Returning User)
+    // ============================================================
+    if (user) {
+      if (user.accountStatus === 'Inactive') {
+        return res.status(403).json({ 
+          success: false, 
+          message: `Account Deactivated. Reason: ${user.deactivationReason || 'None'}`,
+          user: { accountStatus: 'Inactive', deactivationReason: user.deactivationReason }
+        });
+      }
+
+      user.firebaseUid = uid;
+      if (!user.provider || user.provider === 'local') user.provider = providerId || 'social';
+      if (!user.profilePic && account?.photoUrl) user.profilePic = account.photoUrl;
+      await user.save();
+
+      const token = jwt.sign(
+        { userId: user._id, email: user.email, role: user.role },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      return res.status(200).json({
+        success: true,
+        token,
+        isProfileComplete: true, 
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+          profilePic: user.profilePic,
+          isVerified: user.isVerified,
+          phone: user.phone,
+          street: user.street,
+          city: user.city,
+          accountStatus: user.accountStatus
+        }
+      });
+    }
+
+    // ============================================================
+    // CASE B: NEW USER (Deferred Registration)
+    // ============================================================
+
+    return res.status(200).json({
+      success: true,
+      isProfileComplete: false,
+      tempData: {
         email: normalizedEmail,
         firstName: firstName || account?.displayName?.split(' ')[0] || 'User',
         lastName: lastName || account?.displayName?.split(' ').slice(1).join(' ') || '',
         profilePic: profilePic || account?.photoUrl || '',
-        provider: providerId || 'social', 
-        firebaseUid: uid,
-        password: null,
-        isVerified: true,
-        accountStatus: 'Active',
-        role: 'user'
-      });
-    } else {
-      user.firebaseUid = uid;
-      if (!user.provider || user.provider === 'local') user.provider = providerId;
-      if (!user.profilePic && account?.photoUrl) user.profilePic = account.photoUrl;
-      
-      if (!user.firstName && account?.displayName) {
-        user.firstName = account.displayName.split(' ')[0] || 'User';
-      }
-      if (!user.lastName && account?.displayName) {
-        user.lastName = account.displayName.split(' ').slice(1).join(' ') || '';
-      }
-      await user.save();
-    }
-
-    const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    const isProfileComplete = Boolean(user.phone && user.city);
-
-    res.status(200).json({
-      success: true,
-      token,
-      isProfileComplete,
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        role: user.role,
-        profilePic: user.profilePic,
-        isVerified: user.isVerified,
-        phone: user.phone,
-        street: user.street,
-        city: user.city,
-        accountStatus: user.accountStatus,
-        deactivationReason: user.deactivationReason
+        provider: providerId || 'social',
+        firebaseUid: uid
       }
     });
 
