@@ -61,7 +61,7 @@ const CompleteProfile = () => {
       }
 
       const finalPayload = {
-        uid: tempData.uid,
+        firebaseUid: tempData.firebaseUid || tempData.uid,
         email: tempData.email,
         firstName: tempData.firstName,
         lastName: tempData.lastName,
