@@ -93,13 +93,13 @@ const AuthPage = () => {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
+      const idToken = await user.getIdToken();
+
       const socialData = {
-        email: user.email,
+        idToken,
         firstName: user.displayName ? user.displayName.split(' ')[0] : 'User',
         lastName: user.displayName ? user.displayName.split(' ').slice(1).join(' ') : '',
-        profilePic: user.photoURL,
-        providerId: user.providerData[0]?.providerId,
-        uid: user.uid
+        profilePic: user.photoURL
       };
 
       const response = await axios.post(`${API_BASE_URL}/auth/social-login`, socialData);

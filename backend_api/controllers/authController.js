@@ -601,11 +601,39 @@ exports.deleteUser = async (req, res) => {
 // 14. SOCIAL LOGIN (Google, GitHub)
 exports.socialLogin = async (req, res) => {
   try {
-    const { email, firstName, lastName, profilePic, providerId, uid } = req.body;
-    const normalizedEmail = (email || '').trim().toLowerCase();
+    const { idToken, firstName, lastName, profilePic } = req.body;
 
-    if (!normalizedEmail) {
-      return res.status(400).json({ success: false, message: 'Email is required.' });
+    if (!idToken) {
+      return res.status(400).json({ success: false, message: 'Firebase ID token is required.' });
+    }
+
+    const firebaseWebApiKey = process.env.FIREBASE_WEB_API_KEY;
+    if (!firebaseWebApiKey) {
+      return res.status(500).json({
+        success: false,
+        message: 'Backend Firebase config missing: FIREBASE_WEB_API_KEY'
+      });
+    }
+
+    const verifyResponse = await axios.post(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseWebApiKey}`,
+      { idToken }
+    );
+
+    const account = verifyResponse.data?.users?.[0];
+    const normalizedEmail = (account?.email || '').trim().toLowerCase();
+    const uid = account?.localId;
+    const providerId = account?.providerUserInfo?.[0]?.providerId || account?.providerUserInfo?.find((p) => ['google.com', 'github.com'].includes(p.providerId))?.providerId;
+
+    if (!normalizedEmail || !uid) {
+      return res.status(400).json({ success: false, message: 'Invalid social token payload.' });
+    }
+
+    if (!['google.com', 'github.com'].includes(providerId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Only Google and GitHub social login are supported for web.'
+      });
     }
 
     let user = await User.findOne({ email: normalizedEmail });
@@ -613,21 +641,33 @@ exports.socialLogin = async (req, res) => {
     if (!user) {
       user = await User.create({
         email: normalizedEmail,
-        firstName,
-        lastName,
-        profilePic,
-        provider: providerId || 'social',
+        firstName: firstName || account?.displayName?.split(' ')[0] || 'User',
+        lastName: lastName || account?.displayName?.split(' ').slice(1).join(' ') || '',
+        profilePic: profilePic || account?.photoUrl || '',
+        provider: providerId,
         firebaseUid: uid,
         password: null,
-        isVerified: true, 
+        isVerified: true,
         accountStatus: 'Active',
         role: 'user'
       });
+
+     } else {
+      user.firebaseUid = uid;
+      if (!user.provider || user.provider === 'local') user.provider = providerId;
+      if (!user.profilePic && account?.photoUrl) user.profilePic = account.photoUrl;
+      if (!user.firstName && account?.displayName) {
+        user.firstName = account.displayName.split(' ')[0] || 'User';
+      }
+      if (!user.lastName && account?.displayName) {
+        user.lastName = account.displayName.split(' ').slice(1).join(' ');
+      }
+      await user.save();
     }
 
     const token = jwt.sign(
       { userId: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
+      JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -647,14 +687,16 @@ exports.socialLogin = async (req, res) => {
         isVerified: user.isVerified,
         phone: user.phone,
         street: user.street,
-        city: user.city
+        city: user.city,
+        accountStatus: user.accountStatus,
+        deactivationReason: user.deactivationReason
       }
     });
 
   } catch (error) {
-    console.error("Social Login Error:", error);
-    res.status(500).json({ 
-      success: false, 
+    console.error('Social Login Error:', error.response?.data || error.message || error);
+    res.status(500).json({
+      success: false,
       message: 'Server error during social login.' 
     });
   }
