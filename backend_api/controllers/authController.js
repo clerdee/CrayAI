@@ -5,13 +5,31 @@ const transport = require('../config/mailtrap');
 const Notification = require('../models/Notification'); 
 const { createNotification } = require('../utils/notificationHelper');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const MAIL_FROM = process.env.MAIL_FROM || process.env.MAIL_USER || 'no-reply@crayai.com';
+const GMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@gmail\.com$/i;
+
+const generateOtpCode = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let otp = '';
+  for (let i = 0; i < 6; i += 1) {
+    otp += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return otp;
+};
 
 // 1. REGISTER USER & SEND OTP
 exports.registerUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    let user = await User.findOne({ email });
+    const normalizedEmail = (email || '').trim().toLowerCase();
+
+    if (!GMAIL_REGEX.test(normalizedEmail)) {
+      return res.status(400).json({
+        message: 'Please use a valid Gmail address (example@gmail.com).'
+      });
+    }
+    let user = await User.findOne({ email: normalizedEmail });
     if (user) {
       return res.status(400).json({ message: 'User already exists' });
     }
@@ -19,11 +37,11 @@ exports.registerUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = generateOtpCode();
     const otpExpiry = Date.now() + 10 * 60 * 1000; 
 
     user = new User({
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
       otpCode: otp,
       otpExpires: otpExpiry
@@ -32,8 +50,8 @@ exports.registerUser = async (req, res) => {
     await user.save();
 
     await transport.sendMail({
-      from: '"CrayAI Team" <no-reply@crayai.com>',
-      to: email,
+      from: `"CrayAI Team" <${MAIL_FROM}>`,
+      to: normalizedEmail,
       subject: 'Your CrayAI Verification Code',
       text: `Welcome! Your verification code is: ${otp}`,
       html: `<b>Welcome!</b><br>Your verification code is: <h2>${otp}</h2>`
@@ -52,13 +70,15 @@ exports.verifyOTP = async (req, res) => {
   const { email, otp, profileData } = req.body; 
 
   try {
-    const user = await User.findOne({ email });
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const otpCandidate = (otp || '').trim().toUpperCase();
+    const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
       return res.status(400).json({ message: 'User not found' });
     }
 
-    if (user.otpCode !== otp || user.otpExpires < Date.now()) {
+       if (user.otpCode !== otpCandidate || user.otpExpires < Date.now()) {
       return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
 
@@ -115,7 +135,15 @@ exports.resendOTP = async (req, res) => {
   const { email } = req.body;
 
   try {
-    const user = await User.findOne({ email });
+    const normalizedEmail = (email || '').trim().toLowerCase();
+
+    if (!GMAIL_REGEX.test(normalizedEmail)) {
+      return res.status(400).json({
+        message: 'Please use a valid Gmail address (example@gmail.com).'
+      });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -125,16 +153,16 @@ exports.resendOTP = async (req, res) => {
       return res.status(400).json({ message: 'Account is already verified. Please Login.' });
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 Minutes
+    const otp = generateOtpCode();
+    const otpExpiry = Date.now() + 10 * 60 * 1000;
 
     user.otpCode = otp;
     user.otpExpires = otpExpiry;
     await user.save();
 
     await transport.sendMail({
-      from: '"CrayAI Team" <no-reply@crayai.com>',
-      to: email,
+      from: `"CrayAI Team" <${MAIL_FROM}>`,
+      to: normalizedEmail,
       subject: 'New Verification Code',
       text: `Your new code is: ${otp}`,
       html: `<b>New Code Requested:</b><br>Your verification code is: <h2>${otp}</h2>`
@@ -153,7 +181,9 @@ exports.loginUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    const user = await User.findOne({ email });
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail });
+
     if (!user) {
       return res.status(400).json({ message: 'Invalid email or password' });
     }
@@ -540,11 +570,11 @@ exports.socialLogin = async (req, res) => {
   try {
     const { email, firstName, lastName, profilePic, providerId, uid } = req.body;
 
-    let user = await User.findOne({ email });
+    let user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
       user = await User.create({
-        email,
+        email: normalizedEmail,
         firstName,
         lastName,
         profilePic,
