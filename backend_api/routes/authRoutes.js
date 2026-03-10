@@ -3,7 +3,7 @@ const router = express.Router();
 const { registerUser, verifyOTP, resendOTP, loginUser, getMe, 
         authenticateToken, updateProfile, changePassword, updateEmail, 
         getUserPublicProfile, followUser, getAllUsers, deleteUser, 
-        socialLogin, getUserCount, updateUserStatus
+        socialLogin, socialFinalize, getUserCount, updateUserStatus
       } = require('../controllers/authController'); 
 
 const { getModerationContent, moderateContent, getDashboardAnalytics, 
@@ -14,6 +14,7 @@ router.post('/verify-otp', verifyOTP);
 router.post('/resend-otp', resendOTP);
 router.post('/login', loginUser); 
 router.post('/social-login', socialLogin);
+router.post('/social-finalize', socialFinalize);
 router.get('/profile', authenticateToken, getMe);
 router.put('/profile/update', authenticateToken, updateProfile);
 router.post('/change-password', authenticateToken, changePassword);

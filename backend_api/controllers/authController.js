@@ -754,3 +754,60 @@ exports.updateUserStatus = async (req, res) => {
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+// 17. SOCIAL LOGIN FINALIZATION 
+exports.socialFinalize = async (req, res) => {
+  try {
+    const { email, firstName, lastName, phone, street, city, profilePic, provider, firebaseUid } = req.body;
+
+    let user = await User.findOne({ email: email.toLowerCase() });
+    if (user) {
+      return res.status(400).json({ success: false, message: "User already exists." });
+    }
+
+    let mappedProvider = 'local';
+    if (provider?.includes('google')) mappedProvider = 'google.com';
+    if (provider?.includes('github')) mappedProvider = 'github.com';
+
+    user = new User({
+      email: email.toLowerCase(),
+      firstName,
+      lastName,
+      phone,
+      street,
+      city,
+      country: 'Philippines',
+      profilePic,
+      provider: mappedProvider, 
+      firebaseUid,
+      isVerified: true,       
+      accountStatus: 'Active',
+      role: 'user'
+    });
+
+    await user.save();
+
+    const token = jwt.sign(
+      { userId: user._id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        profilePic: user.profilePic,
+        role: user.role,
+        accountStatus: user.accountStatus
+      }
+    });
+  } catch (error) {
+    console.error("Social Finalize Error:", error);
+    res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+};
