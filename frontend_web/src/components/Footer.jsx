@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Container, Grid, Typography, Link, Stack, IconButton, Divider } from '@mui/material';
+import { Box, Container, Grid, Typography, Stack, IconButton, Divider } from '@mui/material';
 import FacebookIcon from '@mui/icons-material/Facebook';
 import TwitterIcon from '@mui/icons-material/Twitter';
 import InstagramIcon from '@mui/icons-material/Instagram';
@@ -22,7 +22,7 @@ const Footer = () => {
           
           {/* BRAND COLUMN */}
           <Grid item xs={12} md={4}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
               <img 
                 src="/crayfish.png" 
                 alt="CrayAI Logo" 
@@ -36,56 +36,60 @@ const Footer = () => {
               The all-in-one intelligence platform for Australian Red Claw farming. 
               Bridging the gap between aquaculture and artificial intelligence.
             </Typography>
-            <Stack direction="row" spacing={1.5}>
-              {/* {[FacebookIcon, TwitterIcon, InstagramIcon, LinkedInIcon].map((Icon, index) => (
-                <IconButton 
-                  key={index} 
-                  size="small"
-                  sx={{ 
-                    color: '#556987', 
-                    bgcolor: 'white', 
-                    border: '1px solid #E6E8F0',
-                    transition: 'all 0.2s',
-                    '&:hover': { color: 'white', bgcolor: '#008080', borderColor: '#008080' } 
-                  }}
-                >
-                  <Icon fontSize="small" />
-                </IconButton>
-              ))} */}
+
+            {/* Added Social Icons to improve visual balance */}
+            {/* <Stack direction="row" spacing={1}>
+              <IconButton size="small" sx={{ color: '#556987', '&:hover': { color: '#008080' } }}>
+                <FacebookIcon fontSize="small" />
+              </IconButton>
+              <IconButton size="small" sx={{ color: '#556987', '&:hover': { color: '#008080' } }}>
+                <TwitterIcon fontSize="small" />
+              </IconButton>
+              <IconButton size="small" sx={{ color: '#556987', '&:hover': { color: '#008080' } }}>
+                <InstagramIcon fontSize="small" />
+              </IconButton>
+              <IconButton size="small" sx={{ color: '#556987', '&:hover': { color: '#008080' } }}>
+                <LinkedInIcon fontSize="small" />
+              </IconButton>
+            </Stack> */}
+          </Grid>
+
+          {/* COLUMN 1: PLATFORM */}
+          <Grid item xs={6} md={2}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 3, color: '#0A2540', letterSpacing: '0.5px' }}>
+              PLATFORM
+            </Typography>
+            <Stack spacing={2}>
+              <Typography sx={textStyle}>Mobile Application</Typography>
+              <Typography sx={textStyle}>Web Dashboard</Typography>
+              <Typography sx={textStyle}>Artificial Intelligence</Typography>
+              <Typography sx={textStyle}>Offline Mode</Typography>
             </Stack>
           </Grid>
 
-          {/* COLUMN 1: PLATFORM (Expanded to fill space) */}
+          {/* COLUMN 2: RESOURCES */}
           <Grid item xs={6} md={2}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 3, color: '#0A2540', letterSpacing: '0.5px' }}>PLATFORM</Typography>
-            <Stack spacing={1.5}>
-              <Link href="#" underline="none" sx={linkStyle}>Mobile Application</Link>
-              <Link href="#" underline="none" sx={linkStyle}>Web Dashboard</Link>
-              <Link href="#" underline="none" sx={linkStyle}>Artifial Intelligence</Link>
-              <Link href="#" underline="none" sx={linkStyle}>Offline Mode</Link>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 3, color: '#0A2540', letterSpacing: '0.5px' }}>
+              RESOURCES
+            </Typography>
+            <Stack spacing={2}>
+              <Typography sx={textStyle}>Community Forum</Typography>
+              <Typography sx={textStyle}>The Marketplace</Typography>
+              <Typography sx={textStyle}>Farming Guide</Typography>
+              <Typography sx={textStyle}>ARC Classification</Typography>
             </Stack>
           </Grid>
 
-          {/* COLUMN 2: RESOURCES (Your suggestions implemented) */}
+          {/* COLUMN 3: CREATORS */}
           <Grid item xs={6} md={2}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 3, color: '#0A2540', letterSpacing: '0.5px' }}>RESOURCES</Typography>
-            <Stack spacing={1.5}>
-              <Link href="#" underline="none" sx={linkStyle}>Community Forum</Link>
-              <Link href="#" underline="none" sx={linkStyle}>The Marketplace</Link>
-              <Link href="#" underline="none" sx={linkStyle}>Farming Guide</Link>
-              <Link href="#" underline="none" sx={linkStyle}>ARC Classification</Link>
-            </Stack>
-          </Grid>
-
-          {/* COLUMN 3: CREATORS (Surname, Initial format) */}
-          <Grid item xs={6} md={2}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 3, color: '#0A2540', letterSpacing: '0.5px' }}>CREATORS</Typography>
-            <Stack spacing={1.5}>
-              {/* REPLACE THESE WITH YOUR ACTUAL NAMES */}
-              <Link href="#" underline="none" sx={linkStyle}>Cruz, HC.</Link>
-              <Link href="#" underline="none" sx={linkStyle}>Mallo, GH.</Link>
-              <Link href="#" underline="none" sx={linkStyle}>Laceda, J.</Link>
-              <Link href="#" underline="none" sx={linkStyle}>Cortez, DD.</Link>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 3, color: '#0A2540', letterSpacing: '0.5px' }}>
+              CREATORS
+            </Typography>
+            <Stack spacing={2}>
+              <Typography sx={textStyle}>Cruz, HC.</Typography>
+              <Typography sx={textStyle}>Mallo, GH.</Typography>
+              <Typography sx={textStyle}>Laceda, J.</Typography>
+              <Typography sx={textStyle}>Cortez, DD.</Typography>
             </Stack>
           </Grid>
 
@@ -113,12 +117,10 @@ const Footer = () => {
   );
 };
 
-const linkStyle = {
+const textStyle = {
   color: '#556987', 
   fontSize: '0.9rem', 
-  transition: '0.2s', 
-  '&:hover': { color: '#008080', transform: 'translateX(5px)' },
-  display: 'inline-block'
+  fontWeight: 500
 };
 
 export default Footer;
