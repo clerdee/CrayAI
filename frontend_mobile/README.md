@@ -72,3 +72,16 @@ If client IDs are missing or incorrect for your package/signature, Google login 
    - email/password login
    - token persistence after app restart
    - Google sign-in callback
+
+## Quick troubleshooting for "Could not connect to server"
+
+1. In your EAS build profile, set `EXPO_PUBLIC_NETWORK_IP` to backend **origin only** (no trailing `/`, no `/api`), e.g.:
+   - ✅ `https://crayai-node-api.onrender.com`
+   - ❌ `http://localhost:5000`
+   - ❌ `https://crayai-node-api.onrender.com/api`
+2. Ensure backend is awake/reachable from phone network:
+   - open `https://crayai-node-api.onrender.com/api/auth/login` in browser (expect non-200 is okay for GET; main check is reachable).
+3. Rebuild APK after env changes (EAS embeds env at build time).
+4. Check device date/time and internet access (SSL can fail on wrong clock).
+5. Open Expo logs / Logcat and confirm startup log:
+   - `[API] Using backend origin: ...`

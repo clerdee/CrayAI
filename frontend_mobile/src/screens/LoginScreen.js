@@ -80,7 +80,7 @@ export default function LoginScreen({ navigation }) {
         const errorMsg = error.response.data.message || "Login failed.";
         showNotification(errorMsg, "error");
       } else if (error.request) {
-        showNotification("Could not connect to server.", "error");
+        showNotification("Could not connect to server. Check internet and API URL config.", "error");
       } else {
         showNotification("An unexpected error occurred.", "error");
       }
