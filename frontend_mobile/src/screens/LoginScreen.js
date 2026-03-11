@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, TextInput, TouchableOpacity, 
   Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar,
@@ -7,93 +7,20 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
 
 import client from '../api/client';
-import config from '../config/config';
-
-WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
 
   const [message, setMessage] = useState({ text: '', type: '' });
-
-  const { GOOGLE } = config;
-
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: GOOGLE.ANDROID_CLIENT_ID,
-    iosClientId: GOOGLE.IOS_CLIENT_ID,
-    webClientId: GOOGLE.WEB_CLIENT_ID,
-  });
 
   const showNotification = (text, type) => {
     setMessage({ text, type });
     setTimeout(() => setMessage({ text: '', type: '' }), type === 'error' ? 5000 : 3000);
-  };
-
-  // --- GOOGLE RESPONSE HANDLER ---
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { authentication } = response;
-      fetchGoogleUserProfile(authentication.accessToken);
-    }
-  }, [response]);
-
-  const fetchGoogleUserProfile = async (token) => {
-    setGoogleLoading(true);
-    try {
-      const response = await fetch('https://www.googleapis.com/userinfo/v2/me', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const user = await response.json();
-      
-      // Send Google Data to Your Backend
-      handleBackendSocialLogin(user);
-    } catch (error) {
-      console.log('Google User Fetch Error:', error);
-      showNotification("Failed to get Google profile.", "error");
-      setGoogleLoading(false);
-    }
-  };
-
-  const handleBackendSocialLogin = async (googleUser) => {
-    try {
-      const payload = {
-        email: googleUser.email,
-        firstName: googleUser.given_name,
-        lastName: googleUser.family_name,
-        profilePic: googleUser.picture,
-        providerId: 'google',
-        uid: googleUser.id
-      };
-
-      const res = await client.post('/auth/social-login', payload);
-
-      if (res.status === 200 && res.data.success) {
-        // Save Session
-        await AsyncStorage.setItem('token', res.data.token);
-        await AsyncStorage.setItem('userInfo', JSON.stringify(res.data.user));
-
-        showNotification(`Welcome back, ${res.data.user.firstName}!`, "success");
-        
-        setTimeout(() => {
-          setGoogleLoading(false);
-          navigation.replace('Home');
-        }, 1000);
-      } else {
-        throw new Error(res.data.message || 'Social login failed');
-      }
-    } catch (error) {
-      console.log('Backend Social Login Error:', error);
-      showNotification("Could not sync with server.", "error");
-      setGoogleLoading(false);
-    }
   };
 
   // --- NORMAL LOGIN ---
@@ -224,7 +151,7 @@ export default function LoginScreen({ navigation }) {
           </View>
 
           {/* Sign In Button */}
-          <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} disabled={loading || googleLoading}>
+          <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} disabled={loading}>
             <LinearGradient colors={['#3D5A80', '#293241']} style={styles.btnGradient}>
               {loading ? (
                 <ActivityIndicator color="#FFF" />
