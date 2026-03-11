@@ -114,7 +114,7 @@ export default function EmailPreferencesScreen() {
             
             <View style={styles.divider} />
 
-            <Text style={styles.inputLabel}>New Email Address</Text>
+            {/* <Text style={styles.inputLabel}>New Email Address</Text>
             <TextInput 
               style={styles.input}
               placeholder="example@research.com"
@@ -123,9 +123,9 @@ export default function EmailPreferencesScreen() {
               onChangeText={setNewEmail}
               autoCapitalize="none"
               keyboardType="email-address"
-            />
+            /> */}
 
-            <Text style={styles.inputLabel}>Confirm Current Password</Text>
+            {/* <Text style={styles.inputLabel}>Confirm Current Password</Text>
             
             <View style={styles.passwordContainer}>
               <TextInput 
@@ -146,9 +146,9 @@ export default function EmailPreferencesScreen() {
                   color="#7F8C8D" 
                 />
               </TouchableOpacity>
-            </View>
+            </View> */}
 
-            <TouchableOpacity 
+            {/* <TouchableOpacity 
               style={[styles.updateButton, (!newEmail || !password) && styles.disabledButton]} 
               onPress={handleUpdateEmail}
               disabled={!newEmail || !password || isUpdatingEmail}
@@ -158,7 +158,7 @@ export default function EmailPreferencesScreen() {
               ) : (
                 <Text style={styles.updateButtonText}>Send Verification Email</Text>
               )}
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
