@@ -10,7 +10,8 @@ const normalizeOrigin = (value) => {
   let normalized = String(value).trim().replace(/^['\"]|['\"]$/g, '');
 
   if (!/^https?:\/\//i.test(normalized)) {
-    normalized = `https://${normalized}`;
+    const looksLikeLocalHost = /^(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(normalized);
+    normalized = `${looksLikeLocalHost ? 'http' : 'https'}://${normalized}`;
   }
 
   normalized = normalized.replace(/\/$/, '').replace(/\/api$/i, '');
