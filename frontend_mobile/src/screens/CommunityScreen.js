@@ -65,7 +65,6 @@ export default function CommunityScreen({ navigation, route }) {
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); 
   
-  // --- POST STATE ---
   const [postText, setPostText] = useState('');
   const [mediaList, setMediaList] = useState([]); 
   const [uploading, setUploading] = useState(false); 
@@ -73,10 +72,9 @@ export default function CommunityScreen({ navigation, route }) {
   const [isGuest, setIsGuest] = useState(false);
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
 
-  // --- MARKETPLACE STATE ---
   const [isForSale, setIsForSale] = useState(false);
   const [price, setPrice] = useState('');
-  const [isSold, setIsSold] = useState(false); // <-- NEW: State for "Already Sold"
+  const [isSold, setIsSold] = useState(false); 
 
   const [editingPostId, setEditingPostId] = useState(null); 
 
@@ -108,7 +106,6 @@ export default function CommunityScreen({ navigation, route }) {
   const toastAnim = useRef(new Animated.Value(-100)).current; 
   const scrollViewRef = useRef(); 
 
-  // --- CATCH PREFILL DATA FROM RESULTS SCREEN ---
   useEffect(() => {
     if (route.params?.prefillImage || route.params?.prefillCaption) {
       if (route.params.prefillCaption) {
@@ -262,11 +259,9 @@ export default function CommunityScreen({ navigation, route }) {
     setMediaList(post.media || []); 
     setEditingPostId(post._id);
     
-    // PREFILL MARKETPLACE DATA
     setIsForSale(post.isForSale || false);
     setPrice(post.price ? String(post.price) : '');
-    setIsSold(post.isSold || false); // <-- Grab existing sold status
-
+    setIsSold(post.isSold || false); 
     scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     showToast("Edit Mode", "Update your post at the top.", 'info');
   };
@@ -298,7 +293,7 @@ export default function CommunityScreen({ navigation, route }) {
         media: mediaUrls,
         isForSale: isForSale,
         price: isForSale ? parseFloat(price) : 0,
-        isSold: isSold // <-- INCLUDE SOLD STATUS IN PAYLOAD
+        isSold: isSold
       };
 
       if (editingPostId) {
@@ -315,7 +310,6 @@ export default function CommunityScreen({ navigation, route }) {
         }
       }
       
-      // RESET ALL STATE
       setPostText('');
       setMediaList([]);
       setEditingPostId(null);
@@ -561,7 +555,6 @@ export default function CommunityScreen({ navigation, route }) {
           )}
 
           <View style={styles.cardBody}>
-            {/* --- NEW: MARKETPLACE TAG RENDERING W/ SOLD STATE --- */}
             {item.isForSale && item.price > 0 && (
                 <View style={[styles.priceTagBadge, item.isSold && { backgroundColor: '#95A5A6' }]}>
                   <MaterialCommunityIcons name={item.isSold ? "check-circle" : "tag"} size={14} color="#FFF" />
@@ -667,7 +660,7 @@ export default function CommunityScreen({ navigation, route }) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : height}>
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#3D5A80" />
         
@@ -677,6 +670,7 @@ export default function CommunityScreen({ navigation, route }) {
             ref={scrollViewRef} 
             style={styles.mainScrollView} 
             contentContainerStyle={styles.mainScrollContent}
+            keyboardShouldPersistTaps="handled"
         >
           {/* CREATE / EDIT POST CONTAINER */}
           <View style={[styles.createPostContainer, styles.shadow, editingPostId && { borderColor: '#3D5A80', borderWidth: 2 }]}>
@@ -791,7 +785,15 @@ export default function CommunityScreen({ navigation, route }) {
             snapToInterval={CARD_WIDTH + 20} 
             decelerationRate="fast"
             contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 10 }}
-            ListEmptyComponent={<Text style={styles.emptyFeedText}>No posts yet. Be the first!</Text>}
+            ListEmptyComponent={
+              <View style={styles.emptyFeedCard}>
+                <View style={styles.emptyFeedIcon}>
+                  <Ionicons name="sparkles-outline" size={26} color="#3D5A80" />
+                </View>
+                <Text style={styles.emptyFeedTitle}>No posts yet</Text>
+                <Text style={styles.emptyFeedText}>Be the first to share your discovery with the community.</Text>
+              </View>
+            }
           />
           <View style={{ height: 200 }} /> 
         </ScrollView>
@@ -959,13 +961,13 @@ const styles = StyleSheet.create({
   toastInfo: { backgroundColor: '#3D5A80' },    
   toastText: { color: '#FFF', fontWeight: '700', fontSize: 13, marginLeft: 10, flex: 1 },
   mainScrollView: { flex: 1 },
-  mainScrollContent: { paddingBottom: 20 },
+  mainScrollContent: { paddingBottom: 120 },
   keyboardAvoidModal: { flex: 1, justifyContent: 'flex-end' },
   modalCommentContainer: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 15, paddingBottom: 30 },
   modalCommentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   modalCommentTitle: { fontWeight: '700', color: '#2C3E50', fontSize: 16 },
   modalInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F4F6F7', borderRadius: 25, paddingHorizontal: 5, paddingVertical: 5 },
-  modalTextInput: { flex: 1, maxHeight: 100, paddingHorizontal: 15, paddingVertical: 10, fontSize: 15, color: '#2C3E50' },
+  modalTextInput: { flex: 1, maxHeight: 100, paddingHorizontal: 15, paddingVertical: 10, fontSize: 15, color: '#2C3E50', textAlignVertical: 'top' },
   modalSendBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#3D5A80', justifyContent: 'center', alignItems: 'center' },
   fakeCommentInput: { flex: 1, height: 36, justifyContent: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
@@ -1056,7 +1058,10 @@ const styles = StyleSheet.create({
   commentInput: { flex: 1, height: 36, fontSize: 13, color: '#2C3E50' },
   guestCommentBtn: { backgroundColor: '#3D5A80', paddingVertical: 12, borderRadius: 25, alignItems: 'center', marginTop: 10 },
   guestCommentText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
-  emptyFeedText: { textAlign: 'center', marginTop: 50, color: '#95A5A6', fontStyle: 'italic' },
+  emptyFeedCard: { marginTop: 55, marginHorizontal: 30, backgroundColor: '#FFF', borderRadius: 18, paddingVertical: 28, paddingHorizontal: 20, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' },
+  emptyFeedIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#EEF4FB', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  emptyFeedTitle: { fontSize: 18, fontWeight: '800', color: '#2C3E50', marginBottom: 6 },
+  emptyFeedText: { textAlign: 'center', color: '#7F8C8D', lineHeight: 21 },
   swipeHint: { textAlign: 'center', color: '#BDC3C7', fontSize: 12, marginBottom: 10, marginTop: 10 },
   shadow: { ...Platform.select({ ios: { shadowColor: '#3D5A80', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 12 }, android: { elevation: 5 } }) }
 });
