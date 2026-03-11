@@ -11,6 +11,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 
 import client from '../api/client';
+import config from '../config/config';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -23,10 +24,12 @@ export default function LoginScreen({ navigation }) {
 
   const [message, setMessage] = useState({ text: '', type: '' });
 
+  const { GOOGLE } = config;
+
   const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: 'YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com',
-    iosClientId: 'YOUR_IOS_CLIENT_ID.apps.googleusercontent.com',
-    webClientId: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com',
+    androidClientId: GOOGLE.ANDROID_CLIENT_ID,
+    iosClientId: GOOGLE.IOS_CLIENT_ID,
+    webClientId: GOOGLE.WEB_CLIENT_ID,
   });
 
   const showNotification = (text, type) => {
