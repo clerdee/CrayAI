@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  View, Text, StyleSheet, Image, TouchableOpacity, 
-  TextInput, Platform, KeyboardAvoidingView, FlatList, StatusBar, ActivityIndicator, Animated
+  View, Text, StyleSheet, Image, TouchableOpacity, TextInput, Platform, 
+  KeyboardAvoidingView, FlatList, StatusBar, ActivityIndicator, Animated, Alert
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -33,7 +33,6 @@ export default function ChatScreen({ navigation, route }) {
 
   const flatListRef = useRef(null);
 
-  // --- TOAST STATE ---
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState({ title: '', body: '', type: 'info' });
   const toastAnim = useRef(new Animated.Value(-100)).current; 
@@ -47,7 +46,6 @@ export default function ChatScreen({ navigation, route }) {
     }, 3000);
   };
 
-  // --- AUTH CHECK ---
   useEffect(() => {
     let mounted = true;
     const checkAuth = async () => {
@@ -79,7 +77,6 @@ export default function ChatScreen({ navigation, route }) {
     return () => { mounted = false; };
   }, []);
 
-  // --- REFRESH DATA ---
   const fetchListData = async () => {
     if (!currentUser) return; 
     try {
@@ -166,7 +163,6 @@ export default function ChatScreen({ navigation, route }) {
     }
   }, [route.params, myChats, requests]); 
 
-  // --- LOAD MESSAGES ---
   useEffect(() => {
     if (!activeChatUser || !currentUser) return;
 
@@ -212,8 +208,7 @@ export default function ChatScreen({ navigation, route }) {
     try {
         if (stagedImage) {
             const data = new FormData();
-            
-            // Extract the extension to safely format the file for Cloudinary
+
             const extMatch = stagedImage.match(/\.(jpg|jpeg|png|gif|heic|heif)$/i);
             const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
             const mimeType = ext === 'png' ? 'image/png' : (ext === 'gif' ? 'image/gif' : 'image/jpeg');
@@ -226,7 +221,6 @@ export default function ChatScreen({ navigation, route }) {
             const result = await res.json();
             
             if (result.secure_url) {
-               // 🚨 HEIC FIX: Web browsers can't render iPhone HEIC images. This forces Cloudinary to convert it to a JPG link!
                imageUrl = result.secure_url.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
             } else {
                showToast("Upload Error", "Failed to upload image.", "error");
@@ -241,7 +235,6 @@ export default function ChatScreen({ navigation, route }) {
             image: imageUrl 
         });
 
-        // 🚨 INSTANT REFRESH: Immediately add the message to the UI so you don't have to wait 5 seconds!
         if (res.data?.message) {
            const m = res.data.message;
            const newMsgObj = {
@@ -264,14 +257,57 @@ export default function ChatScreen({ navigation, route }) {
     finally { setSendingImage(false); }
   };
 
+    const handleDeleteMessage = (messageId) => {
+    Alert.alert('Delete message?', 'This will remove this message for both users.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await client.delete(`/chat/message/${activeChatUser.uid}/${messageId}`);
+            setMessages((prev) => prev.filter((m) => m.id !== messageId));
+            fetchListData();
+            showToast('Deleted', 'Message deleted.', 'success');
+          } catch (error) {
+            showToast('Error', 'Could not delete message.', 'error');
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleDeleteConversation = () => {
+    if (!activeChatUser) return;
+
+    Alert.alert('Delete conversation?', `This removes your conversation with ${activeChatUser.name}.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await client.delete(`/chat/conversation/${activeChatUser.uid}`);
+            setMessages([]);
+            setActiveChatUser(null);
+            fetchListData();
+            showToast('Deleted', 'Conversation deleted.', 'success');
+          } catch (error) {
+            showToast('Error', 'Could not delete conversation.', 'error');
+          }
+        },
+      },
+    ]);
+  };
+
   const renderMessage = ({ item }) => (
-    <View style={item.sender === 'me' ? styles.myMsgWrapper : styles.otherMsgWrapper}>
+    <TouchableOpacity activeOpacity={0.9} onLongPress={() => item.sender === 'me' && handleDeleteMessage(item.id)} style={item.sender === 'me' ? styles.myMsgWrapper : styles.otherMsgWrapper} >
       <View style={[item.sender === 'me' ? styles.myBubble : styles.otherBubble]}>
         {item.image && <Image source={{ uri: item.image }} style={styles.sentImage} />}
         {item.text !== '' && <Text style={item.sender === 'me' ? styles.myText : styles.otherText}>{item.text}</Text>}
       </View>
       <Text style={styles.timeLabel}>{item.time}</Text>
-    </View>
+    </TouchableOpacity>
   );
 
   const renderEmptyContacts = () => (
@@ -352,7 +388,7 @@ export default function ChatScreen({ navigation, route }) {
             />
           </View>
 
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.chatEngine} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.chatEngine} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 80}>
             <View style={styles.chatLayer}>
               {!activeChatUser ? (
                 <View style={styles.emptyStateContainer}>
@@ -387,7 +423,13 @@ export default function ChatScreen({ navigation, route }) {
                             <Text style={{fontSize: 10, color: '#2A9D8F'}}>New Conversation</Text>
                         )}
                     </View>
-                    {activeTab === 'requests' && <View style={styles.requestBadge}><Text style={styles.requestBadgeText}>REQUEST</Text></View>}
+                        {activeTab === 'requests' ? (
+                      <View style={styles.requestBadge}><Text style={styles.requestBadgeText}>REQUEST</Text></View>
+                    ) : (
+                      <TouchableOpacity onPress={handleDeleteConversation} style={styles.deleteConvoBtn}>
+                        <Ionicons name="trash-outline" size={18} color="#E76F51" />
+                      </TouchableOpacity>
+                    )}
                   </View>
 
                   <FlatList
@@ -430,7 +472,6 @@ export default function ChatScreen({ navigation, route }) {
                     ) : (
                       <View style={styles.inputAreaWrapper}>
                         
-                        {/* 🚨 NEW: Added Image Preview UI so the user knows they attached an image 🚨 */}
                         {stagedImage && (
                           <View style={styles.previewContainer}>
                             <View style={styles.previewImageWrapper}>
@@ -447,7 +488,12 @@ export default function ChatScreen({ navigation, route }) {
 
                         <View style={styles.inputArea}>
                           <TouchableOpacity onPress={async () => {
-                              let res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6 });
+                              const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                              if (!permission.granted) {
+                                showToast('Permission needed', 'Please allow gallery access.', 'error');
+                                return;
+                              }
+                              let res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.6 });
                               if (!res.canceled) setStagedImage(res.assets[0].uri);
                           }}>
                             <Ionicons name="image" size={26} color="#3D5A80" />
@@ -570,7 +616,8 @@ const styles = StyleSheet.create({
   textInput: { flex: 1, marginHorizontal: 12, backgroundColor: '#F8F9F9', borderRadius: 20, paddingHorizontal: 15, paddingVertical: 10, maxHeight: 100, color: '#2C3E50' },
   sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#3D5A80', justifyContent: 'center', alignItems: 'center' },
 
-  navBarSpacer: { height: 95 }, 
+  navBarSpacer: { height: 16 }, 
   requestBadge: { backgroundColor: '#E74C3C', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5 },
-  requestBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' }
+   requestBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
+  deleteConvoBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FDEDEC', justifyContent: 'center', alignItems: 'center' }
 });
