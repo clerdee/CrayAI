@@ -3,14 +3,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import config from '../config/config';
 
 const { NETWORK_IP } = config;
+const DEFAULT_API_ORIGIN = 'https://crayai-node-api.onrender.com';
+const API_ORIGIN = (NETWORK_IP || DEFAULT_API_ORIGIN).replace(/\/$/, '');
 
 if (!NETWORK_IP) {
-  console.warn('⚠️ WARNING: NETWORK_IP is missing in config.js!');
+  console.warn(`⚠️ WARNING: NETWORK_IP is missing in config.js! Falling back to ${DEFAULT_API_ORIGIN}`);
 }
 
 // 1. URLs 
-const API_URL = `${NETWORK_IP}/api/`;
-const AI_URL = `${NETWORK_IP}/api/`;
+const API_URL = `${API_ORIGIN}/api/`;
+const AI_URL = `${API_ORIGIN}/api/`;
 
 // 2. AXIOS CLIENTS
 const client = axios.create({
@@ -26,9 +28,12 @@ export const aiClient = axios.create({
 // 3. REQUEST INTERCEPTOR 
 client.interceptors.request.use(
   async (requestConfig) => {
+    const API_URL = `${API_ORIGIN}/api/`;
+    const AI_URL = `${API_ORIGIN}/api/`;
+
     const skipAuth = requestConfig.url && (
-      requestConfig.url.endsWith('/auth/login') ||
-      requestConfig.url.endsWith('/auth/social-login')
+      requestConfig.url.endsWith('auth/login') ||
+      requestConfig.url.endsWith('auth/social-login')
     );
     if (skipAuth) {
       return requestConfig;
