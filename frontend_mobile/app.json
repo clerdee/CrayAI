@@ -20,7 +20,7 @@
     "android": {
       "package": "com.klerd.crayai",
       "adaptiveIcon": {
-        "foregroundImage": "../assets/crayfish.png",
+        "foregroundImage": "./assets/crayfish.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true
