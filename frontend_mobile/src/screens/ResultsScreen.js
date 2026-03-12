@@ -14,20 +14,30 @@ import { CLOUDINARY_CONFIG } from '../config/cloudinary';
 
 const { width, height } = Dimensions.get('window');
 
+// --- 3-CLASS ALGAE GAUGE ---
 const GaugeChart = ({ levelIndex }) => {
-  const needleRotations = [-67.5, -22.5, 22.5, 67.5];
-  const rotation = needleRotations[levelIndex] || -67.5;
+  // Rotations for 3 segments: -60 (Left), 0 (Middle), 60 (Right)
+  const needleRotations = [-60, 0, 60];
+  const rotation = needleRotations[levelIndex] !== undefined ? needleRotations[levelIndex] : -60;
+  
   return (
     <View style={styles.gaugeWrapper}>
       <Svg width="100%" height="160" viewBox="0 0 200 120">
-        <Path d="M 20 100 A 80 80 0 0 1 43.43 43.43" fill="none" stroke="#0FA958" strokeWidth="35" />
-        <Path d="M 43.43 43.43 A 80 80 0 0 1 100 20" fill="none" stroke="#FFE600" strokeWidth="35" />
-        <Path d="M 100 20 A 80 80 0 0 1 156.57 43.43" fill="none" stroke="#E11A22" strokeWidth="35" />
-        <Path d="M 156.57 43.43 A 80 80 0 0 1 180 100" fill="none" stroke="#A61016" strokeWidth="35" />
-        <Line x1="100" y1="100" x2="43.43" y2="43.43" stroke="#FFF" strokeWidth="8" />
-        <Line x1="100" y1="100" x2="100" y2="20" stroke="#FFF" strokeWidth="8" />
-        <Line x1="100" y1="100" x2="156.57" y2="43.43" stroke="#FFF" strokeWidth="8" />
+        {/* Low (Green) - Left 60 degrees */}
+        <Path d="M 20 100 A 80 80 0 0 1 60 30.72" fill="none" stroke="#0FA958" strokeWidth="35" strokeLinecap="round" />
+        {/* Medium (Yellow) - Top 60 degrees */}
+        <Path d="M 60 30.72 A 80 80 0 0 1 140 30.72" fill="none" stroke="#FFE600" strokeWidth="35" />
+        {/* High (Red) - Right 60 degrees */}
+        <Path d="M 140 30.72 A 80 80 0 0 1 180 100" fill="none" stroke="#E11A22" strokeWidth="35" strokeLinecap="round" />
+        
+        {/* Separator Lines */}
+        <Line x1="100" y1="100" x2="60" y2="30.72" stroke="#FFF" strokeWidth="6" />
+        <Line x1="100" y1="100" x2="140" y2="30.72" stroke="#FFF" strokeWidth="6" />
+        
+        {/* Cover bottom bleeding edges */}
         <Rect x="0" y="100" width="200" height="20" fill="#FFF" />
+        
+        {/* Needle */}
         <G transform={`rotate(${rotation}, 100, 100)`}>
           <Polygon points="90,100 110,100 100,25" fill="#111" />
         </G>
@@ -63,12 +73,14 @@ const TurbidityGraph = ({ level }) => {
 
 export default function ResultsScreen({ route, navigation }) {
   const { 
+    scanMode = 'OVERALL', // Defaults to OVERALL if undefined
     imageUri, 
     type = 'image', 
     measurements, 
     algae_level, 
     algae_desc, 
     turbidity_level = 2,
+    ai_environment_status = "Clear (No Issues Detected)",
     processing_time = "N/A", 
     model_version = "Unknown Model",
     scan_id = "N/A",
@@ -76,7 +88,10 @@ export default function ResultsScreen({ route, navigation }) {
     gender_confidence = 0
   } = route.params || {}; 
   
-  const [activeTab, setActiveTab] = useState('specimen'); 
+  // Default to 'env' tab if this was an Environment scan
+  const isEnv = scanMode === 'ENVIRONMENT';
+  const [activeTab, setActiveTab] = useState(isEnv ? 'env' : 'specimen'); 
+
   const [isSaving, setIsSaving] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
   const [userLocation, setUserLocation] = useState('Unknown Location');
@@ -179,40 +194,40 @@ export default function ResultsScreen({ route, navigation }) {
   const inW = scanData ? (scanData.width_cm / 2.54).toFixed(2) : 0;
   const inH = scanData ? (scanData.height_cm / 2.54).toFixed(2) : 0;
 
+  // --- 3-CLASS ALGAE LIST ---
   const algaeLevels = [
     { id: 0, label: 'Low', color: '#0FA958' },       
-    { id: 1, label: 'Moderate', color: '#FFE600' },  
-    { id: 2, label: 'High', color: '#E11A22' },      
-    { id: 3, label: 'Critical', color: '#A61016' }   
+    { id: 1, label: 'Medium', color: '#FFE600' },  
+    { id: 2, label: 'High', color: '#E11A22' }       
   ];
   
-  const currentAlgaeIndex = algae_level !== undefined ? algae_level : 0;
+  const currentAlgaeIndex = Math.min(Math.max(algae_level !== undefined ? algae_level : 0, 0), 2); // Bound index
   const currentAlgae = algaeLevels[currentAlgaeIndex];
 
-  const calculatedAge = scanData ? estimateAge(scanData.height_cm) : "Unknown"; 
+  // Apply "N/A" overrides if Environment Mode
+  const calculatedAge = isEnv ? "N/A" : (scanData ? estimateAge(scanData.height_cm) : "Unknown"); 
 
   const results = {
-    sizeCm: scanData ? `${cmW}cm W x ${cmH}cm H` : "Measurement Failed",
-    sizeIn: scanData ? `${inW}in W x ${inH}in H` : "",
+    sizeCm: isEnv ? "N/A" : (scanData ? `${cmW}cm W x ${cmH}cm H` : "Measurement Failed"),
+    sizeIn: isEnv ? "" : (scanData ? `${inW}in W x ${inH}in H` : ""),
     age: calculatedAge, 
-    gender: gender || "Not Defined",
-    confidence: gender_confidence || 0,
+    gender: isEnv ? "N/A" : (gender || "Not Defined"),
+    confidence: isEnv ? 0 : (gender_confidence || 0),
     turbidity: `Turbidity Level ${turbidity_level}`,
     scanDate: `${formattedDate} • ${formattedTime}`, 
   };
 
   const isFemale = results.gender === 'Female' || results.gender === 'Berried';
   const isMale = results.gender === 'Male';
-  const mainColor = isFemale ? '#FF69B4' : (isMale ? '#3D5A80' : '#3D5A80');
-  const genderIcon = isFemale ? "venus" : (isMale ? "mars" : "genderless");
+  const mainColor = isEnv ? '#A0AEC0' : (isFemale ? '#FF69B4' : (isMale ? '#3D5A80' : '#3D5A80'));
+  const genderIcon = isEnv ? "times-circle" : (isFemale ? "venus" : (isMale ? "mars" : "genderless"));
 
   const handleDiscard = () => navigation.navigate('Camera', { resetScan: Date.now() });
 
-  // --- CLOUDINARY UPLOAD FUNCTION ---
   const uploadToCloudinary = async (base64Image) => {
     try {
       const data = new FormData();
-      data.append('file', base64Image); // Send base64 directly
+      data.append('file', base64Image); 
       data.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
       data.append('cloud_name', CLOUDINARY_CONFIG.cloudName);
       data.append('folder', 'scanrecords');
@@ -239,12 +254,11 @@ export default function ResultsScreen({ route, navigation }) {
   };
 
   const uploadAndSaveScan = async () => {
-    // 1. Upload the image to Cloudinary first
     const cloudinaryResult = await uploadToCloudinary(imageUri);
 
-    // 2. Prepare the NESTED payload matching backend controller structure
     const scanDataPayload = {
       scanId: scan_id,
+      scanType: scanMode, // Let the backend know the mode
       gender: results.gender,
       gender_confidence: results.confidence,
       
@@ -252,19 +266,19 @@ export default function ResultsScreen({ route, navigation }) {
         url: cloudinaryResult.url,
         public_id: cloudinaryResult.public_id
       },
-     
+      
       morphometrics: {
-        width_cm: parseFloat(cmW),
-        height_cm: parseFloat(cmH),
+        width_cm: parseFloat(cmW) || 0,
+        height_cm: parseFloat(cmH) || 0,
         estimated_age: results.age
       },
       
       environment: {
         algae_label: currentAlgae.label,
-        turbidity_level: parseInt(turbidity_level)
+        turbidity_level: parseInt(turbidity_level),
+        ai_analysis: ai_environment_status
       },
       
-      // ✅ NESTED: metadata object
       metadata: {
         location: userLocation,
         processing_time: processing_time,
@@ -272,9 +286,7 @@ export default function ResultsScreen({ route, navigation }) {
       }
     };
 
-    // 3. Save to Database
     await client.post('/scans/create', scanDataPayload);
-
     return cloudinaryResult.url; 
   };
 
@@ -296,7 +308,10 @@ export default function ResultsScreen({ route, navigation }) {
     try {
       const uploadedImageUrl = await uploadAndSaveScan();
 
-      const autoCaption = `Just scanned a ${results.gender !== "Not Defined" ? results.gender : ""} Australian Red Claw Crayfish! 🦞\n\n📏 Size: ${results.sizeCm}\n🎂 Est. Age: ${results.age}\n💧 Water Turbidity: Level ${turbidity_level}\n🌿 Algae: ${currentAlgae.label}`;
+      // Dynamic Caption based on Mode
+      const autoCaption = isEnv 
+        ? `Just ran a Water Quality check! 💧\n\nTurbidity: Level ${turbidity_level}\n🌿 Algae: ${currentAlgae.label}\n🤖 AI Analysis: ${ai_environment_status}`
+        : `Just scanned a ${results.gender !== "Not Defined" ? results.gender : ""} Australian Red Claw Crayfish! 🦞\n\n📏 Size: ${results.sizeCm}\n🎂 Est. Age: ${results.age}\n💧 Water Turbidity: Level ${turbidity_level}\n🌿 Algae: ${currentAlgae.label}`;
 
       navigation.navigate('Community', {
         prefillImage: uploadedImageUrl,
@@ -329,7 +344,7 @@ export default function ResultsScreen({ route, navigation }) {
       </Animated.View>
       
       <Animated.View style={[styles.imageWrapper, { transform: [{ translateY: imageTranslateY }] }]}>
-        <Image source={{ uri: imageUri }} style={styles.media} resizeMode="cover" />
+        <Image source={{ uri: imageUri }} style={styles.media} resizeMode="contain" />
       </Animated.View>
       
       <LinearGradient colors={['rgba(0,0,0,0.8)', 'transparent']} style={styles.topGradient} />
@@ -371,7 +386,7 @@ export default function ResultsScreen({ route, navigation }) {
                         <FontAwesome5 name={genderIcon} size={18} color={mainColor} />
                     </View>
                     <Text style={[styles.bigResult, { color: mainColor }]}>{results.gender}</Text>
-                    <Text style={styles.subResult}>Australian Red Claw</Text>
+                    <Text style={styles.subResult}>{isEnv ? 'Environment Mode' : 'Australian Red Claw'}</Text>
                     
                     <View style={styles.meterContainer}>
                         <View style={styles.meterLabels}>
@@ -395,6 +410,17 @@ export default function ResultsScreen({ route, navigation }) {
 
           {activeTab === 'env' && (
             <>
+                {/* AI WATER ANALYSIS CARD */}
+                <View style={[styles.card, styles.shadow, { backgroundColor: '#F0F8FF', borderColor: '#BBDEFB', borderWidth: 1 }]}>
+                    <View style={styles.cardHeader}>
+                        <Text style={[styles.cardTitle, { color: '#3D5A80' }]}>AI WATER ANALYSIS</Text>
+                        <Ionicons name="flash" size={18} color="#3D5A80" />
+                    </View>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#293241', marginTop: 5, lineHeight: 22 }}>
+                        {ai_environment_status}
+                    </Text>
+                </View>
+
                 <View style={[styles.card, styles.shadow]}>
                     <View style={styles.cardHeader}>
                         <Text style={styles.cardTitle}>WATER TURBIDITY</Text>
@@ -425,7 +451,7 @@ export default function ResultsScreen({ route, navigation }) {
                     <View style={styles.divider} />
                     <DetailRow icon="map-marker-alt" label="Location" value={userLocation} color="#E76F51" />
                     <View style={styles.divider} />
-                    <DetailRow icon="camera" label="Capture Method" value="Biometric Anchor" subValue="Fixed Focal Distance (~15cm)" color="#8E44AD" />
+                    <DetailRow icon="camera" label="Capture Method" value={isEnv ? "Open Field Scan" : "Biometric Anchor"} subValue={isEnv ? "Variable Focal Distance" : "Fixed Focal Distance (~15cm)"} color="#8E44AD" />
                 </View>
 
                 <Text style={styles.sectionTitle}>System Logs</Text>
@@ -443,14 +469,12 @@ export default function ResultsScreen({ route, navigation }) {
           <View style={styles.actionContainer}>
             <View style={styles.actionRowContainer}>
               
-              {/* Button 1: Save Record */}
               <TouchableOpacity style={[styles.primaryActionBtn, styles.shadow]} onPress={handleSave} disabled={isSaving || isPosting}>
                 <LinearGradient colors={['#293241', '#3D5A80']} style={styles.btnGradient}>
                   {isSaving ? <ActivityIndicator color="#FFF"/> : <><Feather name="save" size={18} color="#FFF" /><Text style={styles.btnText}>Save</Text></>}
                 </LinearGradient>
               </TouchableOpacity>
 
-              {/* Button 2: Post to Feed */}
               <TouchableOpacity style={[styles.primaryActionBtn, styles.shadow]} onPress={handlePostToFeed} disabled={isSaving || isPosting}>
                 <LinearGradient colors={['#E76F51', '#D65A31']} style={styles.btnGradient}>
                   {isPosting ? <ActivityIndicator color="#FFF"/> : <><Feather name="share-2" size={18} color="#FFF" /><Text style={styles.btnText}>Post to Feed</Text></>}
@@ -459,7 +483,6 @@ export default function ResultsScreen({ route, navigation }) {
 
             </View>
 
-            {/* Button 3: Discard */}
             <TouchableOpacity style={styles.secondaryBtn} onPress={handleDiscard} disabled={isSaving || isPosting}>
                 <Text style={styles.secondaryText}>Discard Result</Text>
             </TouchableOpacity>
@@ -484,8 +507,8 @@ const DetailRow = ({ icon, label, value, subValue, color }) => (
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  imageWrapper: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
-  media: { width: '100%', height: '100%' },
+  imageWrapper: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
+  media: { width: '100%', height: '80%' }, // Allows full uncropped image to be visible
   topGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 110, zIndex: 5 },
   navBar: { position: 'absolute', top: 50, left: 20, zIndex: 10 },
   glassBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center' },
