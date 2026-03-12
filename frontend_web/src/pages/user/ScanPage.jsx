@@ -11,11 +11,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import client from '../../api/client';
 import { CLOUDINARY_CONFIG } from '../../config/cloudinary'; 
 
+// --- UPDATED: 3 CLASSES FOR ALGAE ---
 const ALGAE_LEVELS = [
-  { label: "Low", color: "#0FA958" },
-  { label: "Moderate", color: "#FFE600" },
-  { label: "High", color: "#E11A22" },
-  { label: "Critical", color: "#A61016" }
+  { label: "Low", color: "#0FA958" },    // Index 0
+  { label: "Medium", color: "#FFE600" }, // Index 1
+  { label: "High", color: "#E11A22" }    // Index 2
 ];
 
 // --- AGE CLASSIFICATION LOGIC WITH MONTHS ---
@@ -27,20 +27,30 @@ const getAgeCategory = (lengthCm) => {
   return { class: 'Adult / Breeder', months: '> 6 months' };
 };
 
-// --- SVG GAUGE CHART ---
+// --- UPDATED: 3-SECTION SVG GAUGE CHART ---
 const GaugeChart = ({ levelIndex }) => {
-  const needleRotations = [-67.5, -22.5, 22.5, 67.5];
-  const rotation = needleRotations[levelIndex] || -67.5;
+  // Needle points: -60 (Left/Low), 0 (Top/Medium), 60 (Right/High)
+  const needleRotations = [-60, 0, 60];
+  // Fallback to 0 (Low) if index is somehow out of bounds
+  const rotation = needleRotations[levelIndex] !== undefined ? needleRotations[levelIndex] : -60;
+  
   return (
     <div className="flex flex-col items-center justify-center py-4">
       <svg width="240" height="140" viewBox="0 0 200 120">
-        <path d="M 20 100 A 80 80 0 0 1 43.43 43.43" fill="none" stroke="#0FA958" strokeWidth="25" strokeLinecap="round" />
-        <path d="M 43.43 43.43 A 80 80 0 0 1 100 20" fill="none" stroke="#FFE600" strokeWidth="25" />
-        <path d="M 100 20 A 80 80 0 0 1 156.57 43.43" fill="none" stroke="#E11A22" strokeWidth="25" />
-        <path d="M 156.57 43.43 A 80 80 0 0 1 180 100" fill="none" stroke="#A61016" strokeWidth="25" strokeLinecap="round" />
-        <line x1="100" y1="100" x2="43.43" y2="43.43" stroke="#FFF" strokeWidth="4" />
-        <line x1="100" y1="100" x2="100" y2="20" stroke="#FFF" strokeWidth="4" />
-        <line x1="100" y1="100" x2="156.57" y2="43.43" stroke="#FFF" strokeWidth="4" />
+        {/* Low Segment (Left 60 degrees) */}
+        <path d="M 20 100 A 80 80 0 0 1 60 30.72" fill="none" stroke="#0FA958" strokeWidth="25" strokeLinecap="round" />
+        
+        {/* Medium Segment (Top 60 degrees) */}
+        <path d="M 60 30.72 A 80 80 0 0 1 140 30.72" fill="none" stroke="#FFE600" strokeWidth="25" />
+        
+        {/* High Segment (Right 60 degrees) */}
+        <path d="M 140 30.72 A 80 80 0 0 1 180 100" fill="none" stroke="#E11A22" strokeWidth="25" strokeLinecap="round" />
+        
+        {/* White Separator Lines */}
+        <line x1="100" y1="100" x2="60" y2="30.72" stroke="#FFF" strokeWidth="5" />
+        <line x1="100" y1="100" x2="140" y2="30.72" stroke="#FFF" strokeWidth="5" />
+        
+        {/* Animated Needle */}
         <g transform={`rotate(${rotation}, 100, 100)`} className="transition-transform duration-1000 ease-out">
           <polygon points="94,100 106,100 100,35" fill="#293241" />
           <circle cx="100" cy="100" r="10" fill="#293241" />
@@ -129,7 +139,7 @@ const ScanPage = () => {
   const handleModeSwitch = (mode) => {
     setScanMode(mode);
     setActiveTab(mode === 'overall' ? 'specimen' : 'environment');
-    resetScanner(); // Clear current photo/results when switching modes
+    resetScanner(); 
   };
 
   const handleFileSelect = (e) => {
@@ -156,7 +166,6 @@ const ScanPage = () => {
     setIsScanning(true);
     setScanResult(null);
     
-    // Auto-select the correct tab based on the mode
     setActiveTab(scanMode === 'overall' ? 'specimen' : 'environment');
 
     const startTime = Date.now();
@@ -214,7 +223,6 @@ const ScanPage = () => {
 
       const cloudData = await cloudRes.json();
       
-      // Determine what to save based on mode
       const width = scanMode === 'overall' ? (scanResult.measurements?.[0]?.width_cm || 0) : 0;
       const height = scanMode === 'overall' ? (scanResult.measurements?.[0]?.height_cm || 0) : 0;
       const ageData = getAgeCategory(height);
@@ -235,7 +243,8 @@ const ScanPage = () => {
         },
         environment: {
           algae_label: algaeInfo.label,
-          turbidity_level: scanResult.turbidity_level || 2
+          turbidity_level: scanResult.turbidity_level || 2,
+          ai_analysis: scanResult.ai_environment_status || "No textual analysis provided."
         },
         metadata: {
           location: userLocation,
@@ -248,8 +257,6 @@ const ScanPage = () => {
 
       if (actionType === 'feed') {
         toast.success('Scan saved! Redirecting to Community...');
-        
-        // Dynamic post text depending on what was scanned
         let postText = "";
         if (scanMode === 'overall') {
           postText = `I just scanned a ${ageData.class} ${scanResult.gender !== "Not Defined" ? scanResult.gender : ""} Red Claw! Dimensions: ${width.toFixed(2)}cm x ${height.toFixed(2)}cm. Water Turbidity is Level ${scanResult.turbidity_level || 2} with ${algaeInfo.label} Algae traces.`;
@@ -401,7 +408,6 @@ const ScanPage = () => {
                 
                 {/* Custom Tabs */}
                 <div className="flex p-2 bg-slate-50 border-b border-slate-100">
-                  {/* Hide Specimen tab if in environment mode */}
                   {scanMode === 'overall' && (
                     <button onClick={() => setActiveTab('specimen')} className={`flex-1 py-3 text-sm font-bold rounded-2xl transition-all ${activeTab === 'specimen' ? 'bg-white text-[#293241] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Specimen</button>
                   )}
@@ -413,7 +419,7 @@ const ScanPage = () => {
                 <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
                   <AnimatePresence mode="wait">
                     
-                    {/* --- SPECIMEN TAB (ONLY VISIBLE IN OVERALL MODE) --- */}
+                    {/* --- SPECIMEN TAB --- */}
                     {activeTab === 'specimen' && scanMode === 'overall' && (
                       <motion.div key="specimen" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
                         {!hasDetected ? (
@@ -494,6 +500,21 @@ const ScanPage = () => {
                     {activeTab === 'environment' && (
                       <motion.div key="env" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
                          
+                         {/* AI Textual Analysis */}
+                         {scanResult.ai_environment_status && (
+                           <div className="flex justify-between items-center p-5 rounded-2xl border border-blue-200 bg-blue-50 text-blue-800 shadow-sm">
+                              <div className="flex gap-4 items-start">
+                                 <div className="bg-blue-100 p-2 rounded-lg">
+                                   <Zap className="w-5 h-5 text-blue-600" />
+                                 </div>
+                                 <div>
+                                    <p className="text-xs font-black uppercase tracking-widest text-blue-500 mb-1">AI Water Analysis</p>
+                                    <p className="text-sm font-semibold leading-relaxed">{scanResult.ai_environment_status}</p>
+                                 </div>
+                              </div>
+                           </div>
+                         )}
+
                          {/* Algae Section */}
                          <div className="bg-white border border-slate-100 shadow-sm rounded-3xl p-6">
                             <div className="flex items-center justify-between mb-4">
