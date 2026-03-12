@@ -18,7 +18,7 @@ export default function CameraScreen({ navigation, route }) {
   const [flashMode, setFlashMode] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   
-  const [scanMode, setScanMode] = useState('OVERALL'); 
+  const [scanMode, setScanMode] = useState('OVERALL'); // 'OVERALL' or 'ENVIRONMENT'
 
   const [scanStatus, setScanStatus] = useState('READY'); 
   const [isScanningLoop, setIsScanningLoop] = useState(false);
@@ -104,6 +104,9 @@ export default function CameraScreen({ navigation, route }) {
     try {
       const formData = new FormData();
       formData.append('photo', { uri: photoUri, type: 'image/jpeg', name: 'scan.jpg' });
+      
+      // CRITICAL: Tells Python whether to look for A5 paper or skip it
+      formData.append('mode', scanMode); 
 
       const startTimeMs = Date.now();
       const response = await aiClient.post('measure', formData, {
@@ -143,10 +146,12 @@ export default function CameraScreen({ navigation, route }) {
     
     const generatedScanId = `CRY-${Math.floor(Date.now() / 1000)}`;
 
+    // Default to N/A for Environment Scans
     let conf = 0;
     let gender = "N/A";
     let measurements = [];
 
+    // Only populate crayfish data if it's an OVERALL scan and a target was found
     if (scanMode === 'OVERALL' && target) {
       conf = target.gender_confidence || target.genderConfidence || 0;
       gender = target.gender || "Not Defined";
@@ -180,7 +185,7 @@ export default function CameraScreen({ navigation, route }) {
 
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: false, 
+      allowsEditing: false, // Ensures the original uncropped picture is selected
       quality: 1,           
     });
 
@@ -230,11 +235,13 @@ export default function CameraScreen({ navigation, route }) {
       
       {/* 2. FROZEN SCREENSHOT (Overlays Camera when capturing/analyzing) */}
       {frozenImageUri && (
-        <Image 
-          source={{ uri: frozenImageUri }} 
-          style={StyleSheet.absoluteFillObject} 
-          resizeMode="cover" 
-        />
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000' }]}>
+          <Image 
+            source={{ uri: frozenImageUri }} 
+            style={StyleSheet.absoluteFillObject} 
+            resizeMode="contain" // FIXED: Displays the full, uncropped original image
+          />
+        </View>
       )}
         
       {/* 3. AI RETURNED MASK (Overlays frozen image if AI sends back a marked image) */}

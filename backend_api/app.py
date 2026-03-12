@@ -38,8 +38,12 @@ def measure_object():
     
     file = request.files['photo']
     
+    # ---> NEW: Catch the mode sent from the mobile app (Defaults to OVERALL if not found) <---
+    scan_mode = request.form.get('mode', 'OVERALL')
+    
     try:
-        result = process_measurement(file)
+        # ---> NEW: Pass the scan_mode into your controller <---
+        result = process_measurement(file, scan_mode=scan_mode)
         return jsonify(result)
     except Exception as e:
         print(f"Error: {e}")
@@ -54,4 +58,3 @@ if __name__ == '__main__':
     # app.run(host='0.0.0.0', debug=True, port=port)
     port = int(os.environ.get("PORT", 7860))
     app.run(host='0.0.0.0', port=port)
-    
