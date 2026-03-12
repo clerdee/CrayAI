@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   UploadCloud, Camera, ScanLine, AlertCircle, 
   Loader2, Save, RefreshCw, Ruler, Droplets, Activity,
-  Info, Calendar, MapPin, Fingerprint, Cpu, Clock, Share2
+  Info, Calendar, MapPin, Fingerprint, Cpu, Clock, Share2, Zap
 } from 'lucide-react';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
@@ -18,7 +18,7 @@ const ALGAE_LEVELS = [
   { label: "Critical", color: "#A61016" }
 ];
 
-// --- 1. & 3. AGE CLASSIFICATION LOGIC WITH MONTHS ---
+// --- AGE CLASSIFICATION LOGIC WITH MONTHS ---
 const getAgeCategory = (lengthCm) => {
   if (!lengthCm) return { class: 'Unknown', months: '--' };
   if (lengthCm < 2) return { class: 'Crayling', months: '< 1 month' };
@@ -27,7 +27,7 @@ const getAgeCategory = (lengthCm) => {
   return { class: 'Adult / Breeder', months: '> 6 months' };
 };
 
-// --- 📊 SVG GAUGE CHART ---
+// --- SVG GAUGE CHART ---
 const GaugeChart = ({ levelIndex }) => {
   const needleRotations = [-67.5, -22.5, 22.5, 67.5];
   const rotation = needleRotations[levelIndex] || -67.5;
@@ -50,7 +50,7 @@ const GaugeChart = ({ levelIndex }) => {
   );
 };
 
-// --- 📊 TURBIDITY GRAPH ---
+// --- TURBIDITY GRAPH ---
 const TurbidityGraph = ({ level }) => {
   const colors = [ '#F8FAFB', '#F1F5F9', '#E2E8F0', '#CBD5E1', '#DCC9A0', '#C4A484', '#A67B5B', '#8B5A2B', '#5D4037', '#3E2723' ];
   
@@ -89,6 +89,7 @@ const ScanPage = () => {
   const location = useLocation(); 
   const fileInputRef = useRef(null);
   
+  const [scanMode, setScanMode] = useState('overall'); // 'overall' or 'environment'
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -98,7 +99,7 @@ const ScanPage = () => {
   const [activeTab, setActiveTab] = useState('specimen');
   const [userLocation, setUserLocation] = useState('Unknown Location');
 
-  // --- 1. HANDLE INCOMING FILE FROM DASHBOARD ---
+  // --- HANDLE INCOMING FILE FROM DASHBOARD ---
   useEffect(() => {
     if (location.state && location.state.uploadedFile) {
       const file = location.state.uploadedFile;
@@ -109,7 +110,7 @@ const ScanPage = () => {
     }
   }, [location.state]);
 
-  // --- 2. LOCATION TRACKING ---
+  // --- LOCATION TRACKING ---
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (userData) {
@@ -123,6 +124,13 @@ const ScanPage = () => {
       }
     }
   }, []);
+
+  // --- MODE SWITCHER ---
+  const handleModeSwitch = (mode) => {
+    setScanMode(mode);
+    setActiveTab(mode === 'overall' ? 'specimen' : 'environment');
+    resetScanner(); // Clear current photo/results when switching modes
+  };
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
@@ -147,7 +155,9 @@ const ScanPage = () => {
     if (!selectedFile) return;
     setIsScanning(true);
     setScanResult(null);
-    setActiveTab('specimen');
+    
+    // Auto-select the correct tab based on the mode
+    setActiveTab(scanMode === 'overall' ? 'specimen' : 'environment');
 
     const startTime = Date.now();
 
@@ -200,21 +210,20 @@ const ScanPage = () => {
           body: uploadData
       });
 
-      if (!cloudRes.ok) {
-          throw new Error(`Cloudinary upload failed with status ${cloudRes.status}`);
-      }
+      if (!cloudRes.ok) throw new Error(`Cloudinary upload failed with status ${cloudRes.status}`);
 
       const cloudData = await cloudRes.json();
       
-      const width = scanResult.measurements?.[0]?.width_cm || 0;
-      const height = scanResult.measurements?.[0]?.height_cm || 0;
+      // Determine what to save based on mode
+      const width = scanMode === 'overall' ? (scanResult.measurements?.[0]?.width_cm || 0) : 0;
+      const height = scanMode === 'overall' ? (scanResult.measurements?.[0]?.height_cm || 0) : 0;
       const ageData = getAgeCategory(height);
       const algaeInfo = ALGAE_LEVELS[scanResult.algae_level] || ALGAE_LEVELS[0];
 
       const payload = {
         scanId: scanResult.generatedScanId,
-        gender: scanResult.gender || "Not Defined",
-        gender_confidence: scanResult.genderConfidence || 0, 
+        gender: scanMode === 'overall' ? (scanResult.gender || "Not Defined") : "N/A",
+        gender_confidence: scanMode === 'overall' ? (scanResult.genderConfidence || 0) : 0, 
         image: {
           url: cloudData.secure_url,
           public_id: cloudData.public_id
@@ -222,7 +231,7 @@ const ScanPage = () => {
         morphometrics: {
           width_cm: width,
           height_cm: height,
-          estimated_age: `${ageData.class} (${ageData.months})`
+          estimated_age: scanMode === 'overall' ? `${ageData.class} (${ageData.months})` : 'N/A'
         },
         environment: {
           algae_label: algaeInfo.label,
@@ -239,7 +248,14 @@ const ScanPage = () => {
 
       if (actionType === 'feed') {
         toast.success('Scan saved! Redirecting to Community...');
-        const postText = `I just scanned a ${ageData.class} ${scanResult.gender !== "Not Defined" ? scanResult.gender : ""} Red Claw! Dimensions: ${width.toFixed(2)}cm x ${height.toFixed(2)}cm. Water Turbidity is Level ${scanResult.turbidity_level || 2} with ${algaeInfo.label} Algae traces.`;
+        
+        // Dynamic post text depending on what was scanned
+        let postText = "";
+        if (scanMode === 'overall') {
+          postText = `I just scanned a ${ageData.class} ${scanResult.gender !== "Not Defined" ? scanResult.gender : ""} Red Claw! Dimensions: ${width.toFixed(2)}cm x ${height.toFixed(2)}cm. Water Turbidity is Level ${scanResult.turbidity_level || 2} with ${algaeInfo.label} Algae traces.`;
+        } else {
+          postText = `I just ran a Water Quality check! Water Turbidity is Level ${scanResult.turbidity_level || 2} with ${algaeInfo.label} Algae traces.`;
+        }
         
         setTimeout(() => navigate('/community', { 
           state: { 
@@ -277,9 +293,27 @@ const ScanPage = () => {
       <Toaster position="top-center" />
       <div className="max-w-[90rem] mx-auto">
         
-        <div className="mb-8">
-          <h1 className="text-3xl font-black text-[#293241] tracking-tight uppercase">AI Scanner</h1>
-          <p className="text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest">Analyze sizing and water quality instantly</p>
+        <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-[#293241] tracking-tight uppercase">AI Scanner</h1>
+            <p className="text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest">Analyze sizing and water quality instantly</p>
+          </div>
+          
+          {/* --- MODE SWITCHER UI --- */}
+          <div className="flex bg-slate-200/50 p-1.5 rounded-2xl w-full md:w-auto">
+            <button 
+              onClick={() => handleModeSwitch('overall')}
+              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${scanMode === 'overall' ? 'bg-white text-[#3D5A80] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Zap className="w-4 h-4" /> Overall Scan
+            </button>
+            <button 
+              onClick={() => handleModeSwitch('environment')}
+              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${scanMode === 'environment' ? 'bg-white text-[#3D5A80] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Droplets className="w-4 h-4" /> Environment Only
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -299,7 +333,9 @@ const ScanPage = () => {
                   <Camera className="w-10 h-10 text-[#3D5A80]" />
                 </div>
                 <h3 className="text-xl font-bold text-slate-700">Tap to Capture</h3>
-                <p className="text-sm font-bold text-slate-400 mt-2 uppercase tracking-widest">or drop an image here</p>
+                <p className="text-sm font-bold text-slate-400 mt-2 uppercase tracking-widest text-center px-4">
+                  {scanMode === 'overall' ? 'or drop a photo of a crayfish' : 'or drop a photo of your tank/pond water'}
+                </p>
               </div>
             ) : (
               <div className="flex-1 relative rounded-[2rem] overflow-hidden bg-black shadow-inner flex items-center justify-center">
@@ -311,14 +347,14 @@ const ScanPage = () => {
                       <Loader2 className="w-10 h-10 text-white animate-spin" />
                     </div>
                     <div className="bg-[#293241] text-white px-6 py-2 rounded-full font-bold text-sm uppercase tracking-widest animate-pulse shadow-xl">
-                      Analyzing Target...
+                      Analyzing {scanMode === 'overall' ? 'Target' : 'Water'}...
                     </div>
                   </div>
                 )}
                 
                 {isScanning && (
                   <motion.div 
-                    className="absolute top-0 left-0 w-full h-1 bg-[#0FA958] shadow-[0_0_20px_#0FA958]"
+                    className={`absolute top-0 left-0 w-full h-1 ${scanMode === 'overall' ? 'bg-[#0FA958] shadow-[0_0_20px_#0FA958]' : 'bg-[#3D5A80] shadow-[0_0_20px_#3D5A80]'}`}
                     animate={{ top: ['0%', '100%', '0%'] }}
                     transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
                   />
@@ -355,7 +391,9 @@ const ScanPage = () => {
                 </div>
                 <h3 className="text-xl font-bold text-slate-700">Awaiting Data</h3>
                 <p className="text-sm font-medium text-slate-400 mt-2 max-w-sm leading-relaxed">
-                  Upload an image and run the AI analysis to view morphometrics and water quality metrics here.
+                  {scanMode === 'overall' 
+                    ? 'Upload an image and run the AI analysis to view morphometrics and water quality metrics here.'
+                    : 'Upload a water sample image to instantly receive turbidity and algae concentration reports.'}
                 </p>
               </div>
             ) : (
@@ -363,7 +401,10 @@ const ScanPage = () => {
                 
                 {/* Custom Tabs */}
                 <div className="flex p-2 bg-slate-50 border-b border-slate-100">
-                  <button onClick={() => setActiveTab('specimen')} className={`flex-1 py-3 text-sm font-bold rounded-2xl transition-all ${activeTab === 'specimen' ? 'bg-white text-[#293241] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Specimen</button>
+                  {/* Hide Specimen tab if in environment mode */}
+                  {scanMode === 'overall' && (
+                    <button onClick={() => setActiveTab('specimen')} className={`flex-1 py-3 text-sm font-bold rounded-2xl transition-all ${activeTab === 'specimen' ? 'bg-white text-[#293241] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Specimen</button>
+                  )}
                   <button onClick={() => setActiveTab('environment')} className={`flex-1 py-3 text-sm font-bold rounded-2xl transition-all ${activeTab === 'environment' ? 'bg-white text-[#293241] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Environment</button>
                   <button onClick={() => setActiveTab('metadata')} className={`flex-1 py-3 text-sm font-bold rounded-2xl transition-all ${activeTab === 'metadata' ? 'bg-white text-[#293241] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Metadata</button>
                 </div>
@@ -372,8 +413,8 @@ const ScanPage = () => {
                 <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
                   <AnimatePresence mode="wait">
                     
-                    {/* --- SPECIMEN TAB --- */}
-                    {activeTab === 'specimen' && (
+                    {/* --- SPECIMEN TAB (ONLY VISIBLE IN OVERALL MODE) --- */}
+                    {activeTab === 'specimen' && scanMode === 'overall' && (
                       <motion.div key="specimen" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
                         {!hasDetected ? (
                            <div className="bg-red-50 border-2 border-dashed border-red-200 rounded-3xl p-8 text-center">
