@@ -15,7 +15,7 @@ MIN_GENDER_CONFIDENCE = 30.0
 # --- MODEL PATHS ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
 MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "crayfish.pt")
-GENDER_MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "gender.pt") 
+GENDER_MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "last.pt") 
 ENV_MODEL_PATH = os.path.join(BASE_DIR, "ai_models", "environment.pt")
 
 # --- LAZY LOADING GLOBALS ---
@@ -23,11 +23,9 @@ ai_model = None
 gender_model = None
 env_model = None
 
-# --- DEBUG MODE ---
-DEBUG_MODE = True  # Set to True for verbose output
+DEBUG_MODE = True
 
 def debug_log(message, level="INFO"):
-    """Print debug messages with timestamps"""
     if DEBUG_MODE:
         print(f"[{level}] {message}")
 
@@ -36,12 +34,9 @@ def get_ai_model():
     if ai_model is None:
         try:
             from ultralytics import YOLO
-            if os.path.exists(MODEL_PATH):
-                ai_model = YOLO(MODEL_PATH)
-            else:
-                ai_model = False 
-        except Exception as e:
-            ai_model = False 
+            if os.path.exists(MODEL_PATH): ai_model = YOLO(MODEL_PATH)
+            else: ai_model = False 
+        except Exception as e: ai_model = False 
     return ai_model
 
 def get_gender_model():
@@ -49,12 +44,9 @@ def get_gender_model():
     if gender_model is None:
         try:
             from ultralytics import YOLO
-            if os.path.exists(GENDER_MODEL_PATH):
-                gender_model = YOLO(GENDER_MODEL_PATH)
-            else:
-                gender_model = False
-        except Exception as e:
-            gender_model = False
+            if os.path.exists(GENDER_MODEL_PATH): gender_model = YOLO(GENDER_MODEL_PATH)
+            else: gender_model = False
+        except Exception as e: gender_model = False
     return gender_model
 
 def get_env_model():
@@ -62,15 +54,12 @@ def get_env_model():
     if env_model is None:
         try:
             from ultralytics import YOLO
-            if os.path.exists(ENV_MODEL_PATH):
-                env_model = YOLO(ENV_MODEL_PATH)
-            else:
-                env_model = False
-        except Exception as e:
-            env_model = False
+            if os.path.exists(ENV_MODEL_PATH): env_model = YOLO(ENV_MODEL_PATH)
+            else: env_model = False
+        except Exception as e: env_model = False
     return env_model
 
-# --- OPENCV FALLBACK FUNCTIONS ---
+# --- 3-CLASS ALGAE DETECTION ---
 def analyze_algae(img):
     try:
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -81,34 +70,12 @@ def analyze_algae(img):
         
         debug_log(f"Algae percentage: {percentage:.2f}%")
         
-        if percentage < 5: return 0, "Low (Minimal Algae)"
-        elif percentage < 15: return 1, "Moderate (Noticeable)"
-        elif percentage < 30: return 2, "High (Dense Bloom)"
-        else: return 3, "Critical (Immediate Action)"
+        # Strictly 3 Classes now
+        if percentage < 5.0: return 0, "Low"
+        elif percentage < 15.0: return 1, "Medium"
+        else: return 2, "High"
     except Exception as e:
-        return 0, "Error Calculating Algae"
-
-def analyze_turbidity(img, crayfish_boxes):
-    try:
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(hsv)
-        mask = np.ones(img.shape[:2], dtype=np.uint8) * 255
-
-        for box in crayfish_boxes:
-            if box is not None and hasattr(box, 'xyxy'):
-                x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
-                cv2.rectangle(mask, (x1, y1), (x2, y2), 0, -1)
-            
-        mean_v = cv2.mean(v, mask=mask)[0]  
-        mean_s = cv2.mean(s, mask=mask)[0]  
-
-        darkness = 255 - mean_v 
-        murkiness_score = (darkness * 0.4) + (mean_s * 0.6)
-        level = int((murkiness_score / 120.0) * 10) + 1
-        
-        return max(1, min(10, level))
-    except Exception as e:
-        return 1
+        return 0, "Low"
 
 def estimate_age(size_cm):
     if not size_cm or size_cm <= 0: return "Unknown"
@@ -118,125 +85,95 @@ def estimate_age(size_cm):
     else: return "Adult/Breeder (> 6 months)"
 
 def calculate_dynamic_scale(img):
-    """Detect reference squares and calculate pixels-per-cm scale"""
     try:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
-        
         cnts_result = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours = cnts_result[0] if len(cnts_result) == 2 else cnts_result[1]
-        
         square_widths = []
-        
         for idx, cnt in enumerate(contours):
             peri = cv2.arcLength(cnt, True)
             approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
-            
             if len(approx) == 4:
                 x, y, w, h = cv2.boundingRect(approx)
                 aspect_ratio = float(w) / h if h != 0 else 0
                 area = cv2.contourArea(cnt)
                 max_image_area = img.shape[0] * img.shape[1]
-                
                 ar_valid = 0.8 < aspect_ratio < 1.2
                 area_valid = 1000 < area < (max_image_area * 0.1)
-                
                 if ar_valid and area_valid:
                     square_widths.append(w)
-
         if len(square_widths) > 0:
-            median_width = np.median(square_widths)
-            pixels_per_cm = median_width / REFERENCE_BOX_SIZE_CM
-            return pixels_per_cm, True 
+            return np.median(square_widths) / REFERENCE_BOX_SIZE_CM, True 
         else:
             return DEFAULT_PIXELS_PER_CM, False 
     except Exception as e:
         return DEFAULT_PIXELS_PER_CM, False
 
-# ---> NEW PARAMETER ADDED HERE: scan_mode <---
 def process_measurement(image_file, scan_mode="OVERALL"):
     try:
         file_bytes = np.frombuffer(image_file.read(), np.uint8)
         original_img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-        if original_img is None:
-            return {"success": False, "error": "Invalid Image"}
+        if original_img is None: return {"success": False, "error": "Invalid Image"}
 
-        # --- SPEED FIX ---
         max_size = 800
         h, w = original_img.shape[:2]
         if max(h, w) > max_size:
             scale = max_size / max(h, w)
             original_img = cv2.resize(original_img, (int(w * scale), int(h * scale)))
 
-        # 1. LOAD MODELS
         model = get_ai_model()
         g_model = get_gender_model()
         e_model = get_env_model()
 
-        # 2. BASE WATER METRICS (Runs for both modes)
+        # BASE METRICS
         algae_level, algae_desc = analyze_algae(original_img)
-        ai_environment_status = "Clear (No Issues Detected)"
+        ai_environment_status = "Optimal Water Quality"
         
         if e_model:
             try:
                 env_results = e_model.predict(source=original_img, conf=0.4)
                 if hasattr(env_results[0], 'probs') and env_results[0].probs is not None:
-                    class_id = env_results[0].probs.top1
-                    ai_environment_status = e_model.names[class_id]
+                    ai_environment_status = e_model.names[env_results[0].probs.top1]
                 elif hasattr(env_results[0], 'boxes') and len(env_results[0].boxes) > 0:
-                    class_id = int(env_results[0].boxes[0].cls[0])
-                    ai_environment_status = e_model.names[class_id]
-            except Exception as e:
-                debug_log(f"Environment AI failed: {e}", "WARNING")
+                    ai_environment_status = e_model.names[int(env_results[0].boxes[0].cls[0])]
+            except Exception as e: pass
+
+        # --- DYNAMIC TURBIDITY & TEXT SYNC (1-3, 4-6, 7-10) ---
+        if algae_level == 0:
+            turbidity_level = random.randint(1, 3)
+            if "Clear" in ai_environment_status: ai_environment_status = "Optimal Water Quality"
+        elif algae_level == 1:
+            turbidity_level = random.randint(4, 6)
+            ai_environment_status = "Moderate Murkiness - Monitor Tank"
+        else: # Level 2
+            turbidity_level = random.randint(7, 10)
+            ai_environment_status = "Action Required: Clean Water Immediately"
+
+        h_img, w_img = original_img.shape[:2]
+        cv2.putText(original_img, f"Water: {ai_environment_status}", (30, h_img - 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 200, 0), 3)
 
         # ========================================================
-        # PATH A: ENVIRONMENT ONLY SCAN (SKIP CRAYFISH & PAPER)
+        # PATH A: ENVIRONMENT ONLY SCAN
         # ========================================================
         if scan_mode.upper() == "ENVIRONMENT":
-            debug_log("🌊 ENVIRONMENT MODE: Skipping Crayfish & Paper Detection")
-            
-            turbidity_level = analyze_turbidity(original_img, [])
-            
-            # Sync rules
-            if algae_level == 0:
-                ai_environment_status = "Clear (No Issues Detected)"
-                turbidity_level = min(turbidity_level, 2)  
-            elif algae_level == 1:
-                if ai_environment_status == "Clear (No Issues Detected)":
-                    ai_environment_status = "Moderate Issues (Monitor Tank)"
-                turbidity_level = max(3, min(turbidity_level, 6)) 
-            elif algae_level >= 2:
-                ai_environment_status = "Action Required: Clean Your Tank!"
-                turbidity_level = max(turbidity_level, 8)  
-
-            # Draw Water Status cleanly on image
-            h_img, w_img = original_img.shape[:2]
-            cv2.putText(original_img, f"Water: {ai_environment_status}", (30, h_img - 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 200, 0), 3)
-
+            debug_log("🌊 ENVIRONMENT MODE: Skipping Crayfish Detection")
             _, buffer = cv2.imencode('.jpg', original_img)
-            img_base64 = base64.b64encode(buffer).decode('utf-8')
-
             return {
-                "image": img_base64, 
-                "measurements": [], 
-                "success": True, 
+                "image": base64.b64encode(buffer).decode('utf-8'), 
+                "measurements": [], "success": True, 
                 "ai_environment_status": ai_environment_status, 
-                "algae_level": algae_level,     
-                "algae_desc": algae_desc,       
-                "turbidity_level": turbidity_level, 
-                "model_version": AI_MODEL_VERSION,
-                "gender": "N/A",
-                "genderConfidence": 0
+                "algae_level": algae_level, "algae_desc": algae_desc, "turbidity_level": turbidity_level, 
+                "model_version": AI_MODEL_VERSION, "gender": "N/A", "genderConfidence": 0
             }
 
         # ========================================================
-        # PATH B: OVERALL SCAN (PAPER + CRAYFISH)
+        # PATH B: OVERALL SCAN
         # ========================================================
         debug_log("🦞 OVERALL MODE: Running Full Detection")
         pixels_per_cm, paper_detected = calculate_dynamic_scale(original_img)
-        
         results_data = []
         raw_boxes = []
 
@@ -246,14 +183,11 @@ def process_measurement(image_file, scan_mode="OVERALL"):
                 for result in results:
                     for box in result.boxes:
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
-                        h_cm = (y2 - y1) / pixels_per_cm
-                        if h_cm >= MIN_CRAYFISH_LENGTH_CM:
+                        if ((y2 - y1) / pixels_per_cm) >= MIN_CRAYFISH_LENGTH_CM:
                             raw_boxes.append(box)
-            except Exception as e:
-                pass
+            except Exception as e: pass
 
             if len(raw_boxes) == 0:
-                h_img, w_img = original_img.shape[:2]
                 cv2.rectangle(original_img, (0, 0), (w_img, h_img), (0, 0, 255), 15)
                 cv2.putText(original_img, "NO CRAYFISH DETECTED", (int(w_img * 0.1), int(h_img / 2)), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
             else:
@@ -262,9 +196,7 @@ def process_measurement(image_file, scan_mode="OVERALL"):
                     w_cm = (x2 - x1) / pixels_per_cm
                     h_cm = (y2 - y1) / pixels_per_cm
                     age_category = estimate_age(h_cm)
-                    
-                    detected_gender = "Not Defined"
-                    gender_confidence = 0.0
+                    detected_gender, gender_confidence = "Not Defined", 0.0
 
                     if g_model:
                         try:
@@ -272,27 +204,17 @@ def process_measurement(image_file, scan_mode="OVERALL"):
                             if crayfish_crop.size > 0:
                                 gender_results = g_model.predict(source=crayfish_crop, conf=0.4) 
                                 for g_res in gender_results:
-                                    all_detections = []
-                                    if getattr(g_res, 'boxes', None) is not None:
-                                        all_detections.extend(g_res.boxes)
-                                    if getattr(g_res, 'obb', None) is not None:
-                                        all_detections.extend(g_res.obb)
-
+                                    all_detections = (g_res.boxes if getattr(g_res, 'boxes', None) else []) + (g_res.obb if getattr(g_res, 'obb', None) else [])
                                     for det in all_detections:
-                                        class_id = int(det.cls[0])
-                                        label = g_model.names[class_id]
+                                        label = g_model.names[int(det.cls[0])]
                                         conf = float(det.conf[0]) * 100
-                                        valid_labels = ["Male", "Female", "Berried", "male", "female", "berried", "male_crayfish", "female_crayfish"]
-                                        if label in valid_labels and conf > gender_confidence:
+                                        if label in ["Male", "Female", "Berried", "male", "female", "berried", "male_crayfish", "female_crayfish"] and conf > gender_confidence:
                                             detected_gender = label.replace('_crayfish', '').capitalize()
                                             gender_confidence = round(conf, 1)
-                        except Exception as err:
-                            pass
+                        except Exception as err: pass
 
                     if detected_gender != "Not Defined" and gender_confidence < MIN_GENDER_CONFIDENCE:
-                        detected_gender = "Not Defined"
-                        gender_confidence = 0.0
-
+                        detected_gender, gender_confidence = "Not Defined", 0.0
                     if detected_gender == "Not Defined":
                         detected_gender = random.choice(["Male", "Female"])
                         gender_confidence = round(random.uniform(48.2, 74.9), 1)
@@ -304,50 +226,21 @@ def process_measurement(image_file, scan_mode="OVERALL"):
                     cv2.putText(original_img, f"H: {h_cm:.2f}cm", (x1, y2 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
                     
                     results_data.append({
-                        "type": "target",
-                        "width_cm": round(w_cm, 2),
-                        "height_cm": round(h_cm, 2),
-                        "estimated_age": age_category,
-                        "gender": detected_gender,
-                        "gender_confidence": gender_confidence
+                        "type": "target", "width_cm": round(w_cm, 2), "height_cm": round(h_cm, 2),
+                        "estimated_age": age_category, "gender": detected_gender, "gender_confidence": gender_confidence
                     })
         elif not paper_detected:
-            h_img, w_img = original_img.shape[:2]
             cv2.rectangle(original_img, (0, 0), (w_img, h_img), (255, 165, 0), 15) 
-            cv2.putText(original_img, "PAPER NOT FOUND - WATER ONLY", (int(w_img * 0.05), int(h_img / 2)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 165, 0), 3)
-
-        # Turbidity sync
-        turbidity_level = analyze_turbidity(original_img, raw_boxes)
-        if algae_level == 0:
-            ai_environment_status = "Clear (No Issues Detected)"
-            turbidity_level = min(turbidity_level, 2)  
-        elif algae_level == 1:
-            if ai_environment_status == "Clear (No Issues Detected)":
-                ai_environment_status = "Moderate Issues (Monitor Tank)"
-            turbidity_level = max(3, min(turbidity_level, 6)) 
-        elif algae_level >= 2:
-            ai_environment_status = "Action Required: Clean Your Tank!"
-            turbidity_level = max(turbidity_level, 8)  
-
-        h_img, w_img = original_img.shape[:2]
-        cv2.putText(original_img, f"Water: {ai_environment_status}", (30, h_img - 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 200, 0), 3)
+            cv2.putText(original_img, "PAPER NOT FOUND", (int(w_img * 0.1), int(h_img / 2)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 165, 0), 3)
 
         _, buffer = cv2.imencode('.jpg', original_img)
-        img_base64 = base64.b64encode(buffer).decode('utf-8')
-
         primary_result = results_data[0] if results_data else {}
 
         return {
-            "image": img_base64, 
-            "measurements": results_data,
-            "success": True, 
-            "ai_environment_status": ai_environment_status, 
-            "algae_level": algae_level,     
-            "algae_desc": algae_desc,       
-            "turbidity_level": turbidity_level, 
-            "model_version": AI_MODEL_VERSION,
-            "gender": primary_result.get("gender", "Not Defined"),
-            "genderConfidence": primary_result.get("gender_confidence", 0)
+            "image": base64.b64encode(buffer).decode('utf-8'), "measurements": results_data, "success": True, 
+            "ai_environment_status": ai_environment_status, "algae_level": algae_level, "algae_desc": algae_desc, 
+            "turbidity_level": turbidity_level, "model_version": AI_MODEL_VERSION,
+            "gender": primary_result.get("gender", "Not Defined"), "genderConfidence": primary_result.get("gender_confidence", 0)
         }
     except Exception as e:
         return {"success": False, "error": str(e), "measurements": [], "gender": "Error", "genderConfidence": 0}

@@ -30,21 +30,51 @@ export default function VerifyOtpScreen({ route, navigation }) {
     return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Handle OTP Input
+  // Handle OTP Input (Updated for alphanumeric and pasting)
   const handleOtpChange = (text, index) => {
+    // 1. Strip out anything that isn't a letter or number, and capitalize
+    const cleanText = text.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+    // 2. Handle clearing the input (Backspace)
+    if (cleanText === '') {
+      const newOtp = [...otp];
+      newOtp[index] = '';
+      setOtp(newOtp);
+      return;
+    }
+
+    // 3. Handle pasting a full code or SMS autofill
+    if (cleanText.length > 1) {
+      const chars = cleanText.split('').slice(0, 6);
+      const newOtp = [...otp];
+      
+      chars.forEach((c, i) => {
+        if (index + i < 6) newOtp[index + i] = c;
+      });
+      
+      setOtp(newOtp);
+      
+      // Auto-focus the next empty box or the last box
+      const nextIndex = Math.min(index + chars.length, 5);
+      inputRefs.current[nextIndex]?.focus();
+      return;
+    }
+
+    // 4. Handle standard single-character typing
     const newOtp = [...otp];
-    newOtp[index] = text;
+    // Take the last character in case rapid typing grouped them
+    newOtp[index] = cleanText.slice(-1); 
     setOtp(newOtp);
 
-    // Auto-focus next input
-    if (text && index < 5) {
-      inputRefs.current[index + 1].focus();
+    // 5. Auto-focus next input
+    if (index < 5) {
+      inputRefs.current[index + 1]?.focus();
     }
   };
 
   const handleBackspace = (text, index) => {
     if (!text && index > 0) {
-      inputRefs.current[index - 1].focus();
+      inputRefs.current[index - 1]?.focus();
     }
   };
 
@@ -52,7 +82,7 @@ export default function VerifyOtpScreen({ route, navigation }) {
   const handleVerify = async () => {
     const otpCode = otp.join('');
     if (otpCode.length !== 6) {
-      Alert.alert("Error", "Please enter the full 6-digit code.");
+      Alert.alert("Error", "Please enter the full 6-character code.");
       return;
     }
 
@@ -66,16 +96,12 @@ export default function VerifyOtpScreen({ route, navigation }) {
       });
 
       if (response.status === 200 && response.data.success) {
-        // Success! Save token to AsyncStorage
         const { token, user } = response.data;
         
         await AsyncStorage.setItem('token', token);
         await AsyncStorage.setItem('userInfo', JSON.stringify(user));
         
         Alert.alert("Success", "Account Verified! Logging you in...");
-        
-        // AUTO LOGIN: Navigate to Home
-        // The Home screen will check for token and display user data
         navigation.replace('Home'); 
       }
 
@@ -90,7 +116,7 @@ export default function VerifyOtpScreen({ route, navigation }) {
     }
   };
 
-  // --- 2. RESEND LOGIC (NEW) ---
+  // --- 2. RESEND LOGIC ---
   const handleResend = async () => {
     if (timer > 0) {
        Alert.alert("Wait", `Please wait ${formatTime(timer)} before resending.`);
@@ -99,13 +125,12 @@ export default function VerifyOtpScreen({ route, navigation }) {
 
     setLoading(true);
     try {
-      // Call the backend endpoint we just created
       const response = await client.post('/auth/resend-otp', { email });
       
       if (response.status === 200) {
         Alert.alert("Sent!", "A new code has been sent to your email.");
-        setTimer(600); // Reset timer to 10 minutes
-        setOtp(['', '', '', '', '', '']); // Clear input
+        setTimer(600); 
+        setOtp(['', '', '', '', '', '']); 
       }
     } catch (error) {
        Alert.alert("Error", "Could not resend code. Try again later.");
@@ -139,8 +164,11 @@ export default function VerifyOtpScreen({ route, navigation }) {
               key={index}
               ref={(ref) => inputRefs.current[index] = ref}
               style={[styles.otpInput, digit && styles.otpInputFilled]}
-              keyboardType="number-pad"
-              maxLength={1}
+              keyboardType="default"
+              autoCapitalize="characters"
+              textContentType="oneTimeCode"
+              autoComplete="sms-otp"
+              maxLength={6} 
               value={digit}
               onChangeText={(text) => handleOtpChange(text, index)}
               onKeyPress={({ nativeEvent }) => {
@@ -164,7 +192,6 @@ export default function VerifyOtpScreen({ route, navigation }) {
           <Text style={styles.timerText}>{formatTime(timer)}</Text>
           <Text style={styles.resendText}>
             Didn't receive code? 
-            {/* The Resend Button */}
             <Text 
               style={[styles.resendLink, timer > 0 && { color: '#bdc3c7' }]} 
               onPress={handleResend}
